@@ -20,26 +20,27 @@ available to you. Contact an administrator if you need access.
 | User | What you can do |
 |---|---|
 | Students | View your attendance, register your card and request an excused absence with a supporting document. |
-| Lecturers | Take attendance, correct records, review absence requests and send a student's card for approval. |
-| Global administrators | Everything above, plus the student list, card approvals, staff, courses and trusted devices. |
+| Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, and trust devices (renaming or removing only their own). |
+| Administrators | Everything above, plus the student list, card approvals, staff, courses and every trusted device. |
 
 ### Taking attendance
 
-Choose a course and start scanning. Each card tap records the student's
+Choose a course and start scanning. Scanning works only on a trusted device:
+on any other device, **Start scanning** opens **Settings → Trusted Devices**
+instead, where you register it. Each card tap records the student's
 attendance. A card that is not in the student list still records attendance,
 but plays the failure sound and turns the scan result orange. You can search
 records by name, card, date or session to find an entry or make a correction.
 
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
-records attendance. Tap your own staff card to unlock it; tap it again (or leave
-the screen untouched for 30 seconds) to lock it again. As with staff card
-sign-in, this needs your card in **Settings → Staff** and the phone in
-**Trusted Devices**; without them, scanning works but does not lock. A phone
-that has confirmed your card once also unlocks offline. The lock covers every
-Stando tab in the browser and stays after a reload. It cannot stop someone
-switching to other apps or tabs, but the lock screen then shows when Stando was
-left and for how long. Without your card, **Can't unlock? Sign out** ends the
-session instead.
+records attendance. Any lecturer of the course on screen taps their staff card
+to unlock it; a tap again (or 30 seconds untouched) locks it again. This needs
+your own card in **Settings → Staff**; without it, scanning works but does not
+lock. A phone that has confirmed a card once also unlocks with it offline. The
+lock covers every Stando tab in the browser and stays after a reload. It cannot
+stop someone switching to other apps or tabs, but the lock screen then shows
+when Stando was left and for how long. Without a card, **Can't unlock? Sign
+out** ends the session instead.
 
 Card scanning uses NFC: it needs an NFC-capable Android phone, a supported
 Chrome browser and an HTTPS website. You can view records without a card reader.
@@ -81,7 +82,7 @@ a name and either a card ID or email. Imports need an internet connection.
 ## Use Stando on another website
 
 1. Sign in and click your photo or name. Lecturers choose **Download index.html**
-   in **My Courses**; global administrators find it at the top of
+   in **Settings → My Courses**; administrators find it at the top of
    **Settings → Courses**.
 2. Upload the downloaded file as `index.html` to an HTTPS website folder,
    for example `https://example.com/attendance/`.
@@ -110,8 +111,9 @@ Sign-ins and trusted devices are separate on each website.
 ### Staff names and email signatures
 
 Staff photos and default names come from each person's Google account after
-their first sign-in. In **Settings → Staff**, leave a name empty to use the
-Google name, or enter one to change it.
+their first sign-in. In **Settings → Staff**, leave a name or photo empty to use
+the Google one, or enter a name, or the `https://` address of a photo, to
+change it.
 
 Approval and rejection emails are signed by whoever clicked, and replies go to
 them. A name that starts with an academic title signs in full
@@ -152,6 +154,9 @@ After changing a function, open it in **Supabase → Edge Functions**, replace
 `index.ts` with the file from [supabase/functions](supabase/functions/), and
 click **Deploy updates**. Each file is self-contained. With the CLI:
 `supabase functions deploy send-email` (or `kiosk-login`).
+
+Database changes are in [supabase/migrations](supabase/migrations/): run a new
+file once in **Supabase → SQL Editor** before publishing the app that needs it.
 
 ### Addresses
 

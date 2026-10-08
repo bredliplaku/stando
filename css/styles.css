@@ -5285,6 +5285,199 @@ body.signed-out #main-container {
     margin: 16px 0 0;
 }
 
+/* --- Signed out, on NFC phones: "or", then a quiet pill shaped like the Google
+   button. A staff card signs in; any other card shows its Card ID. --- */
+.signin-card .scan-buttons {
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+.signin-card .scan-buttons::before {
+    content: "or";
+    display: block;
+    width: 100%;
+    max-width: 300px;
+    margin: 12px 0;
+    color: #9e9e9e;
+    font-size: 0.8em;
+    line-height: 1;
+    background: linear-gradient(to right, rgba(0, 0, 0, 0.1) 0 calc(50% - 20px), transparent 0 calc(50% + 20px), rgba(0, 0, 0, 0.1) 0) center / 100% 1px no-repeat;
+}
+
+.signin-card .big-scan-button,
+.signin-card .big-scan-button:hover:not(:disabled) {
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    max-width: 300px;
+    min-height: 52px;
+    box-sizing: border-box;
+    margin: 0 auto;
+    padding: 8px;
+    border: 1.5px solid rgba(57, 73, 171, 0.3);
+    border-radius: 26px;
+    background: transparent;
+    color: var(--primary-color);
+    font-family: inherit;
+    font-size: 0.95em;
+    font-weight: 500;
+    letter-spacing: normal;
+    box-shadow: none;
+    transform: none;
+    filter: none;
+    font-variation-settings: inherit;
+    animation: none;
+}
+
+.signin-card .big-scan-button:hover:not(:disabled) {
+    border-color: rgba(57, 73, 171, 0.55);
+    background: rgba(57, 73, 171, 0.05);
+}
+
+.signin-card .big-scan-button:active:not(:disabled),
+.signin-card .big-scan-button.is-scanning:active:not(:disabled) {
+    transform: scale(0.97);
+    background: rgba(57, 73, 171, 0.1);
+    box-shadow: none;
+    filter: none;
+    animation: none;
+}
+
+.signin-card .big-scan-button:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 3px;
+}
+
+/* The icon disc and a matching spacer keep the label centred, as on the Google button. */
+.signin-card .scan-btn-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    margin-right: auto;
+    border-radius: 50%;
+    background: rgba(57, 73, 171, 0.1);
+}
+
+.signin-card .big-scan-button .scan-btn-icon > i,
+.signin-card .big-scan-button .scan-btn-icon > svg {
+    font-size: 1rem;
+}
+
+.signin-card .big-scan-button::after {
+    content: "";
+    flex-shrink: 0;
+    width: 36px;
+    margin-left: auto;
+}
+
+.signin-card .scan-btn-label {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+}
+
+.signin-card .scan-btn-label small {
+    font-size: 0.78em;
+    font-weight: 400;
+    opacity: 0.75;
+}
+
+/* Waiting for a card: green, the icon pulsing. Tapping again stops. */
+.signin-card .big-scan-button.is-scanning,
+.signin-card .big-scan-button.is-scanning:hover:not(:disabled) {
+    border-color: rgba(46, 125, 50, 0.45);
+    background: rgba(76, 175, 80, 0.08);
+    color: #2e7d32;
+}
+
+.signin-card .big-scan-button.is-scanning .scan-btn-icon {
+    background: rgba(76, 175, 80, 0.16);
+    animation: scan-btn-wait 1.6s ease-out infinite;
+}
+
+@keyframes scan-btn-wait {
+    0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.45); }
+    70% { box-shadow: 0 0 0 8px rgba(76, 175, 80, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+}
+
+.dark-mode .signin-card .scan-buttons::before {
+    color: #757575;
+    background-image: linear-gradient(to right, rgba(255, 255, 255, 0.12) 0 calc(50% - 20px), transparent 0 calc(50% + 20px), rgba(255, 255, 255, 0.12) 0);
+}
+
+.dark-mode .signin-card .big-scan-button {
+    border-color: rgba(159, 168, 218, 0.3);
+    color: #9fa8da;
+}
+
+.dark-mode .signin-card .big-scan-button:hover:not(:disabled) {
+    border-color: rgba(159, 168, 218, 0.55);
+    background: rgba(159, 168, 218, 0.07);
+}
+
+.dark-mode .signin-card .scan-btn-icon {
+    background: rgba(159, 168, 218, 0.14);
+}
+
+.dark-mode .signin-card .big-scan-button.is-scanning,
+.dark-mode .signin-card .big-scan-button.is-scanning:hover:not(:disabled) {
+    border-color: rgba(129, 199, 132, 0.45);
+    background: rgba(129, 199, 132, 0.08);
+    color: #a5d6a7;
+}
+
+.dark-mode .signin-card .big-scan-button.is-scanning .scan-btn-icon {
+    background: rgba(129, 199, 132, 0.16);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .signin-card .big-scan-button.is-scanning .scan-btn-icon {
+        animation: none;
+    }
+}
+
+/* --- Staff editor: the photo address with a preview of the photo that will show --- */
+.staff-photo-field {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+
+.staff-photo-preview {
+    width: 40px;
+    height: 40px;
+    font-size: 0.875rem;
+}
+
+.dialog p.form-hint.is-error,
+.dark-mode .dialog p.form-hint.is-error {
+    color: var(--danger-color);
+}
+
+/* Trusted devices: one line on why devices are trusted. */
+.dialog p.settings-device-hint {
+    margin: 10px 4px 0;
+    color: #78909c;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    opacity: 1;
+}
+
+.dark-mode .dialog p.settings-device-hint {
+    color: #90a4ae;
+}
+
 /* --- Tabs: the selected tab drops its icon and shows a bold, centred label --- */
 .tab-icon {
     flex-shrink: 0;
@@ -7077,7 +7270,7 @@ button.settings-group-label:active:not(:disabled) {
         display: none;
     }
 
-    /* Dialogs become bottom sheets. */
+    /* Dialogs become bottom sheets; their corners are set after the base .dialog rule. */
     .dialog-backdrop {
         align-items: flex-end;
         padding: 0;
@@ -7088,7 +7281,6 @@ button.settings-group-label:active:not(:disabled) {
         max-width: 100% !important;
         max-height: 95vh;
         margin: 0;
-        border-radius: 16px 16px 0 0;
         animation-name: sheet-enter;
     }
 
@@ -7148,6 +7340,16 @@ button.settings-group-label:active:not(:disabled) {
     border: 1px solid rgba(0, 0, 0, 0.06);
     box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.28);
     font-size: 1rem;
+}
+
+/* Phones: bottom sheets, gently rounded at the top and square at the bottom,
+   where the browser's own toolbar meets them. */
+@media (max-width: 768px) {
+    .dialog {
+        border-radius: 12px 12px 0 0;
+        border-bottom: 0;
+        box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.18);
+    }
 }
 
 .dialog-title,
@@ -8800,9 +9002,39 @@ html:not([data-stando-nfc]) .sk-nfc {
     width: 156px;
 }
 
-.sk-signin > .sk-scan {
-    width: calc(100% - 30px);
-    margin: 16px 15px 21px;
+/* NFC phones: "or" and the Scan Card pill under the Google button. */
+.sk-signin-scan {
+    --sk-delay: 0.3s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+}
+
+.sk-or {
+    width: 18px;
+    height: 10px;
+    margin: 13px 0;
+    border-radius: 5px;
+}
+
+.sk-scan-pill {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 300px;
+    height: 52px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border: 1.5px solid var(--sk-accent);
+    border-radius: 26px;
+}
+
+.sk-scan-pill-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--sk-accent);
 }
 
 /* As tall as the real footer (logo, page links, copyright), so the card centres alike. */

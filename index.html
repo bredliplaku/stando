@@ -92,7 +92,7 @@
          above chooses it through <html data-stando-view> and data-stando-nfc (embed.js
          does the same for downloaded pages); showMainContent() fades it out. -->
     <div id="app-loading" class="skeleton-loader-overlay" aria-hidden="true">
-        <!-- Signed out: the sign-in card, the scan button on NFC phones and the footer. -->
+        <!-- Signed out: the sign-in card (with "or" and Scan Card on NFC phones) and the footer. -->
         <div class="sk-signin">
             <div class="sk-signin-main">
                 <div class="sk-signin-card">
@@ -101,13 +101,14 @@
                     <span class="sk sk-heading sk-heading-phone"></span>
                     <span class="sk sk-heading sk-heading-last"></span>
                     <span class="sk-google"><span class="sk-google-g"></span></span>
+                    <span class="sk-signin-scan sk-nfc"><span class="sk sk-or"></span><span
+                            class="sk-scan-pill"><span class="sk-scan-pill-icon"></span></span></span>
                     <span class="sk-signin-note">
                         <span class="sk sk-text"></span>
                         <span class="sk sk-text sk-text-short"></span>
                     </span>
                 </div>
             </div>
-            <span class="sk-scan sk-nfc"><span class="sk sk-on-primary"></span></span>
             <span class="sk-footer"><span class="sk sk-logo"></span><span class="sk sk-text sk-copyright"></span></span>
         </div>
 

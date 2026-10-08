@@ -282,9 +282,11 @@ function showStaffEditorDialog(staffData = null) {
     const nameVal = isEdit ? (staffData.name || '') : '';
     const emailVal = isEdit ? staffData.email : '';
     const uidVal = isEdit ? staffData.uid : '';
-    // An empty name shows the name from their Google account, once they have signed in.
+    // An empty name or photo shows the one from their Google account, once they have signed in.
     const googleName = isEdit ? (staffData.googleName || '') : '';
     const namePlaceholder = googleName || 'From their Google account';
+    const photoVal = isEdit ? (staffData.photoUrl || '') : '';
+    const googlePhoto = isEdit ? (staffData.googlePhoto || '') : '';
 
     // Default to 'Lecturer' if adding new
     const roleVal = isEdit ? staffData.role : 'Lecturer';
@@ -298,6 +300,15 @@ function showStaffEditorDialog(staffData = null) {
                 <input type="text" id="staff-name" class="form-control" placeholder="${escapeHtml(namePlaceholder)}" value="${escapeHtml(nameVal)}" autocomplete="off">
             </div>
             <p class="form-hint">Leave empty to use the name from their Google account. Enter a name to add a title or change it.</p>
+
+            <div class="form-group">
+                <label class="dialog-label-fixed" for="staff-photo">Photo</label>
+                <div class="staff-photo-field">
+                    <span id="staff-photo-preview" class="user-avatar staff-photo-preview" aria-hidden="true"></span>
+                    <input type="url" id="staff-photo" class="form-control" inputmode="url" maxlength="1000" placeholder="https://… (from their Google account)" value="${escapeHtml(photoVal)}" autocomplete="off">
+                </div>
+            </div>
+            <p class="form-hint" id="staff-photo-hint">Leave empty to use the photo from their Google account, or paste the address of a photo.</p>
 
             <div class="form-group">
                 <label class="dialog-label-fixed" for="staff-email">Email <span class="required">*</span></label>
@@ -342,6 +353,33 @@ function showStaffEditorDialog(staffData = null) {
     const statusContainer = dialog.querySelector('#staff-nfc-status');
     const scanBtn = dialog.querySelector('.scan-staff-uid-btn');
 
+    // The preview shows the photo that will be used: the address, else the Google
+    // photo, else initials. A photo that does not load says so under the field.
+    const nameInput = dialog.querySelector('#staff-name');
+    const photoInput = dialog.querySelector('#staff-photo');
+    const photoPreview = dialog.querySelector('#staff-photo-preview');
+    const photoHint = dialog.querySelector('#staff-photo-hint');
+    const photoHintText = photoHint.textContent;
+    const renderPhotoPreview = () => {
+        const custom = photoInput.value.trim();
+        const shownName = nameInput.value.trim() || googleName || dialog.querySelector('#staff-email').value.trim();
+        const valid = !custom || /^https:\/\/\S+$/i.test(custom);
+        photoInput.setAttribute('aria-invalid', String(!valid));
+        photoHint.classList.toggle('is-error', !valid);
+        photoHint.textContent = valid ? photoHintText : 'Use an address that starts with https://.';
+        photoPreview.innerHTML = avatarContentHtml(shownName, valid && custom ? custom : googlePhoto);
+        const img = photoPreview.querySelector('img');
+        if (img && custom && valid) {
+            img.addEventListener('error', () => {
+                photoHint.classList.add('is-error');
+                photoHint.textContent = 'This photo could not be loaded. Check the address.';
+            }, { once: true });
+        }
+    };
+    renderPhotoPreview();
+    photoInput.addEventListener('input', renderPhotoPreview);
+    nameInput.addEventListener('input', renderPhotoPreview);
+
     // Real-time calculation from UID to ID
     if (uidInput && convertedInput) {
         uidInput.addEventListener('input', () => {
@@ -379,9 +417,10 @@ function showStaffEditorDialog(staffData = null) {
         const convId = document.getElementById('staff-converted-id')?.value.trim();
         const uid = convId || convertUidToExternalId(rawUid) || rawUid;
         const role = document.getElementById('staff-role').value;
+        const photoUrl = photoInput.value.trim();
         const btn = e.currentTarget;
 
-        // The name is optional: empty means the name from their Google account.
+        // The name and photo are optional: empty means the one from their Google account.
         const emailInput = document.getElementById('staff-email');
         const uidInput = document.getElementById('staff-uid');
         emailInput.setAttribute('aria-invalid', String(!email));
@@ -389,6 +428,11 @@ function showStaffEditorDialog(staffData = null) {
         if (!email || !uid) {
             showNotification('error', 'Missing Info', 'Email and UID are required.');
             (!email ? emailInput : uidInput).focus();
+            return;
+        }
+        if (photoUrl && !/^https:\/\/\S+$/i.test(photoUrl)) {
+            showNotification('error', 'Invalid Photo', 'The photo address must start with https://.');
+            photoInput.focus();
             return;
         }
 
@@ -401,6 +445,7 @@ function showStaffEditorDialog(staffData = null) {
                 name, email, uid, role
             };
             if (isEdit) payload.rowIndex = staffData.rowIndex;
+            if (photoUrl !== photoVal) payload.photoUrl = photoUrl;
 
             await callWebApp('manageStaff_Admin', payload, 'POST');
 
@@ -1126,20 +1171,51 @@ function normalizeName(str) {
         .trim(); // 4. Trim the ends
 }
 
-function updateScanClock() {
-    const scanBtn = document.getElementById('scan-button');
-    if (!scanBtn || !scanBtn.classList.contains('is-scanning')) return;
-
-    // Get device time
-    const now = new Date();
+// Signed out, the scan button sits in the sign-in card: a staff card signs in,
+// any other card shows its Card ID. Signed in, it takes attendance and shows
+// the time while scanning.
+function scanButtonHtml() {
+    const icon = '<span class="scan-btn-icon" aria-hidden="true"><i class="fa-solid fa-wifi fa-rotate-90"></i></span>';
+    if (!isSignedIn) {
+        return isScanning
+            ? `${icon}<span class="scan-btn-label">Hold a card to the phone<small>Tap to stop</small></span>`
+            : `${icon}<span class="scan-btn-label">Scan Card</span>`;
+    }
+    if (!isScanning) return '<i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>';
     // Format: 10:45 (or 10:45 PM depending on locale)
-    const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-    scanBtn.innerHTML = `
+    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    return `
         <div class="scan-time-display">
             <span class="scan-time-digits">${timeString}</span>
             <span class="scan-time-text">Stop scanning</span>
         </div>`;
+}
+
+// Rewrites the button only when its content changes, so its icon is not redrawn every second.
+function renderScanButton() {
+    const scanBtn = document.getElementById('scan-button');
+    if (!scanBtn) return;
+    scanBtn.classList.toggle('is-scanning', isScanning);
+    const html = scanButtonHtml();
+    if (scanBtn._shownHtml !== html) {
+        scanBtn._shownHtml = html;
+        scanBtn.innerHTML = html;
+    }
+}
+
+function updateScanClock() {
+    if (isScanning) renderScanButton();
+}
+
+// Signed out, the scan button moves into the sign-in card; signed in, it goes back above Scan History.
+function placeScanButtons() {
+    const scanButtons = document.querySelector('.scan-buttons');
+    const signinNote = document.querySelector('#login-container .signin-note');
+    const scannerTab = document.getElementById('scanner-tab');
+    if (!scanButtons || !signinNote || !scannerTab) return;
+    if (!isSignedIn && scanButtons.nextElementSibling !== signinNote) signinNote.before(scanButtons);
+    else if (isSignedIn && scanButtons.nextElementSibling !== scannerTab) scannerTab.before(scanButtons);
+    renderScanButton();
 }
 
 function updateAdminDashboardBar(absencesCount, registrationsCount, isLoading = false, myAbsencesCount = absencesCount) {
@@ -1509,8 +1585,7 @@ function setupEventListeners() {
     const profileChip = document.getElementById('student-profile-chip');
     if (profileChip) profileChip.addEventListener('click', () => {
         if (!isSignedIn) return;
-        if (isGlobalAdmin) showGlobalSettingsDialog();
-        else if (isAdmin) showAdminProfileDialog();
+        if (isAdmin) openSettingsDialog();
         else showStudentProfileDialog();
     });
 
@@ -2094,8 +2169,272 @@ function compareCoursesForDisplay(aEntry, bEntry) {
     return courseCodeComparator(aEntry, bEntry);
 }
 
-// --- 3. Non-Global Admin Profile & Settings ---
-function showGlobalSettingsDialog() {
+// Settings for administrators, or for lecturers (their courses and trusted devices).
+function openSettingsDialog(tab) {
+    if (isGlobalAdmin) showGlobalSettingsDialog(tab);
+    else if (isAdmin) showAdminProfileDialog(tab);
+}
+
+// The header and tabs stay put; only the chosen section fades in.
+function showSettingsTab(dialog, targetId) {
+    const btn = dialog.querySelector(`.settings-tab-btn[data-target="${targetId}"]`);
+    const target = dialog.querySelector(`#${targetId}`);
+    if (!btn || !target) return;
+    closeRowMenus();
+    dialog.querySelectorAll('.settings-tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
+    });
+    dialog.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
+    btn.classList.add('active');
+    btn.setAttribute('aria-selected', 'true');
+    target.classList.remove('loaded');
+    target.style.display = 'flex';
+    void target.offsetWidth;
+    target.classList.add('loaded');
+}
+
+// Leaving a tab with unsaved edits asks first.
+function bindSettingsTabs(dialog) {
+    dialog.querySelectorAll('.settings-tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            if (btn.classList.contains('active')) return;
+
+            const activeSection = dialog.querySelector('.settings-section[style*="display: flex"], .settings-section[style*="display:flex"]');
+            let isSectionDirty = false;
+            if (activeSection) {
+                const inputs = activeSection.querySelectorAll('input, select, textarea');
+                for (const input of inputs) {
+                    if (input.id && (input.id.includes('search') || input.id.includes('filter'))) continue;
+                    if (input.disabled || input.readOnly) continue;
+                    if (input.type === 'checkbox' || input.type === 'radio') {
+                        if (input._initialChecked !== undefined && input.checked !== input._initialChecked) {
+                            isSectionDirty = true; break;
+                        }
+                    } else if (input._initialValue !== undefined && input.value !== input._initialValue) {
+                        isSectionDirty = true; break;
+                    }
+                }
+            }
+
+            const switchTab = () => showSettingsTab(dialog, btn.dataset.target);
+            if (isSectionDirty) {
+                showConfirmationDialog({
+                    title: '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning-color);"></i> Discard Changes?',
+                    message: 'You have unsaved changes in this tab. Are you sure you want to discard them?',
+                    confirmText: 'Discard',
+                    cancelText: 'Keep Editing',
+                    isDestructive: true,
+                    onConfirm: switchTab
+                });
+            } else {
+                switchTab();
+            }
+        });
+    });
+}
+
+// --- Trusted devices: administrators manage every device; lecturers see every
+// device, trust new ones, and rename or remove the ones they registered. ---
+
+const DEVICE_TRUSTED_KEY = 'attendance_device_trusted';
+
+function cachedDeviceTrust() {
+    try {
+        const value = localStorage.getItem(DEVICE_TRUSTED_KEY);
+        return value === '1' ? true : value === '0' ? false : null;
+    } catch {
+        return null;
+    }
+}
+
+function rememberDeviceTrust(trusted) {
+    try { localStorage.setItem(DEVICE_TRUSTED_KEY, trusted ? '1' : '0'); } catch { /* Asked again next time. */ }
+}
+
+// Whether this browser is a trusted device: the database's answer, else the last
+// one (so a phone that lost its connection still scans), else null.
+async function checkDeviceTrusted() {
+    if (navigator.onLine && supabaseClient) {
+        try {
+            const { data, error } = await supabaseClient.rpc('device_is_trusted', { p_device_id: getDeviceFingerprint() });
+            if (error) throw error;
+            rememberDeviceTrust(data === true);
+            return data === true;
+        } catch (error) {
+            console.warn('Trusted device check unavailable:', error?.message || error);
+        }
+    }
+    return cachedDeviceTrust();
+}
+
+function openTrustedDevicesSettings() {
+    showNotification('warning', 'Device Not Trusted', 'Stando scans only on trusted devices. Register this device, then start scanning.', 8000);
+    openSettingsDialog('sect-devices');
+    setTimeout(() => document.getElementById('register-this-device-btn')?.focus({ preventScroll: true }), 150);
+}
+
+function trustedDevicesSectionHtml() {
+    return `
+        <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
+            <div class="settings-scroll">
+                <div class="settings-device-note">
+                    <div class="settings-device-id">
+                        <strong>This device</strong>
+                        <small class="selectable">${escapeHtml(getDeviceFingerprint())}</small>
+                    </div>
+                    <button type="button" id="register-this-device-btn" class="btn-blue btn-sm">
+                        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Register This Device
+                    </button>
+                </div>
+                <p class="settings-device-hint">Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}</p>
+                <div class="settings-group-label">Trusted devices</div>
+                <div id="devices-tbody" class="settings-list"></div>
+            </div>
+        </div>`;
+}
+
+function renderTrustedDevices(devices) {
+    const deviceBody = document.getElementById('devices-tbody');
+    if (!deviceBody) return;
+    closeRowMenus();
+    const myId = getDeviceFingerprint();
+    const me = String(currentUser?.email || '').toLowerCase();
+    const isRegistered = devices.some(d => d.id === myId);
+
+    const regBtn = document.getElementById('register-this-device-btn');
+    if (regBtn) {
+        regBtn.disabled = isRegistered;
+        regBtn.innerHTML = isRegistered
+            ? '<i class="fa-solid fa-check-circle" aria-hidden="true"></i> Trusted'
+            : '<i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Register This Device';
+        regBtn.classList.toggle('btn-green', isRegistered);
+        regBtn.classList.toggle('btn-blue', !isRegistered);
+    }
+
+    deviceBody.innerHTML = devices.length ? devices.map(d => {
+        const mine = String(d.owner || '').toLowerCase() === me;
+        const attrs = `data-row-index="${escapeHtml(String(d.rowIndex))}" data-name="${escapeHtml(d.name)}"`;
+        return `
+            <div class="settings-row${d.id === myId ? ' is-selected' : ''}">
+                <div class="settings-row-main">
+                    <span class="settings-row-title">${escapeHtml(d.name)}${d.id === myId ? ' <span class="settings-row-state">This device</span>' : ''}</span>
+                    <span class="settings-row-people">${mine ? 'Registered by you' : escapeHtml(d.owner)}</span>
+                </div>
+                <div class="settings-row-meta">
+                    <span class="settings-row-sub">${escapeHtml(d.date)}</span>
+                </div>
+                ${isGlobalAdmin || mine ? `<div class="card-actions">
+                    ${rowEditButtonHtml(`Rename ${d.name}`, 'rename-device-btn', attrs)}
+                    ${rowMenuHtml([{ label: 'Remove device', icon: 'fa-solid fa-trash', danger: true, className: 'delete-device-btn', attrs }], `More actions for ${d.name}`)}
+                </div>` : ''}
+            </div>`;
+    }).join('') : '<div class="settings-empty">No trusted devices.</div>';
+
+    deviceBody.querySelectorAll('.rename-device-btn').forEach(btn => {
+        btn.onclick = () => renameTrustedDevice(btn.dataset.rowIndex, btn.dataset.name);
+    });
+    deviceBody.querySelectorAll('.delete-device-btn').forEach(btn => {
+        btn.onclick = () => window.deleteTrustedDevice(btn.dataset.rowIndex, btn.dataset.name);
+    });
+}
+
+async function reloadTrustedDevices() {
+    try {
+        renderTrustedDevices(await callWebApp('getTrustedDevices'));
+    } catch (error) {
+        showNotification('error', 'Error', 'Failed to load trusted devices: ' + error.message);
+    }
+}
+
+// A small dialog above Settings that asks for a device's name.
+function showDeviceNameDialog({ title, icon, intro, name = '', confirmText, onSave }) {
+    const dialogBackdrop = document.createElement('div');
+    dialogBackdrop.setAttribute('class', 'dialog-backdrop');
+    dialogBackdrop.style.zIndex = "10010";
+
+    const dialog = document.createElement('div');
+    dialog.setAttribute('class', 'dialog');
+    dialog.setAttribute('role', 'dialog');
+    dialog.innerHTML = `
+        <h3 class="dialog-title"><i class="fa-solid ${icon}" aria-hidden="true"></i> ${escapeHtml(title)}</h3>
+        <div class="dialog-content">
+            <p>${escapeHtml(intro)}</p>
+            <div class="form-group">
+                <label class="dialog-label-fixed" for="device-name-input"><i class="fa-solid fa-quote-right" aria-hidden="true"></i> Name</label>
+                <input type="text" id="device-name-input" class="form-control" placeholder="Device Name" maxlength="80" value="${escapeHtml(name)}" autocomplete="off">
+            </div>
+        </div>
+        <div class="dialog-actions">
+            <button type="button" class="btn-red device-name-cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancel</button>
+            <button type="button" class="btn-green device-name-save"><i class="fa-solid fa-check" aria-hidden="true"></i> ${escapeHtml(confirmText)}</button>
+        </div>`;
+    dialogBackdrop.appendChild(dialog);
+    document.body.appendChild(dialogBackdrop);
+
+    const input = dialog.querySelector('#device-name-input');
+    setTimeout(() => input.focus(), 100);
+    const close = () => dialogBackdrop.remove();
+    dialog.querySelector('.device-name-cancel').onclick = close;
+
+    const save = async () => {
+        const value = input.value.trim();
+        if (!value) {
+            input.setAttribute('aria-invalid', 'true');
+            showNotification('warning', 'Name Required', 'Please enter a device name.');
+            input.focus();
+            return;
+        }
+        const btn = dialog.querySelector('.device-name-save');
+        if (btn.disabled) return;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Saving...';
+        try {
+            await onSave(value);
+            close();
+        } catch (err) {
+            showNotification('error', 'Error', err.message);
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fa-solid fa-check" aria-hidden="true"></i> ${escapeHtml(confirmText)}`;
+        }
+    };
+    dialog.querySelector('.device-name-save').onclick = save;
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') save();
+    });
+}
+
+function bindTrustedDevicesSection(dialog) {
+    dialog.querySelector('#register-this-device-btn').onclick = () => showDeviceNameDialog({
+        title: 'Trust This Device',
+        icon: 'fa-laptop-medical',
+        intro: 'Give this device a friendly name (e.g., "A-131 Tablet").',
+        confirmText: 'Trust',
+        onSave: async (deviceName) => {
+            await callWebApp('registerDevice_Admin', { deviceName, deviceId: getDeviceFingerprint() }, 'POST');
+            rememberDeviceTrust(true);
+            showNotification('success', 'Registered', 'Device is now trusted. You can start scanning.');
+            await reloadTrustedDevices();
+        }
+    });
+}
+
+function renameTrustedDevice(rowIndex, name) {
+    showDeviceNameDialog({
+        title: 'Rename Device',
+        icon: 'fa-pen',
+        intro: 'The name helps you recognise this device in the list.',
+        name,
+        confirmText: 'Save',
+        onSave: async (deviceName) => {
+            await callWebApp('renameDevice', { rowIndex, deviceName }, 'POST');
+            showNotification('success', 'Saved', 'Device renamed.');
+            await reloadTrustedDevices();
+        }
+    });
+}
+
+function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     openDialogMode();
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
@@ -2114,7 +2453,7 @@ function showGlobalSettingsDialog() {
     <div class="settings-modal-header">
         <div class="settings-modal-identity">
             <div class="settings-avatar" id="admin-profile-pic-container">
-                ${userAvatarHtml(currentUserDisplayName(), currentUser.picture, 'user-avatar user-avatar-lg')}
+                ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
             </div>
             <div class="settings-modal-heading">
                 <h3>Settings</h3>
@@ -2163,21 +2502,7 @@ function showGlobalSettingsDialog() {
             <div class="settings-scroll" id="settings-staff-container"></div>
         </div>
 
-        <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            <div class="settings-scroll">
-                <div class="settings-device-note">
-                    <div class="settings-device-id">
-                        <strong>This device</strong>
-                        <small class="selectable">${escapeHtml(getDeviceFingerprint())}</small>
-                    </div>
-                    <button type="button" id="register-this-device-btn" class="btn-blue btn-sm">
-                        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Register This Device
-                    </button>
-                </div>
-                <div class="settings-group-label">Trusted devices</div>
-                <div id="devices-tbody" class="settings-list"></div>
-            </div>
-        </div>
+        ${trustedDevicesSectionHtml()}
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -2204,62 +2529,9 @@ function showGlobalSettingsDialog() {
 
     // --- LOGIC ---
 
-    // 1. Tab Switching with Dirty Form Check
-    dialog.querySelectorAll('.settings-tab-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            if (btn.classList.contains('active')) return;
-
-            // Check if active section has dirty inputs
-            const activeSection = dialog.querySelector('.settings-section[style*="display: flex"], .settings-section[style*="display:flex"]');
-            let isSectionDirty = false;
-            if (activeSection) {
-                const inputs = activeSection.querySelectorAll('input, select, textarea');
-                for (const input of inputs) {
-                    if (input.id && (input.id.includes('search') || input.id.includes('filter'))) continue;
-                    if (input.disabled || input.readOnly) continue;
-                    if (input.type === 'checkbox' || input.type === 'radio') {
-                        if (input._initialChecked !== undefined && input.checked !== input._initialChecked) {
-                            isSectionDirty = true; break;
-                        }
-                    } else if (input._initialValue !== undefined && input.value !== input._initialValue) {
-                        isSectionDirty = true; break;
-                    }
-                }
-            }
-
-            // The header and tabs stay put; only the section's content fades in.
-            const switchTab = () => {
-                closeRowMenus();
-                dialog.querySelectorAll('.settings-tab-btn').forEach(b => {
-                    b.classList.remove('active');
-                    b.setAttribute('aria-selected', 'false');
-                });
-                dialog.querySelectorAll('.settings-section').forEach(s => s.style.display = 'none');
-                btn.classList.add('active');
-                btn.setAttribute('aria-selected', 'true');
-                const target = document.getElementById(btn.dataset.target);
-                if (target) {
-                    target.classList.remove('loaded');
-                    target.style.display = 'flex';
-                    void target.offsetWidth;
-                    target.classList.add('loaded');
-                }
-            };
-
-            if (isSectionDirty) {
-                showConfirmationDialog({
-                    title: '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning-color);"></i> Discard Changes?',
-                    message: 'You have unsaved changes in this tab. Are you sure you want to discard them?',
-                    confirmText: 'Discard',
-                    cancelText: 'Keep Editing',
-                    isDestructive: true,
-                    onConfirm: switchTab
-                });
-            } else {
-                switchTab();
-            }
-        });
-    });
+    // 1. Tabs
+    bindSettingsTabs(dialog);
+    if (initialTab !== 'sect-courses') showSettingsTab(dialog, initialTab);
 
     // 2. Search Listeners
     const searchInput = document.getElementById('course-search-input');
@@ -2303,42 +2575,7 @@ function showGlobalSettingsDialog() {
             // Render Staff (Grouped by position & sorted alphabetically ignoring titles)
             renderStaffInSettings(loadedStaffList);
 
-            // --- RENDER DEVICES (Safe Mode) ---
-            const deviceBody = document.getElementById('devices-tbody');
-            if (deviceBody && globalData.devices) {
-                const myId = getDeviceFingerprint();
-                const isRegistered = globalData.devices.some(d => d.id === myId);
-
-                const regBtn = document.getElementById('register-this-device-btn');
-                if (isRegistered && regBtn) {
-                    regBtn.disabled = true;
-                    regBtn.innerHTML = '<i class="fa-solid fa-check-circle"></i> Trusted';
-                    regBtn.classList.replace('btn-blue', 'btn-green');
-                }
-
-                deviceBody.innerHTML = globalData.devices.length ? globalData.devices.map(d => `
-                <div class="settings-row${d.id === myId ? ' is-selected' : ''}">
-                    <div class="settings-row-main">
-                        <span class="settings-row-title">${escapeHtml(d.name)}${d.id === myId ? ' <span class="settings-row-state">This device</span>' : ''}</span>
-                        <span class="settings-row-people">${escapeHtml(d.owner)}</span>
-                    </div>
-                    <div class="settings-row-meta">
-                        <span class="settings-row-sub">${escapeHtml(d.date)}</span>
-                    </div>
-                    <div class="card-actions">
-                        ${rowMenuHtml([{
-                            label: 'Remove device', icon: 'fa-solid fa-trash', danger: true, className: 'delete-device-btn',
-                            attrs: `data-row-index="${escapeHtml(String(d.rowIndex))}" data-name="${escapeHtml(d.name)}"`
-                        }], `More actions for ${d.name}`)}
-                    </div>
-                </div>
-            `).join('') : '<div class="settings-empty">No trusted devices.</div>';
-
-                // Attach Device Listeners (The Critical Fix)
-                deviceBody.querySelectorAll('.delete-device-btn').forEach(btn => {
-                    btn.onclick = () => window.deleteTrustedDevice(btn.dataset.rowIndex, btn.dataset.name);
-                });
-            }
+            renderTrustedDevices(globalData.devices || []);
 
         } catch (e) {
             console.error(e);
@@ -2351,75 +2588,7 @@ function showGlobalSettingsDialog() {
     loadSettingsData();
 
     // 4. Action Buttons
-    document.getElementById('register-this-device-btn').onclick = () => {
-        const dialogBackdrop = document.createElement('div');
-        dialogBackdrop.setAttribute('class', 'dialog-backdrop');
-        dialogBackdrop.style.zIndex = "10010";
-
-        const dialog = document.createElement('div');
-        dialog.setAttribute('class', 'dialog');
-        dialog.setAttribute('role', 'dialog');
-
-        dialog.innerHTML = `
-        <h3 class="dialog-title"><i class="fa-solid fa-laptop-medical"></i> Trust This Device</h3>
-        <div class="dialog-content">
-            <p>Give this device a friendly name (e.g., "A-131 Tablet").</p>
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-quote-right"></i> Name</label>
-                <input type="text" id="new-device-name" class="form-control" placeholder="Device Name">
-            </div>
-        </div>
-        <div class="dialog-actions">
-            <button id="cancel-trust-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
-            <button id="confirm-trust-btn" class="btn-green"><i class="fa-solid fa-check"></i> Trust</button>
-        </div>
-    `;
-
-        dialogBackdrop.appendChild(dialog);
-        document.body.appendChild(dialogBackdrop);
-
-        setTimeout(() => dialog.querySelector('#new-device-name').focus(), 100);
-
-        const closeTrust = () => dialogBackdrop.remove();
-
-        dialog.querySelector('#cancel-trust-btn').onclick = closeTrust;
-
-        dialog.querySelector('#confirm-trust-btn').onclick = async (e) => {
-            const name = dialog.querySelector('#new-device-name').value.trim();
-            if (!name) {
-                showNotification('warning', 'Name Required', 'Please enter a device name.');
-                return;
-            }
-
-            const btn = e.target;
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
-
-            try {
-                await callWebApp('registerDevice_Admin', {
-                    deviceName: name,
-                    deviceId: getDeviceFingerprint()
-                }, 'POST');
-
-                showNotification('success', 'Registered', 'Device is now trusted.');
-
-                document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                closeDialogMode();
-
-                showGlobalSettingsDialog();
-
-                setTimeout(() => {
-                    const tab = document.querySelector('.settings-tab-btn[data-target="sect-devices"]');
-                    if (tab) tab.click();
-                }, 100);
-
-            } catch (err) {
-                showNotification('error', 'Error', err.message);
-                closeTrust();
-            }
-        };
-    };
-
+    bindTrustedDevicesSection(dialog);
     document.getElementById('add-staff-btn').onclick = () => showStaffEditorDialog(null);
     document.getElementById('add-new-course-btn').onclick = () => showCourseEditorDialog(null);
 
@@ -2433,37 +2602,32 @@ function showGlobalSettingsDialog() {
 /**
 * Bridges the HTML onclick event to the Editor Dialog.
 */
-window.editStaffKey = (rowIndex, name, uid, email, role, googleName = '') => {
+window.editStaffKey = (rowIndex, name, uid, email, role, googleName = '', photoUrl = '', googlePhoto = '') => {
     showStaffEditorDialog({
         rowIndex: rowIndex,
         name: name,
         uid: uid,
         email: email,
         role: role,
-        googleName: googleName
+        googleName: googleName,
+        photoUrl: photoUrl,
+        googlePhoto: googlePhoto
     });
 };
 
 window.deleteTrustedDevice = (rowIndex, name) => {
     showConfirmationDialog({
         title: '<i class="fa-solid fa-laptop-slash" style="color:var(--danger-color);"></i> Untrust Device?',
-        message: `Are you sure you want to remove <strong>${escapeHtml(name)}</strong>? It will require a Google Login to re-register.`,
+        message: `Are you sure you want to remove <strong>${escapeHtml(name)}</strong>? Stando will not scan on it, or accept staff card sign-in there, until it is registered again.`,
         confirmText: '<i class="fa-solid fa-trash"></i> Untrust', // Added Icon
         cancelText: '<i class="fa-solid fa-xmark"></i> Cancel',   // Added Icon
         isDestructive: true,
         onConfirm: () => {
             callWebApp('deleteDevice_Admin', { rowIndex }, 'POST')
-                .then(() => {
-                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                    closeDialogMode();
-
-                    showGlobalSettingsDialog();
-
-                    // Auto-switch back to "Devices" tab
-                    setTimeout(() => {
-                        const tab = document.querySelector('.settings-tab-btn[data-target="sect-devices"]');
-                        if (tab) tab.click();
-                    }, 100);
+                .then(async () => {
+                    showNotification('delete', 'Removed', `${name} is no longer trusted.`);
+                    await reloadTrustedDevices();
+                    checkDeviceTrusted(); // Updates the saved answer if this was this device.
                 })
                 .catch(err => showNotification('error', 'Error', err.message));
         }
@@ -2933,8 +3097,8 @@ async function refreshCoursePicker(savedMessage) {
     }
 }
 
-// --- 3. Non-Global Admin Profile & Settings ---
-function showAdminProfileDialog() {
+// --- 3. Lecturer Settings: their courses and trusted devices ---
+function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     openDialogMode();
 
     const dialogBackdrop = document.createElement('div');
@@ -2954,14 +3118,18 @@ function showAdminProfileDialog() {
     <div class="settings-modal-header">
         <div class="settings-modal-identity">
             <div class="settings-avatar" id="non-admin-profile-pic-container">
-                ${userAvatarHtml(currentUserDisplayName(), currentUser.picture, 'user-avatar user-avatar-lg')}
+                ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
             </div>
             <div class="settings-modal-heading">
-                <h3>My Courses</h3>
-                <div class="settings-modal-sub">${escapeHtml(currentUserDisplayName())}</div>
+                <h3>Settings</h3>
+                <div class="settings-modal-sub">Lecturer</div>
             </div>
         </div>
-        <button type="button" id="close-profile-btn" class="btn-icon icon-only-btn" title="Close" aria-label="Close"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        <button type="button" id="close-profile-btn" class="btn-icon icon-only-btn" title="Close" aria-label="Close settings"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+    </div>
+    <div class="settings-tabs-container" role="tablist">
+        <button type="button" class="settings-tab-btn active" data-target="sect-my-courses" role="tab" aria-selected="true"><i class="fa-solid fa-book-open tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="My Courses">My Courses</span></button>
+        <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
     </div>`;
 
     // --- HTML Structure (Unified with Global Settings) ---
@@ -2971,7 +3139,7 @@ function showAdminProfileDialog() {
         <div id="profile-loader" class="settings-loader-overlay">
             <div class="loading-spinner"></div>
         </div>
-        <div class="settings-section" style="display:flex; flex-direction:column; height:100%;">
+        <div id="sect-my-courses" class="settings-section" style="display:flex; flex-direction:column; height:100%;">
             <div class="settings-controls-bar">
                 <div class="input-with-icon search">
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -2981,6 +3149,7 @@ function showAdminProfileDialog() {
             </div>
             <div class="settings-scroll" id="lecturer-courses-container"></div>
         </div>
+        ${trustedDevicesSectionHtml()}
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -3008,6 +3177,11 @@ function showAdminProfileDialog() {
         closeDialogMode();
     };
     dialog.querySelector('#close-profile-btn').onclick = close;
+
+    bindSettingsTabs(dialog);
+    if (initialTab !== 'sect-my-courses') showSettingsTab(dialog, initialTab);
+    bindTrustedDevicesSection(dialog);
+    reloadTrustedDevices();
 
     // --- Async Data Fetch ---
     (async () => {
@@ -3076,7 +3250,7 @@ async function showStudentProfileDialog() {
 <div style="user-select:none; -webkit-user-select:none;">
     <div class="profile-header-section" style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid rgba(0,0,0,0.06);">
         <a href="https://myaccount.google.com/" target="_blank" rel="noopener noreferrer" class="profile-avatar-link" title="Manage Google Account" aria-label="Manage Google Account">
-            ${userAvatarHtml(currentUserDisplayName(), currentUser.picture, 'user-avatar user-avatar-lg')}
+            ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
         </a>
         <div style="text-align:center; max-width:100%;">
             <h3 class="profile-name-large" style="margin:0 0 3px 0; font-size:1.15em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(currentUserDisplayName())}</h3>
@@ -4311,11 +4485,14 @@ async function onSuccessfulAuth(isRestore = false) {
         // Google name in the top bar. Loaded alongside the rest; never blocks.
         sbGetStaffProfiles().then(profiles => {
             const own = profiles.get(String(currentUser?.email || '').trim().toLowerCase());
-            if (own?.name && currentUser) {
+            if ((own?.name || own?.customPhoto) && currentUser) {
                 currentUser.staffName = own.name;
+                currentUser.staffPhoto = own.customPhoto;
                 renderUserChip();
             }
         });
+        // Scanning needs a trusted device; knowing now lets it start offline later.
+        if (isAdmin) checkDeviceTrusted();
 
         // 4. Process Available Courses from boot data
         const fetchedCourseDict = bootData.courses;
@@ -7030,17 +7207,24 @@ async function sbGetAdminStatus() {
 }
 
 // Staff photos and Google names come from each person's sign-in record
-// (public.staff_profiles). Global administrators get every staff member,
-// anyone else only themselves. Missing data never blocks the page.
+// (public.staff_profiles); a photo address set in Settings → Staff replaces the
+// Google photo. Global administrators get every staff member, anyone else only
+// themselves. Missing data never blocks the page.
 async function sbGetStaffProfiles() {
     try {
         const { data, error } = await supabaseClient.rpc('staff_profiles');
         if (error) throw error;
-        return new Map((data || []).filter(row => row && row.email).map(row => [String(row.email).trim().toLowerCase(), {
-            name: row.name || '',
-            googleName: row.google_name || '',
-            photo: normalizeGooglePhotoUrl(row.photo_url || '')
-        }]));
+        return new Map((data || []).filter(row => row && row.email).map(row => {
+            const googlePhoto = normalizeGooglePhotoUrl(row.photo_url || '');
+            const customPhoto = row.custom_photo || '';
+            return [String(row.email).trim().toLowerCase(), {
+                name: row.name || '',
+                googleName: row.google_name || '',
+                googlePhoto,
+                customPhoto,
+                photo: customPhoto || googlePhoto
+            }];
+        }));
     } catch (error) {
         console.warn('Staff profiles unavailable:', error?.message || error);
         return new Map();
@@ -7050,6 +7234,13 @@ async function sbGetStaffProfiles() {
 // The name shown for a staff member: their custom name, else their Google name, else the e-mail.
 function staffDisplayName(staff) {
     return String(staff?.name || '').trim() || staff?.googleName || staff?.email || '';
+}
+
+function sbMapDevices(rows) {
+    return (rows || []).map(row => ({
+        rowIndex: row.id, name: row.name, id: row.device_id,
+        owner: row.owner, date: row.registered_at || ''
+    }));
 }
 
 async function sbGetCourseInfo() {
@@ -7332,15 +7523,17 @@ async function callSupabase(action, payload = {}) {
                     return {
                         rowIndex: row.id, name: row.name || '', uid: row.uid,
                         email: row.email, role: row.role || 'Student',
-                        googleName: profile.googleName || '', photo: profile.photo || ''
+                        googleName: profile.googleName || '', photo: profile.photo || '',
+                        photoUrl: profile.customPhoto || '', googlePhoto: profile.googlePhoto || ''
                     };
                 }),
-                devices: (deviceRows || []).map(row => ({
-                    rowIndex: row.id, name: row.name, id: row.device_id,
-                    owner: row.owner, date: row.registered_at || ''
-                }))
+                devices: sbMapDevices(deviceRows)
             };
         }
+
+        case 'getTrustedDevices':
+            return sbMapDevices(sbUnwrap(await supabaseClient.from('trusted_devices')
+                .select('id,name,device_id,owner,registered_at').order('id', { ascending: true })));
 
         // ------------------------- writes -------------------------
 
@@ -7410,18 +7603,19 @@ async function callSupabase(action, payload = {}) {
             if (payload.role === 'Global') role = 'Global';
             if (payload.role === 'Lecturer') role = 'Lecturer';
 
-            // An empty name means "use the name from their Google account".
+            // An empty name or photo means "use the one from their Google account".
+            // The photo is only sent when set or changed, so saving works the same
+            // until the photo_url column exists.
+            const row = { name: payload.name || null, uid: payload.uid, email: payload.email, role };
+            if ('photoUrl' in payload) row.photo_url = payload.photoUrl || null;
             if (payload.actionType === 'add') {
-                sbUnwrap(await supabaseClient.from('staff').insert({
-                    name: payload.name || null, uid: payload.uid, email: payload.email, role
-                }));
+                sbUnwrap(await supabaseClient.from('staff').insert(row));
             } else if (payload.actionType === 'delete') {
                 sbUnwrap(await supabaseClient.from('staff').delete()
                     .eq('id', parseInt(payload.rowIndex)));
             } else if (payload.actionType === 'edit') {
-                sbUnwrap(await supabaseClient.from('staff').update({
-                    name: payload.name || null, uid: payload.uid, email: payload.email, role
-                }).eq('id', parseInt(payload.rowIndex)));
+                sbUnwrap(await supabaseClient.from('staff').update(row)
+                    .eq('id', parseInt(payload.rowIndex)));
             }
             return { result: 'success' };
         }
@@ -7439,10 +7633,23 @@ async function callSupabase(action, payload = {}) {
             return { result: 'success' };
         }
 
+        // Row security lets lecturers change only their own devices; a change that
+        // touched no row was not allowed.
         case 'deleteDevice_Admin': {
             const id = parseInt(payload.rowIndex);
             if (isNaN(id) || id < 1) throw new Error('Invalid row index provided');
-            sbUnwrap(await supabaseClient.from('trusted_devices').delete().eq('id', id));
+            const removed = sbUnwrap(await supabaseClient.from('trusted_devices').delete().eq('id', id).select('id'));
+            if (!removed?.length) throw new Error('You can only remove devices you registered.');
+            return { result: 'success' };
+        }
+
+        case 'renameDevice': {
+            const id = parseInt(payload.rowIndex);
+            const name = String(payload.deviceName || '').trim();
+            if (isNaN(id) || id < 1) throw new Error('Invalid row index provided');
+            if (!name) throw new Error('Please enter a device name.');
+            const renamed = sbUnwrap(await supabaseClient.from('trusted_devices').update({ name }).eq('id', id).select('id'));
+            if (!renamed?.length) throw new Error('You can only rename devices you registered.');
             return { result: 'success' };
         }
 
@@ -8010,10 +8217,10 @@ function renderUserChip() {
     const avatar = document.getElementById('user-avatar');
     const name = document.getElementById('user-name');
     const chip = document.getElementById('student-profile-chip');
-    if (avatar) avatar.innerHTML = avatarContentHtml(displayName, currentUser.picture);
+    if (avatar) avatar.innerHTML = avatarContentHtml(displayName, currentUserPhoto());
     if (name) name.textContent = displayName;
     if (chip) {
-        const opens = isGlobalAdmin ? 'Settings' : isAdmin ? 'My courses' : 'Profile';
+        const opens = isAdmin ? 'Settings' : 'Profile';
         chip.title = opens;
         chip.setAttribute('aria-label', `${opens}: ${displayName}`);
     }
@@ -8022,6 +8229,11 @@ function renderUserChip() {
 // The staff record's custom name when set, otherwise the Google account name.
 function currentUserDisplayName() {
     return currentUser?.staffName || currentUser?.name || '';
+}
+
+// A photo set in Settings → Staff, else the Google photo.
+function currentUserPhoto() {
+    return currentUser?.staffPhoto || currentUser?.picture || '';
 }
 
 // The next visit's startup skeleton matches this view (see the startup script in
@@ -8084,6 +8296,7 @@ function updateAuthUI() {
 
     // --- Core Auth UI Toggling ---
     if (loginContainer) loginContainer.style.display = isSignedIn ? 'none' : 'flex';
+    placeScanButtons();
     if (userContainer) userContainer.style.display = isSignedIn ? 'flex' : 'none';
     if (tabsContainer) tabsContainer.style.display = isGlobalAdmin ? 'flex' : 'none';
 
@@ -11650,8 +11863,8 @@ function renderStaffInSettings(staffList, filterText = '') {
 
     // Group staff by position
     const roleGroups = [
-        { name: 'Global Administrators', byTitle: true, items: filtered.filter(s => s.role === 'Global') },
-        { name: 'Lecturers & Staff', byTitle: true, items: filtered.filter(s => s.role !== 'Global' && s.role !== 'Student') },
+        { name: 'Administrators', byTitle: true, items: filtered.filter(s => s.role === 'Global') },
+        { name: 'Lecturers', byTitle: true, items: filtered.filter(s => s.role !== 'Global' && s.role !== 'Student') },
         { name: 'Students', byTitle: false, items: filtered.filter(s => s.role === 'Student') }
     ];
 
@@ -11664,7 +11877,7 @@ function renderStaffInSettings(staffList, filterText = '') {
             ? compareLecturers(staffDisplayName(a), staffDisplayName(b))
             : staffDisplayName(a).localeCompare(staffDisplayName(b), undefined, { sensitivity: 'base' }));
 
-        // The custom name when set, otherwise the Google name; the photo comes from Google sign-in.
+        // The custom name when set, otherwise the Google name; likewise the photo.
         const rows = group.items.map(s => {
             const role = s.role === 'Global' ? 'Administrator' : (s.role || 'Lecturer');
             const shown = staffDisplayName(s);
@@ -11680,7 +11893,7 @@ function renderStaffInSettings(staffList, filterText = '') {
                     <div class="settings-row-meta"><span class="settings-row-term">${escapeHtml(role)}</span></div>
                     <div class="card-actions">
                         ${rowEditButtonHtml(`Edit ${shown}`, 'edit-staff-btn',
-                `${index} data-name="${escapeHtml(s.name)}" data-google-name="${escapeHtml(s.googleName)}" data-uid="${escapeHtml(s.uid)}" data-email="${escapeHtml(s.email)}" data-role="${escapeHtml(s.role || 'Lecturer')}"`)}
+                `${index} data-name="${escapeHtml(s.name)}" data-google-name="${escapeHtml(s.googleName)}" data-photo-url="${escapeHtml(s.photoUrl)}" data-google-photo="${escapeHtml(s.googlePhoto)}" data-uid="${escapeHtml(s.uid)}" data-email="${escapeHtml(s.email)}" data-role="${escapeHtml(s.role || 'Lecturer')}"`)}
                         ${rowMenuHtml([{ label: 'Revoke access', icon: 'fa-solid fa-trash', danger: true, className: 'delete-staff-btn', attrs: `${index} data-name="${escapeHtml(shown)}"` }],
                     `More actions for ${shown}`)}
                     </div>
@@ -11700,7 +11913,7 @@ function renderStaffInSettings(staffList, filterText = '') {
 
     // Attach Staff Listeners
     container.querySelectorAll('.edit-staff-btn').forEach(btn => {
-        btn.onclick = () => window.editStaffKey(btn.dataset.rowIndex, btn.dataset.name, btn.dataset.uid, btn.dataset.email, btn.dataset.role, btn.dataset.googleName);
+        btn.onclick = () => window.editStaffKey(btn.dataset.rowIndex, btn.dataset.name, btn.dataset.uid, btn.dataset.email, btn.dataset.role, btn.dataset.googleName, btn.dataset.photoUrl, btn.dataset.googlePhoto);
     });
     container.querySelectorAll('.delete-staff-btn').forEach(btn => {
         btn.onclick = () => window.deleteStaffKey(btn.dataset.rowIndex, btn.dataset.name);
@@ -11808,8 +12021,7 @@ async function startScanning() {
         await reader.scan({ signal: controller.signal });
         if (controller.signal.aborted || nfcReader !== reader) return;
         isScanning = true;
-        document.getElementById('scan-button').classList.add('is-scanning');
-        updateScanClock();
+        renderScanButton();
         if (scanClockInterval) clearInterval(scanClockInterval);
         scanClockInterval = setInterval(updateScanClock, 1000);
     } catch (error) {
@@ -11844,17 +12056,7 @@ function updateScanButtons() {
     // Show button if supported
     scanBtn.style.display = nfcSupported ? 'flex' : 'none';
     scanButtonsContainer.style.display = nfcSupported ? 'flex' : 'none';
-
-    if (isScanning) {
-        scanBtn.classList.add('is-scanning');
-        // updateScanClock() handles the text/time display.
-    } else {
-        scanBtn.classList.remove('is-scanning');
-
-        // --- UNIFIED IDLE STATE ---
-        // Always show "START SCANNING" regardless of login status
-        scanBtn.innerHTML = '<i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>';
-    }
+    renderScanButton();
 }
 
 /**
@@ -11939,10 +12141,13 @@ async function handleNfcReading({ serialNumber }) {
     // Runs if Signed In OR in Lecturer Mode
     // ============================================================
 
-    // The lecturer's own unlock card locks and unlocks instead of recording attendance.
-    if ((scanLockSession || locked) && await isScanLockCard(serialNumber)) {
-        toggleScanLockWithCard();
-        return;
+    // A course lecturer's staff card locks and unlocks instead of recording attendance.
+    if (scanLockSession || locked) {
+        const owner = await scanLockCardOwner(serialNumber);
+        if (owner) {
+            toggleScanLockWithCard(owner);
+            return;
+        }
     }
 
     const convertedUid = convertUidToExternalId(serialNumber);
@@ -12066,11 +12271,7 @@ function stopScanning() {
     }
 
     // Reset button UI
-    const scanBtn = document.getElementById('scan-button');
-    if (scanBtn) {
-        scanBtn.classList.remove('is-scanning');
-        scanBtn.innerHTML = '<i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>';
-    }
+    renderScanButton();
 
     if (nfcReader) nfcReader = null;
 
@@ -12088,12 +12289,12 @@ function stopScanning() {
 // ============================================================
 // SCAN LOCK
 // A scanning phone is often left unattended, so scanning shows a lock screen
-// that only records attendance. The lecturer unlocks it by tapping their own
-// staff card on a trusted device, the same rules as staff card sign-in, which
-// the database checks. The last card confirmed on this phone is kept as a
-// salted hash so the phone also unlocks offline. The lock is shared by every
-// Stando tab of this website and survives a reload, and leaving the page while
-// locked is reported on the next unlock.
+// that only records attendance. Any lecturer of the course on screen unlocks it
+// by tapping their staff card on a trusted device, which the database checks.
+// Cards confirmed on this phone are kept as salted hashes so the phone also
+// unlocks offline. The lock is shared by every Stando tab of this website and
+// survives a reload, and leaving the page while locked is reported on the next
+// unlock.
 // ============================================================
 const SCAN_LOCK_KEY = 'stando_scan_lock';
 const SCAN_LOCK_CARD_PREFIX = 'stando_scan_lock_card_';
@@ -12153,28 +12354,58 @@ function scanLockCardValue(serialNumber) {
     return String(convertUidToExternalId(serialNumber) || serialNumber).trim().toLowerCase();
 }
 
-// The staff card last confirmed on this phone, for unlocking offline.
-function getSavedUnlockCard() {
+// The course the lock protects: the one on screen when it locked.
+function scanLockCourse() {
+    return readScanLockState()?.course || currentCourse || '';
+}
+
+// Staff cards confirmed on this phone, for unlocking offline: { salt, hash, owner, course }.
+// The lecturer's own card (course '*') opens any course; a colleague's only theirs.
+function getSavedUnlockCards() {
     try {
-        return JSON.parse(localStorage.getItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount()) || 'null');
+        const saved = JSON.parse(localStorage.getItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount()) || 'null');
+        if (Array.isArray(saved)) return saved.filter(card => card?.salt && card?.hash);
+        // Saved before colleagues could unlock: one card, the lecturer's own.
+        return saved?.hash ? [{ salt: saved.salt, hash: saved.hash, owner: scanLockAccount(), course: '*' }] : [];
     } catch {
-        return null;
+        return [];
     }
 }
 
-async function saveUnlockCard(serialNumber) {
-    const salt = crypto.randomUUID();
-    const hash = await hashScanLockValue(scanLockCardValue(serialNumber), salt);
+function writeSavedUnlockCards(cards) {
     try {
-        localStorage.setItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount(), JSON.stringify({ salt, hash }));
+        if (cards.length) localStorage.setItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount(), JSON.stringify(cards.slice(-20)));
+        else localStorage.removeItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount());
     } catch (error) {
         console.warn('Could not save the unlock card:', error);
     }
 }
 
-async function isSavedUnlockCard(serialNumber) {
-    const saved = getSavedUnlockCard();
-    return !!saved?.hash && await hashScanLockValue(scanLockCardValue(serialNumber), saved.salt) === saved.hash;
+async function isSameSavedCard(card, serialNumber) {
+    return await hashScanLockValue(scanLockCardValue(serialNumber), card.salt) === card.hash;
+}
+
+// The saved card that opens this course, if this is one.
+async function findSavedUnlockCard(serialNumber, course) {
+    for (const card of getSavedUnlockCards()) {
+        if ((card.course === '*' || card.course === course) && await isSameSavedCard(card, serialNumber)) return card;
+    }
+    return null;
+}
+
+// Replaces what this phone knew about the card for this course; owner '' forgets it.
+async function rememberUnlockCard(serialNumber, course, owner) {
+    const own = owner === scanLockAccount();
+    const kept = [];
+    for (const card of getSavedUnlockCards()) {
+        const sameScope = card.course === '*' || card.course === course;
+        if (!(sameScope && await isSameSavedCard(card, serialNumber))) kept.push(card);
+    }
+    if (owner) {
+        const salt = crypto.randomUUID();
+        kept.push({ salt, hash: await hashScanLockValue(scanLockCardValue(serialNumber), salt), owner, course: own ? '*' : course });
+    }
+    writeSavedUnlockCards(kept);
 }
 
 // Whether the signed-in lecturer has a staff card and this phone is trusted.
@@ -12188,31 +12419,50 @@ async function canUnlockWithStaffCard() {
             console.warn('Staff card check unavailable:', error?.message || error);
         }
     }
-    return !!getSavedUnlockCard();
+    return getSavedUnlockCards().some(card => card.course === '*');
 }
 
-// Online, the database decides (so a changed staff card takes effect at once);
-// offline, the card last confirmed on this phone still works.
-async function isScanLockCard(serialNumber) {
-    if (!serialNumber || !scanLockAvailable()) return false;
-    const saved = await isSavedUnlockCard(serialNumber);
-    // Students' cards skip the server check; a card this phone already confirmed does not.
-    if (!saved && lookupPrimaryUid(serialNumber)) return false;
+// The e-mail of the lecturer whose staff card opens the lock for this course, or ''.
+async function verifyScanUnlockCard(serialNumber, course) {
+    const params = { p_card_ids: staffCardCandidates(serialNumber).slice(0, 8), p_device_id: getDeviceFingerprint() };
+    const { data, error } = await supabaseClient.rpc('verify_scan_unlock_card', { ...params, p_course: course });
+    if (!error) return String(data || '').toLowerCase();
+    // Until the database knows colleagues' cards, the lecturer's own card still works.
+    if (error.code !== 'PGRST202') throw error;
+    const own = await supabaseClient.rpc('verify_staff_card', params);
+    if (own.error) throw own.error;
+    return own.data === true ? scanLockAccount() : '';
+}
+
+// The lecturer whose card this is, if it opens the lock, or ''. Online, the
+// database decides (so a changed staff card takes effect at once); offline,
+// cards already confirmed on this phone still work.
+async function scanLockCardOwner(serialNumber) {
+    if (!serialNumber || !scanLockAvailable()) return '';
+    const course = scanLockCourse();
+    const saved = await findSavedUnlockCard(serialNumber, course);
+    // Students' cards skip the server check. Staff cards are in the list too (so
+    // their scans show a name), and a card this phone already confirmed is checked.
+    const entry = databaseMap[lookupPrimaryUid(serialNumber)];
+    if (!saved && entry && !entry.isStaff) return '';
     if (navigator.onLine) {
         try {
-            const { data, error } = await supabaseClient.rpc('verify_staff_card', {
-                p_card_ids: staffCardCandidates(serialNumber),
-                p_device_id: getDeviceFingerprint()
-            });
-            if (error) throw error;
-            if (data === true) await saveUnlockCard(serialNumber);
-            else if (saved) localStorage.removeItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount());
-            return data === true;
+            const owner = await verifyScanUnlockCard(serialNumber, course);
+            if (owner || saved) await rememberUnlockCard(serialNumber, course, owner);
+            return owner;
         } catch (error) {
-            console.warn('Staff card check unavailable; using the card saved on this phone:', error?.message || error);
+            console.warn('Staff card check unavailable; using the cards saved on this phone:', error?.message || error);
         }
     }
-    return saved;
+    return saved?.owner || '';
+}
+
+// A colleague's name as Stando knows it, else their e-mail.
+function lecturerDisplayName(email) {
+    const key = String(email || '').toLowerCase();
+    return settingsStaffNames.get(key) ||
+        Object.values(databaseMap).find(entry => entry?.isStaff && String(entry.email || '').toLowerCase() === key)?.name ||
+        email;
 }
 
 function formatScanLockDuration(ms) {
@@ -12224,18 +12474,29 @@ function formatScanLockTime(timestamp) {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-// Start scanning behind the lock screen when the lecturer can unlock it again.
+// Lecturers scan only on a trusted device; otherwise Settings opens where they
+// can trust it. Scanning then starts behind the lock screen when the lecturer
+// can unlock it again.
 async function startScanningLocked() {
-    if (!scanLockAvailable()) return startScanning();
+    // Asked together, so the tap still counts for full screen afterwards.
+    const lockable = scanLockAvailable();
+    const [trusted, lockReady] = await Promise.all([
+        isSignedIn && isAdmin ? checkDeviceTrusted() : true,
+        lockable ? canUnlockWithStaffCard() : false
+    ]);
+    if (trusted === false) {
+        openTrustedDevicesSettings();
+        return;
+    }
 
     await startScanning();
-    if (!isScanning) return;
-    if (!(await canUnlockWithStaffCard())) {
+    if (!isScanning || !lockable) return;
+    if (!lockReady) {
         if (!scanLockUnavailableShown) {
             scanLockUnavailableShown = true;
             showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
-                ? 'To lock Stando while scanning, add your card in Settings → Staff and trust this phone in Settings → Trusted Devices.'
-                : 'To lock Stando while scanning, ask an administrator to add your staff card and trust this phone.', 10000);
+                ? 'To lock Stando while scanning, add your card in Settings → Staff.'
+                : 'To lock Stando while scanning, ask an administrator to add your staff card.', 10000);
         }
         return;
     }
@@ -12263,7 +12524,7 @@ function lockScanner() {
     clearTimeout(scanLockIdleTimer);
     const state = readScanLockState();
     if (!state || state.email !== scanLockAccount()) {
-        writeScanLockState({ email: scanLockAccount(), since: Date.now(), events: [] });
+        writeScanLockState({ email: scanLockAccount(), course: currentCourse || '', since: Date.now(), events: [] });
     }
     showScanLockScreen();
 }
@@ -12295,13 +12556,19 @@ function clearScanLock() {
     hideScanLockScreen();
 }
 
-function toggleScanLockWithCard() {
+function toggleScanLockWithCard(owner) {
     // One tap can be read twice; ignore the echo.
     if (Date.now() - scanLockLastCardToggle < 1500) return;
     scanLockLastCardToggle = Date.now();
     playSound(true);
-    if (isScanLockScreenShown()) unlockScanner();
-    else lockScanner();
+    if (!isScanLockScreenShown()) {
+        lockScanner();
+        return;
+    }
+    unlockScanner();
+    if (owner && owner !== scanLockAccount()) {
+        showNotification('info', 'Unlocked', `Unlocked by ${lecturerDisplayName(owner)}.`);
+    }
 }
 
 function armScanLockIdle() {
@@ -12360,7 +12627,7 @@ function showScanLockScreen() {
                     <p class="scan-lock-alert" hidden></p>
                 </div>
                 <div class="scan-lock-footer">
-                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Lecturer: tap your staff card to unlock.</p>
+                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Lecturers of this course: tap your staff card to unlock.</p>
                     <button type="button" class="scan-lock-link" data-key="signout">Can't unlock? Sign out</button>
                 </div>
             </div>`;
@@ -12398,7 +12665,7 @@ function updateScanLockScreen() {
         if (el.textContent !== text) el.textContent = text;
     };
     const session = getCurrentActiveSession();
-    setText('.scan-lock-course', [currentCourse, session !== 'Default' ? session : ''].filter(Boolean).join(' · '));
+    setText('.scan-lock-course', [scanLockCourse(), session !== 'Default' ? session : ''].filter(Boolean).join(' · '));
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
     screen.classList.toggle('is-paused', !isScanning);
     setText('.scan-lock-title', isScanning ? 'Tap your card on the back of this phone' : 'Scanning is paused');
@@ -12452,8 +12719,9 @@ function startScanLockReader() {
     const reader = new NDEFReader();
     reader.onreading = async ({ serialNumber }) => {
         if (controller.signal.aborted) return;
-        if (await isScanLockCard(serialNumber)) {
-            toggleScanLockWithCard();
+        const owner = await scanLockCardOwner(serialNumber);
+        if (owner) {
+            toggleScanLockWithCard(owner);
         } else {
             playSound(false);
             flashScanLockStatus("Scanning is paused, so this card wasn't recorded.");
