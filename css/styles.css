@@ -4404,8 +4404,8 @@
             }
 
 
-            /* Hide Desktop-focused elements */
-            .app-header .app-info .info-item:nth-child(2) {
+            /* Hide Desktop-focused elements: the student count is the only header chip. */
+            .app-header .app-info {
                 display: none !important;
             }
 
@@ -8146,8 +8146,9 @@ body.is-admin .toolbar-menu.admin-only {
 }
 
 /* =========================================================================
-   Card tap illustration: a card held against the back of a phone.
-   The resting state shows the card in place, which is what reduced motion sees.
+   Card tap illustration: an EPOKA Student ID (blue #00458c, as issued) held
+   against the back of a phone at a slight tilt. The resting state shows the
+   card in place, which is what reduced motion sees.
    ========================================================================= */
 .card-tap {
     display: block;
@@ -8169,10 +8170,15 @@ body.is-admin .toolbar-menu.admin-only {
 .tap-phone-body { fill: #37474f; }
 .tap-phone-camera { fill: #263238; }
 .tap-phone-lens { fill: #11171a; stroke: #546e7a; stroke-width: 1.5; }
-.tap-card-body { fill: #fff; stroke: #cfd8dc; stroke-width: 1.5; }
-.tap-card-chip { fill: #f9a825; }
-.tap-card-photo { fill: #c5cae9; }
-.tap-card-line { fill: #cfd8dc; }
+.tap-card { transform: rotate(-10deg); }
+.tap-card-body { fill: #00458c; }
+.tap-card-skyline { fill: none; stroke: rgba(255, 255, 255, 0.22); stroke-width: 0.5; stroke-linejoin: round; }
+.tap-card-mark,
+.tap-card-photo,
+.tap-card-field { fill: #fff; }
+.tap-card-label { fill: rgba(255, 255, 255, 0.6); }
+.tap-card-text { fill: #fff; font-family: inherit; }
+.tap-card-site { fill: rgba(255, 255, 255, 0.8); }
 .tap-waves circle { fill: none; stroke: var(--primary-color); stroke-width: 3; opacity: 0; }
 .tap-waves circle:first-child { opacity: 0.35; }
 .tap-check circle { fill: var(--success-color); }
@@ -8180,7 +8186,7 @@ body.is-admin .toolbar-menu.admin-only {
 
 .dark-mode .tap-phone-body { fill: #546e7a; }
 .dark-mode .tap-phone-camera { fill: #37474f; }
-.dark-mode .tap-card-body { fill: #eceff1; stroke: transparent; }
+.dark-mode .tap-card-body { stroke: rgba(255, 255, 255, 0.16); stroke-width: 0.8; }
 .dark-mode .tap-waves circle { stroke: var(--primary-light); }
 
 @media (prefers-reduced-motion: no-preference) {
@@ -8191,11 +8197,12 @@ body.is-admin .toolbar-menu.admin-only {
     .tap-phone { animation: tap-buzz 3.6s linear infinite; }
 }
 
+/* Lowered from above, turning a little as it comes to rest on the phone. */
 @keyframes tap-card {
-    0% { transform: translate(52px, 40px) rotate(14deg); opacity: 0; }
-    10% { transform: translate(46px, 34px) rotate(12deg); opacity: 1; }
-    34%, 84% { transform: translate(0, 0) rotate(0); opacity: 1; }
-    100% { transform: translate(0, 0) rotate(0); opacity: 0; }
+    0% { transform: translate(14px, -46px) rotate(-24deg) scale(1.06); opacity: 0; }
+    12% { transform: translate(10px, -36px) rotate(-21deg) scale(1.05); opacity: 1; }
+    34%, 84% { transform: translate(0, 0) rotate(-10deg) scale(1); opacity: 1; }
+    100% { transform: translate(0, 0) rotate(-10deg) scale(1); opacity: 0; }
 }
 
 @keyframes tap-wave {
@@ -8550,7 +8557,7 @@ body.is-admin .toolbar-menu.admin-only {
 }
 
 /* =========================================================================
-   Scan lock: the lock button, the full-screen lock and its PIN pad
+   Scan lock: the lock button, the lock screen and its list of scanned cards
    ========================================================================= */
 .scan-buttons {
     gap: 10px;
@@ -8582,12 +8589,29 @@ body.is-admin .toolbar-menu.admin-only {
     background: #546e7a;
 }
 
+/* No pull-to-refresh or bounce while locked: a swipe down opens the scanned cards. */
 html.scan-locked,
 html.scan-locked body {
     overflow: hidden;
+    overscroll-behavior: none;
 }
 
+/* The background is the page's theme colour (#f4f4f4, or #000 in dark mode), so
+   the phone's status bar above it matches in light, dark and automatic themes. */
 .scan-lock {
+    --lock-bg: #f4f4f4;
+    --lock-text: #263238;
+    --lock-muted: #78909c;
+    --lock-accent: #e65100;
+    --lock-accent-bg: rgba(251, 140, 0, 0.14);
+    --lock-ok: #2e7d32;
+    --lock-ok-bg: rgba(76, 175, 80, 0.14);
+    --lock-unknown: #e65100;
+    --lock-unknown-bg: rgba(251, 140, 0, 0.14);
+    --lock-chip: rgba(0, 0, 0, 0.06);
+    --lock-card: rgba(255, 255, 255, 0.88);
+    --lock-card-border: rgba(0, 0, 0, 0.06);
+    --lock-veil: rgba(244, 244, 244, 0.6);
     position: fixed;
     inset: 0;
     z-index: 10045; /* Above floating row menus; below scan results and confirmations */
@@ -8595,16 +8619,27 @@ html.scan-locked body {
     justify-content: center;
     overflow-y: auto;
     overscroll-behavior: contain;
-    background: #f4f4f4;
-    color: #263238;
+    background: var(--lock-bg);
+    color: var(--lock-text);
     -webkit-user-select: none;
     user-select: none;
     animation: scan-lock-in 0.25s ease-out;
 }
 
 .dark-mode .scan-lock {
-    background: #000;
-    color: #e0e0e0;
+    --lock-bg: #000;
+    --lock-text: #e0e0e0;
+    --lock-muted: #90a4ae;
+    --lock-accent: #ffb74d;
+    --lock-accent-bg: rgba(255, 183, 77, 0.16);
+    --lock-ok: #81c784;
+    --lock-ok-bg: rgba(129, 199, 132, 0.16);
+    --lock-unknown: #ffb74d;
+    --lock-unknown-bg: rgba(255, 183, 77, 0.16);
+    --lock-chip: rgba(255, 255, 255, 0.1);
+    --lock-card: rgba(40, 40, 42, 0.92);
+    --lock-card-border: rgba(255, 255, 255, 0.08);
+    --lock-veil: rgba(0, 0, 0, 0.6);
 }
 
 @keyframes scan-lock-in {
@@ -8631,6 +8666,7 @@ html.scan-locked body {
     min-height: 32px;
 }
 
+/* Orange: a locked phone is a warning state, not an action. */
 .scan-lock-badge {
     flex-shrink: 0;
     display: inline-flex;
@@ -8638,27 +8674,44 @@ html.scan-locked body {
     gap: 6px;
     padding: 6px 12px;
     border-radius: 999px;
-    background: rgba(57, 73, 171, 0.1);
-    color: var(--primary-color);
+    background: var(--lock-accent-bg);
+    color: var(--lock-accent);
     font-size: 0.8125rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     text-transform: uppercase;
 }
 
-.dark-mode .scan-lock-badge {
-    background: rgba(121, 134, 203, 0.18);
-    color: #c5cae9;
+/* The course as people write it ("CE 121"), and its group in a quiet pill. */
+.scan-lock-course {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
 }
 
-.scan-lock-course {
+.scan-lock-course-code {
     min-width: 0;
     overflow: hidden;
-    font-size: 0.875rem;
-    font-weight: 600;
-    opacity: 0.7;
+    font-size: 0.9375rem;
+    font-weight: 700;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.scan-lock-course-group {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--lock-chip);
+    color: var(--lock-muted);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.scan-lock-course-group[hidden] {
+    display: none;
 }
 
 .scan-lock-view {
@@ -8675,35 +8728,119 @@ html.scan-locked body {
     display: none;
 }
 
+/* Large and light, like a phone's own lock screen. */
 .scan-lock-clock {
-    font-size: clamp(3rem, 16vw, 4.5rem);
+    font-size: clamp(4.5rem, 26vw, 7.5rem);
     font-variant-numeric: tabular-nums;
-    font-weight: 800;
-    letter-spacing: -0.02em;
+    font-weight: 200;
+    letter-spacing: -0.03em;
     line-height: 1;
 }
 
-.scan-lock-title {
-    margin: 14px 0 6px;
-    font-size: clamp(1.25rem, 5.5vw, 1.6rem);
-    font-weight: 700;
-    line-height: 1.25;
+/* The latest scan, on one line under the clock. Its height is kept, so nothing
+   below moves as names come and go. */
+.scan-lock-result {
+    position: relative;
+    width: 100%;
+    height: 2.25rem;
+    margin-top: 6px;
+}
+
+.scan-lock-result-item {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    color: var(--lock-ok);
+    font-size: clamp(1.15rem, 5.2vw, 1.45rem);
+    font-weight: 600;
+    animation: scan-result-in 0.2s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.scan-lock-result-item.is-unknown {
+    color: var(--lock-unknown);
+    font-variant-numeric: tabular-nums;
+}
+
+.scan-lock-result-item > i,
+.scan-lock-result-item > svg {
+    flex-shrink: 0;
+    font-size: 0.85em;
+}
+
+.scan-lock-result-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-lock-result-item.is-leaving {
+    animation: scan-result-out 0.18s ease-in both;
+}
+
+@keyframes scan-result-in {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes scan-result-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: translateY(-12px); }
 }
 
 .scan-lock .card-tap {
     max-width: 260px;
-    margin: 8px auto;
+    margin: 10px auto 2px;
 }
 
 .scan-lock.is-paused .card-tap {
     display: none;
 }
 
-.scan-lock-status {
-    margin: 4px 0 0;
+.scan-lock-title {
+    margin: 6px 0 2px;
+    font-size: clamp(1.25rem, 5.5vw, 1.6rem);
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+/* The count. With cards recorded, it also opens the list of scanned cards. */
+.scan-lock .scan-lock-status,
+.scan-lock .scan-lock-status:hover:not(:disabled),
+.scan-lock .scan-lock-status:disabled {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 999px;
+    background: none;
+    color: inherit;
     font-size: 1rem;
     font-weight: 600;
     opacity: 0.75;
+    cursor: default;
+    transform: none;
+}
+
+.scan-lock .scan-lock-status.has-scans {
+    cursor: pointer;
+}
+
+.scan-lock .scan-lock-status.has-scans:active {
+    background: var(--lock-chip);
+}
+
+.scan-lock-status-more {
+    display: none;
+    font-size: 0.75em;
+}
+
+.scan-lock-status.has-scans .scan-lock-status-more {
+    display: inline-block;
 }
 
 .scan-lock-alert {
@@ -8738,48 +8875,229 @@ html.scan-locked body {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* Unlocking, at the foot of the lock screen. Signing out is the quiet way out. */
+/* One row at the foot: how to unlock on the left, cut short with "…" when the
+   row is too narrow, and Sign out on the right. */
 .scan-lock-footer {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 2px;
+    gap: 12px;
     padding-top: 12px;
-    text-align: center;
 }
 
 .scan-lock-hint {
-    display: inline-flex;
+    flex: 1 1 auto;
+    display: flex;
     align-items: center;
     gap: 8px;
+    min-width: 0;
     margin: 0;
     font-size: 0.9375rem;
     font-weight: 600;
     opacity: 0.75;
+    text-align: left;
+}
+
+.scan-lock-hint > i,
+.scan-lock-hint > svg {
+    flex-shrink: 0;
+}
+
+.scan-lock-hint > span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .scan-lock .scan-lock-link,
 .scan-lock .scan-lock-link:hover,
 .scan-lock .scan-lock-link:active {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     padding: 8px 4px;
     border: 0;
     background: none;
-    color: #78909c;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    text-decoration: underline;
-    text-underline-offset: 3px;
+    color: var(--lock-muted);
+    font-size: 0.875rem;
+    font-weight: 600;
+    text-decoration: none;
     transform: none;
 }
 
-.dark-mode .scan-lock .scan-lock-link {
-    color: #90a4ae;
+/* --- Scanned cards: floating cards rising from the bottom, newest first.
+   A swipe down opens them; dragging the list down folds it away. --- */
+.scan-lock-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+}
+
+.scan-lock-sheet[hidden] {
+    display: none;
+}
+
+.scan-lock-sheet-backdrop {
+    position: absolute;
+    inset: 0;
+    background: var(--lock-veil);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
+    animation: scan-sheet-fade 0.25s ease-out both;
+}
+
+.scan-lock-sheet.is-closing .scan-lock-sheet-backdrop {
+    animation: scan-sheet-fade 0.3s ease-in reverse both;
+}
+
+.scan-lock-list {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 440px;
+    max-height: 75%;
+    margin: 0 auto;
+    padding: 0 12px calc(14px + env(safe-area-inset-bottom, 0px));
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.scan-lock-list.is-dragging {
+    transition: none;
+}
+
+.scan-lock-sheet.is-closing .scan-lock-list {
+    animation: scan-list-out 0.3s ease-in both;
+}
+
+.scan-lock-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 0 4px 10px;
+    animation: scan-list-item-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.scan-lock-list-head h3 {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+}
+
+.scan-lock .scan-lock-list-close,
+.scan-lock .scan-lock-list-close:hover,
+.scan-lock .scan-lock-list-close:active {
+    padding: 6px 14px;
+    border: 1px solid var(--lock-card-border);
+    border-radius: 999px;
+    background: var(--lock-card);
+    color: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    transform: none;
+}
+
+.scan-lock-list-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 0 0 4px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+}
+
+.scan-lock-list-item,
+.scan-lock-list-empty {
+    flex-shrink: 0;
+    border: 1px solid var(--lock-card-border);
+    border-radius: 18px;
+    background: var(--lock-card);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08);
+    animation: scan-list-item-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation-delay: calc(var(--i, 0) * 35ms);
+}
+
+.scan-lock-list-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
+}
+
+.scan-lock-list-empty {
+    padding: 18px;
+    color: var(--lock-muted);
+    text-align: center;
+}
+
+.scan-lock-list-icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--lock-ok-bg);
+    color: var(--lock-ok);
+    font-size: 0.875rem;
+}
+
+.scan-lock-list-item.is-unknown .scan-lock-list-icon {
+    background: var(--lock-unknown-bg);
+    color: var(--lock-unknown);
+}
+
+.scan-lock-list-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    font-weight: 600;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-lock-list-item.is-unknown .scan-lock-list-name {
+    font-variant-numeric: tabular-nums;
+}
+
+.scan-lock-list-time {
+    flex-shrink: 0;
+    color: var(--lock-muted);
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+@keyframes scan-list-item-in {
+    from { opacity: 0; transform: translateY(24px) scale(0.97); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes scan-list-out {
+    to { opacity: 0; transform: translateY(60%); }
+}
+
+@keyframes scan-sheet-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 /* Short phones: a smaller illustration keeps everything on one screen. */
 @media (max-height: 640px) {
     .scan-lock .card-tap {
         max-width: 190px;
+    }
+
+    .scan-lock-clock {
+        font-size: clamp(3.75rem, 20vw, 5.5rem);
     }
 }
 
@@ -9154,7 +9472,7 @@ html:not([data-stando-nfc]) .sk-nfc {
 }
 
 .sk-banner-subtitle {
-    width: 238px;
+    width: 176px;
     height: 14px;
     margin-bottom: 6px;
 }
@@ -9165,23 +9483,11 @@ html:not([data-stando-nfc]) .sk-nfc {
     margin-top: 13px;
 }
 
+/* One chip: the student count. */
 .sk-banner-chips .sk {
-    width: 82px;
+    width: 190px;
     height: 44px;
-    border-radius: 4px;
-}
-
-.sk-banner-chips .sk:first-child {
-    border-radius: 10px 4px 4px 10px;
-}
-
-.sk-banner-chips .sk:nth-child(2) {
-    width: 105px;
-}
-
-.sk-banner-chips .sk:last-child {
-    width: 142px;
-    border-radius: 4px 10px 10px 4px;
+    border-radius: 10px;
 }
 
 .sk-banner-tabs {
@@ -9431,30 +9737,14 @@ html:not([data-stando-nfc]) .sk-nfc {
 
     .sk-banner-subtitle {
         width: 72%;
-        max-width: 222px;
+        max-width: 164px;
         height: 12px;
         margin-bottom: 14px;
     }
 
+    /* The student count chip is hidden on phones. */
     .sk-banner-chips {
-        margin-top: 5px;
-    }
-
-    .sk-banner-chips .sk {
-        height: 28px;
-    }
-
-    /* The database status chip is hidden on phones. */
-    .sk-banner-chips .sk:nth-child(2) {
-        display: none;
-    }
-
-    .sk-banner-chips .sk:first-child {
-        width: 67px;
-    }
-
-    .sk-banner-chips .sk:last-child {
-        width: 121px;
+        display: none !important;
     }
 
     .sk-banner-tabs {

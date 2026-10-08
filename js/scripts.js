@@ -95,8 +95,8 @@ const ITEMS_PER_PAGE = 25; // Number of items per page
 let tabs, tabContents, importExcelBtn, excelInput, filterInput, sortSelect,
     dbFilterInput, importBtn, importInput, exportBtn, clearBtn, addLogBtn,
     addEntryBtn, exportExcelBtn, clearDbBtn, logsTbody, databaseTbody,
-    emptyLogs, emptyDatabase, filteredCount, dbEntryCount, totalScans,
-    lastScan, databaseStatus, notificationArea, successSound, errorSound,
+    emptyLogs, emptyDatabase, filteredCount, dbEntryCount,
+    databaseStatus, notificationArea, successSound, errorSound,
     syncBtn, syncStatus, syncText, loginBtn, logoutBtn, loginContainer,
     userContainer, userName, userAvatar, scanHistoryModule;
 
@@ -4184,8 +4184,6 @@ function init() {
     emptyDatabase = document.getElementById('empty-database');
     filteredCount = document.getElementById('filtered-count');
     dbEntryCount = document.getElementById('db-entry-count');
-    totalScans = document.getElementById('total-scans');
-    lastScan = document.getElementById('last-scan');
     databaseStatus = document.getElementById('database-status');
     notificationArea = document.getElementById('in-page-notification-area');
     successSound = document.getElementById('success-sound');
@@ -4686,8 +4684,15 @@ function normalizeGooglePhotoUrl(url) {
     return url.replace(/=s\d+(-c)?$/, '') + '=s96-c';
 }
 
-// A card held against the back of a phone. Without motion it shows the card in place.
+// An EPOKA Student ID held against the back of a phone, lowered from above at a
+// slight tilt, as a hand does. Without motion it shows the card in place.
 function cardTapAnimationHtml() {
+    // Field labels on the card end where their white boxes begin, as printed.
+    const fields = [12, 11, 8, 12, 13].map((width, row) => {
+        const y = 17 + row * 5.2;
+        return `<rect class="tap-card-label" x="${47 - width}" y="${y + 1}" width="${width}" height="1.6" rx="0.8"/>
+                    <rect class="tap-card-field" x="49" y="${y}" width="36" height="3.6" rx="0.6"/>`;
+    }).join('');
     return `
         <svg class="card-tap" viewBox="0 0 200 150" aria-hidden="true" focusable="false">
             <g class="tap-phone">
@@ -4700,13 +4705,16 @@ function cardTapAnimationHtml() {
                 <circle cx="100" cy="80" r="40"/>
                 <circle cx="100" cy="80" r="40"/>
             </g>
-            <g transform="translate(58 53)">
+            <g transform="translate(55 52)">
                 <g class="tap-card">
-                    <rect class="tap-card-body" width="84" height="54" rx="6"/>
-                    <rect class="tap-card-chip" x="9" y="14" width="14" height="11" rx="2"/>
-                    <rect class="tap-card-photo" x="60" y="9" width="16" height="20" rx="3"/>
-                    <rect class="tap-card-line" x="9" y="34" width="42" height="4" rx="2"/>
-                    <rect class="tap-card-line" x="9" y="42" width="28" height="4" rx="2"/>
+                    <rect class="tap-card-body" width="90" height="57" rx="4.5"/>
+                    <path class="tap-card-skyline" d="M3 54v-5h3v-3h4v5h3v-7h5v7h4v-3h6v3h5v-5h3v5h7v-4h4v4h6v-2h5v2h8v-3h4v3h6v-5h3v5h4"/>
+                    <path class="tap-card-mark" d="M6 5h6v4.2c0 1.9-1.4 3.1-3 3.7-1.6-.6-3-1.8-3-3.7z"/>
+                    <text class="tap-card-text" x="14" y="11" font-size="5" textLength="38" lengthAdjust="spacingAndGlyphs"><tspan font-weight="800">EPOKA</tspan> UNIVERSITY</text>
+                    <text class="tap-card-text" x="85" y="10.4" font-size="2.9" font-weight="700" text-anchor="end" textLength="23" lengthAdjust="spacingAndGlyphs">STUDENT ID CARD</text>
+                    <rect class="tap-card-photo" x="6" y="17" width="18" height="24" rx="0.8"/>
+                    ${fields}
+                    <text class="tap-card-text tap-card-site" x="85" y="47" font-size="2.6" text-anchor="end" textLength="13" lengthAdjust="spacingAndGlyphs">epoka.edu.al</text>
                 </g>
             </g>
             <g class="tap-check">
@@ -11969,20 +11977,6 @@ async function updateUI() {
 
     const logsForCurrentCourse = getLogsForCurrentUser();
 
-    // Update total scans and last scan info
-    totalScans.textContent = logsForCurrentCourse.length;
-
-    if (logsForCurrentCourse.length > 0) {
-        const latestLog = logsForCurrentCourse[0]; // Assumes logs are sorted newest first
-        const lastTimestamp = new Date(latestLog.timestamp);
-        const pad = (n) => n.toString().padStart(2, '0');
-        const time = `${pad(lastTimestamp.getHours())}:${pad(lastTimestamp.getMinutes())}`;
-        const date = `${pad(lastTimestamp.getDate())}-${pad(lastTimestamp.getMonth() + 1)}-${lastTimestamp.getFullYear()}`;
-        lastScan.textContent = `${time} ${date}`;
-    } else {
-        lastScan.textContent = 'Never';
-    }
-
     // Enable/disable buttons
     exportBtn.disabled = logsForCurrentCourse.length === 0;
     clearBtn.disabled = logsForCurrentCourse.length === 0;
@@ -12196,17 +12190,16 @@ async function handleNfcReading({ serialNumber }) {
 
     saveAndMarkChanges(currentCourse);
     updateUI();
-    if (scanLockSession) {
-        scanLockScanCount++;
-        updateScanLockScreen();
-    }
 
-    // The lock screen shows the overlay on any screen size.
-    if (window.innerWidth <= 700 || locked) {
-        showScanAnnouncement(isUnknown
-            ? { unknown: true, name: convertedUid || serialNumber }
-            : { unknown: false, name: databaseMap[primaryUid]?.name || '' });
-    }
+    // An unknown card shows its Card ID in place of a name.
+    const scan = isUnknown
+        ? { unknown: true, name: convertedUid || serialNumber, at: timestamp.getTime() }
+        : { unknown: false, name: databaseMap[primaryUid]?.name || convertedUid, at: timestamp.getTime() };
+    const lockedNow = isScanLockScreenShown();
+    if (scanLockSession || lockedNow) noteScanLockScan(scan);
+    // Locked, the name appears under the clock; unlocked on a phone, as a full-screen result.
+    if (lockedNow) showScanLockResult(scan);
+    else if (window.innerWidth <= 700) showScanAnnouncement(scan);
 }
 
 // Full-screen result of a scan: white with the name, or orange with the Card ID
@@ -12301,7 +12294,7 @@ const SCAN_LOCK_CARD_PREFIX = 'stando_scan_lock_card_';
 const SCAN_LOCK_IDLE_MS = 30000; // Relock after this long untouched while scanning
 const SCAN_LOCK_MIN_AWAY_MS = 2000; // Shorter absences are not reported
 let scanLockSession = false; // From Start scanning until the lecturer stops
-let scanLockScanCount = 0;
+let scanLockScans = []; // Cards recorded this session, newest first: { name, unknown, at }
 let scanLockIdleTimer = null;
 let scanLockClockInterval = null;
 let scanLockReaderController = null;
@@ -12478,7 +12471,7 @@ function formatScanLockTime(timestamp) {
 // can trust it. Scanning then starts behind the lock screen when the lecturer
 // can unlock it again.
 async function startScanningLocked() {
-    // Asked together, so the tap still counts for full screen afterwards.
+    // Asked together, so scanning starts while the tap still counts for the NFC prompt.
     const lockable = scanLockAvailable();
     const [trusted, lockReady] = await Promise.all([
         isSignedIn && isAdmin ? checkDeviceTrusted() : true,
@@ -12501,22 +12494,11 @@ async function startScanningLocked() {
         return;
     }
     scanLockSession = true;
-    scanLockScanCount = 0;
-    // Full screen hides the address bar and tabs. It needs a recent tap, so it
-    // can fail after a slow NFC permission prompt; the lock works without it.
-    requestScanLockFullscreen();
+    scanLockScans = [];
+    // No full screen: the browser would announce how to leave it, and its status
+    // bar would turn black. The page's theme colour matches the lock screen instead.
     lockScanner();
     updateScanLockButton();
-}
-
-function requestScanLockFullscreen() {
-    const root = document.documentElement;
-    if (document.fullscreenElement || !root.requestFullscreen) return;
-    root.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Optional; the lock works without it. */ });
-}
-
-function exitScanLockFullscreen() {
-    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => { });
 }
 
 function lockScanner() {
@@ -12545,7 +12527,6 @@ function endScanLockSession() {
     scanLockSession = false;
     clearTimeout(scanLockIdleTimer);
     scanLockIdleTimer = null;
-    exitScanLockFullscreen();
     updateScanLockButton();
 }
 
@@ -12560,7 +12541,8 @@ function toggleScanLockWithCard(owner) {
     // One tap can be read twice; ignore the echo.
     if (Date.now() - scanLockLastCardToggle < 1500) return;
     scanLockLastCardToggle = Date.now();
-    playSound(true);
+    // Silent, so students do not mistake it for a recorded card; a short buzz instead.
+    navigator.vibrate?.(40);
     if (!isScanLockScreenShown()) {
         lockScanner();
         return;
@@ -12617,21 +12599,38 @@ function showScanLockScreen() {
             <div class="scan-lock-inner">
                 <div class="scan-lock-top">
                     <span class="scan-lock-badge"><i class="fa-solid fa-lock" aria-hidden="true"></i> Locked</span>
-                    <span class="scan-lock-course"></span>
+                    <span class="scan-lock-course"><span class="scan-lock-course-code"></span><span class="scan-lock-course-group" hidden></span></span>
                 </div>
                 <div class="scan-lock-view">
                     <div class="scan-lock-clock" aria-hidden="true"></div>
-                    <h2 class="scan-lock-title" id="scan-lock-title"></h2>
+                    <div class="scan-lock-result" aria-live="polite" aria-atomic="true"></div>
                     ${cardTapAnimationHtml()}
-                    <p class="scan-lock-status" role="status" aria-live="polite"></p>
+                    <h2 class="scan-lock-title" id="scan-lock-title"></h2>
+                    <button type="button" class="scan-lock-status" data-key="list" aria-live="polite">
+                        <span class="scan-lock-status-text"></span><i class="fa-solid fa-chevron-down scan-lock-status-more" aria-hidden="true"></i>
+                    </button>
                     <p class="scan-lock-alert" hidden></p>
                 </div>
                 <div class="scan-lock-footer">
-                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Lecturers of this course: tap your staff card to unlock.</p>
-                    <button type="button" class="scan-lock-link" data-key="signout">Can't unlock? Sign out</button>
+                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i><span>Tap your Staff ID to unlock</span></p>
+                    <button type="button" class="scan-lock-link" data-key="signout"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
                 </div>
+            </div>
+            <div class="scan-lock-sheet" hidden>
+                <div class="scan-lock-sheet-backdrop" data-key="close-list"></div>
+                <section class="scan-lock-list" aria-labelledby="scan-lock-list-title">
+                    <div class="scan-lock-list-head">
+                        <h3 id="scan-lock-list-title">Scanned cards</h3>
+                        <button type="button" class="scan-lock-list-close" data-key="close-list">Hide</button>
+                    </div>
+                    <ol class="scan-lock-list-items"></ol>
+                </section>
             </div>`;
         screen.addEventListener('click', handleScanLockClick);
+        screen.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape') closeScanLockList();
+        });
+        bindScanLockSwipe(screen);
         document.body.appendChild(screen);
         document.documentElement.classList.add('scan-locked');
         setScanLockInert(true);
@@ -12650,6 +12649,7 @@ function hideScanLockScreen() {
     stopScanLockReader();
     clearInterval(scanLockClockInterval);
     scanLockClockInterval = null;
+    clearTimeout(scanLockListTimer);
     window.removeEventListener('beforeunload', scanLockBeforeUnload);
     setScanLockInert(false);
     document.documentElement.classList.remove('scan-locked');
@@ -12664,14 +12664,24 @@ function updateScanLockScreen() {
         const el = screen.querySelector(selector);
         if (el.textContent !== text) el.textContent = text;
     };
+    // The course as people write it ("CE 121"), and the group, if any, beside it.
     const session = getCurrentActiveSession();
-    setText('.scan-lock-course', [scanLockCourse(), session !== 'Default' ? session : ''].filter(Boolean).join(' · '));
+    const group = screen.querySelector('.scan-lock-course-group');
+    setText('.scan-lock-course-code', scanLockCourse() ? getCleanCourseCode(scanLockCourse()) : '');
+    setText('.scan-lock-course-group', session !== 'Default' ? session : '');
+    group.hidden = session === 'Default';
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
     screen.classList.toggle('is-paused', !isScanning);
-    setText('.scan-lock-title', isScanning ? 'Tap your card on the back of this phone' : 'Scanning is paused');
-    if (!screen.querySelector('.scan-lock-status').dataset.message) {
-        setText('.scan-lock-status', isScanning
-            ? `${scanLockScanCount} ${scanLockScanCount === 1 ? 'card' : 'cards'} recorded`
+    setText('.scan-lock-title', isScanning ? 'Tap your Student ID' : 'Scanning is paused');
+
+    const status = screen.querySelector('.scan-lock-status');
+    const count = scanLockScans.length;
+    status.disabled = count === 0;
+    status.classList.toggle('has-scans', count > 0);
+    status.setAttribute('aria-label', count ? `${count} ${count === 1 ? 'card' : 'cards'} recorded. Show scanned cards` : '');
+    if (!status.dataset.message) {
+        setText('.scan-lock-status-text', isScanning
+            ? `${count} ${count === 1 ? 'card' : 'cards'} recorded`
             : 'Cards are not being recorded. Unlock to start scanning again.');
     }
 
@@ -12688,7 +12698,7 @@ function flashScanLockStatus(message) {
     const status = document.querySelector('#scan-lock .scan-lock-status');
     if (!status) return;
     status.dataset.message = '1';
-    status.textContent = message;
+    status.querySelector('.scan-lock-status-text').textContent = message;
     clearTimeout(status._timer);
     status._timer = setTimeout(() => {
         delete status.dataset.message;
@@ -12696,20 +12706,169 @@ function flashScanLockStatus(message) {
     }, 4000);
 }
 
-// Without the staff card (forgotten, or the phone is offline and has never
-// confirmed it), signing out is the way out; it gives nobody else access.
-function handleScanLockClick(event) {
-    if (!event.target.closest('button[data-key="signout"]')) return;
-    showConfirmationDialog({
-        title: 'Sign out to unlock?',
-        message: 'Scanning stops, and you sign in again with Google or your staff card. Attendance saved on this phone stays on it and syncs when you sign in again with the same account.',
-        confirmText: 'Sign out',
-        isDestructive: true,
-        onConfirm: () => {
-            clearScanLock();
-            handleSignoutClick();
+// --- The latest scan, under the clock ---
+// Each name slides in as the previous one leaves. Both moves take a fifth of a
+// second, so a queue of students tapping one after another never waits on them.
+const SCAN_LOCK_RESULT_MS = 5000;
+
+function showScanLockResult(scan) {
+    const box = document.querySelector('#scan-lock .scan-lock-result');
+    if (!box) return;
+    box.querySelectorAll('.scan-lock-result-item:not(.is-leaving)').forEach(leaveScanLockResult);
+    const item = document.createElement('span');
+    item.className = `scan-lock-result-item${scan.unknown ? ' is-unknown' : ''}`;
+    item.innerHTML = `<i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-circle-check'}" aria-hidden="true"></i><span class="scan-lock-result-name"></span>`;
+    item.querySelector('.scan-lock-result-name').textContent = scan.name;
+    box.appendChild(item);
+    clearTimeout(box._timer);
+    box._timer = setTimeout(() => {
+        box.querySelectorAll('.scan-lock-result-item:not(.is-leaving)').forEach(leaveScanLockResult);
+    }, SCAN_LOCK_RESULT_MS);
+}
+
+function leaveScanLockResult(item) {
+    item.classList.add('is-leaving');
+    item.setAttribute('aria-hidden', 'true');
+    item.addEventListener('animationend', () => item.remove(), { once: true });
+    setTimeout(() => item.remove(), 400); // Without animations there is no animationend.
+}
+
+// --- Scanned cards: swipe down for a floating list, newest first ---
+let scanLockListTimer = null;
+const SCAN_LOCK_LIST_IDLE_MS = 20000; // An open list folds away after this long untouched
+
+function noteScanLockScan(scan) {
+    scanLockScans.unshift(scan);
+    updateScanLockScreen();
+    const items = document.querySelector('#scan-lock .scan-lock-sheet:not([hidden]) .scan-lock-list-items');
+    if (items) {
+        items.querySelector('.scan-lock-list-empty')?.remove();
+        items.prepend(scanLockListItem(scan, 0));
+    }
+}
+
+function scanLockListItem(scan, index) {
+    const li = document.createElement('li');
+    li.className = `scan-lock-list-item${scan.unknown ? ' is-unknown' : ''}`;
+    li.style.setProperty('--i', Math.min(index, 8));
+    li.innerHTML = `
+        <span class="scan-lock-list-icon"><i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-check'}" aria-hidden="true"></i></span>
+        <span class="scan-lock-list-name"></span>
+        <time class="scan-lock-list-time"></time>`;
+    li.querySelector('.scan-lock-list-name').textContent = scan.name;
+    li.querySelector('.scan-lock-list-time').textContent = formatScanLockTime(scan.at);
+    li.querySelector('.scan-lock-list-time').dateTime = new Date(scan.at).toISOString();
+    return li;
+}
+
+function isScanLockListOpen() {
+    return !!document.querySelector('#scan-lock .scan-lock-sheet:not([hidden]):not(.is-closing)');
+}
+
+function openScanLockList() {
+    const screen = document.getElementById('scan-lock');
+    const sheet = screen?.querySelector('.scan-lock-sheet');
+    if (!sheet || isScanLockListOpen()) return;
+    const items = sheet.querySelector('.scan-lock-list-items');
+    items.replaceChildren(...scanLockScans.map(scanLockListItem));
+    if (!scanLockScans.length) items.innerHTML = '<li class="scan-lock-list-empty">No cards recorded yet.</li>';
+    items.scrollTop = 0;
+    sheet.querySelector('.scan-lock-list').style.transform = '';
+    sheet.classList.remove('is-closing');
+    sheet.hidden = false;
+    armScanLockListIdle();
+}
+
+function closeScanLockList() {
+    const screen = document.getElementById('scan-lock');
+    const sheet = screen?.querySelector('.scan-lock-sheet');
+    if (!sheet || sheet.hidden || sheet.classList.contains('is-closing')) return;
+    clearTimeout(scanLockListTimer);
+    sheet.classList.add('is-closing');
+    // A dragged list slides on from where the finger left it.
+    const list = sheet.querySelector('.scan-lock-list');
+    const finish = () => {
+        if (!sheet.classList.contains('is-closing')) return;
+        sheet.hidden = true;
+        sheet.classList.remove('is-closing');
+        list.style.transform = '';
+    };
+    list.addEventListener('animationend', finish, { once: true });
+    setTimeout(finish, 450); // Without animations there is no animationend.
+}
+
+function armScanLockListIdle() {
+    clearTimeout(scanLockListTimer);
+    scanLockListTimer = setTimeout(closeScanLockList, SCAN_LOCK_LIST_IDLE_MS);
+}
+
+// Swiping down opens the list. Open, the list follows a downward drag from its
+// top and folds away past a short distance; anything less springs back.
+function bindScanLockSwipe(screen) {
+    let start = null;
+    screen.addEventListener('touchstart', (event) => {
+        if (event.touches.length !== 1) { start = null; return; }
+        const touch = event.touches[0];
+        const items = event.target.closest('.scan-lock-list-items');
+        start = {
+            x: touch.clientX,
+            y: touch.clientY,
+            inSheet: !!event.target.closest('.scan-lock-sheet'),
+            atTop: !items || items.scrollTop <= 0,
+            dragging: false
+        };
+        if (isScanLockListOpen()) armScanLockListIdle();
+    }, { passive: true });
+
+    screen.addEventListener('touchmove', (event) => {
+        if (!start || !isScanLockListOpen() || !start.inSheet || !start.atTop) return;
+        const touch = event.touches[0];
+        const dy = touch.clientY - start.y;
+        if (!start.dragging && (dy < 8 || Math.abs(touch.clientX - start.x) > dy)) return;
+        start.dragging = true;
+        event.preventDefault(); // The list follows the finger instead of scrolling.
+        const list = screen.querySelector('.scan-lock-list');
+        list.classList.add('is-dragging');
+        list.style.transform = `translateY(${Math.max(0, dy)}px)`;
+    }, { passive: false });
+
+    const end = (event) => {
+        if (!start) return;
+        const touch = event.changedTouches[0];
+        const dx = touch.clientX - start.x;
+        const dy = touch.clientY - start.y;
+        const downward = dy > 60 && Math.abs(dx) < dy;
+        const list = screen.querySelector('.scan-lock-list');
+        list.classList.remove('is-dragging');
+        if (!isScanLockListOpen()) {
+            if (downward && !start.inSheet) openScanLockList();
+        } else if (start.dragging) {
+            if (dy > 90) closeScanLockList();
+            else list.style.transform = '';
         }
+        start = null;
+    };
+    screen.addEventListener('touchend', end);
+    screen.addEventListener('touchcancel', () => {
+        screen.querySelector('.scan-lock-list')?.classList.remove('is-dragging');
+        const list = screen.querySelector('.scan-lock-list');
+        if (list) list.style.transform = '';
+        start = null;
     });
+}
+
+// Sign out is the way out without a staff card (forgotten, or the phone is
+// offline and has never confirmed it); it gives nobody else access.
+function handleScanLockClick(event) {
+    const key = event.target.closest('[data-key]')?.dataset.key;
+    if (key === 'list') {
+        openScanLockList();
+    } else if (key === 'close-list') {
+        closeScanLockList();
+    } else if (key === 'signout') {
+        clearScanLock();
+        handleSignoutClick();
+    }
 }
 
 function startScanLockReader() {
@@ -12790,10 +12949,7 @@ function syncScanLockFromStorage() {
 }
 
 function setupScanLock() {
-    document.getElementById('scan-lock-btn')?.addEventListener('click', () => {
-        requestScanLockFullscreen();
-        lockScanner();
-    });
+    document.getElementById('scan-lock-btn')?.addEventListener('click', lockScanner);
 
     // Any touch or key while unlocked and scanning restarts the relock countdown.
     ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(type => {

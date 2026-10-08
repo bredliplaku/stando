@@ -33,14 +33,15 @@ but plays the failure sound and turns the scan result orange. You can search
 records by name, card, date or session to find an entry or make a correction.
 
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
-records attendance. Any lecturer of the course on screen taps their staff card
-to unlock it; a tap again (or 30 seconds untouched) locks it again. This needs
-your own card in **Settings → Staff**; without it, scanning works but does not
-lock. A phone that has confirmed a card once also unlocks with it offline. The
-lock covers every Stando tab in the browser and stays after a reload. It cannot
-stop someone switching to other apps or tabs, but the lock screen then shows
-when Stando was left and for how long. Without a card, **Can't unlock? Sign
-out** ends the session instead.
+records attendance, showing each student's name under the clock (or the Card ID
+of an unknown card). Swipe down to see the cards scanned so far. Any lecturer of
+the course on screen taps their staff card to unlock it; a tap again (or 30
+seconds untouched) locks it again. This needs your own card in
+**Settings → Staff**; without it, scanning works but does not lock. A phone that
+has confirmed a card once also unlocks with it offline. The lock covers every
+Stando tab in the browser and stays after a reload. It cannot stop someone
+switching to other apps or tabs, but the lock screen then shows when Stando was
+left and for how long. Without a card, **Sign out** ends the session instead.
 
 Card scanning uses NFC: it needs an NFC-capable Android phone, a supported
 Chrome browser and an HTTPS website. You can view records without a card reader.
