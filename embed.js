@@ -78,7 +78,25 @@
         notice.hidden = false;
     }
 
+    // Choose the startup skeleton, as the startup script in index.html does (it is
+    // not replayed here): signed out unless a session is stored or a Google redirect
+    // is returning, otherwise the view this browser showed last.
+    function markStartupView() {
+        const root = document.documentElement;
+        let view = 'signed-out';
+        try {
+            const stored = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth-token'));
+            if (stored || /[?#&](code|access_token)=/.test(location.href)) {
+                const last = localStorage.getItem('stando_view');
+                view = ['student', 'lecturer', 'global'].includes(last) ? last : 'student';
+            }
+        } catch { /* Storage blocked: the sign-in skeleton. */ }
+        root.dataset.standoView = view;
+        if (/Android/i.test(navigator.userAgent) && 'NDEFReader' in window) root.dataset.standoNfc = '';
+    }
+
     async function mount() {
+        markStartupView();
         if (document.readyState === 'loading') {
             await new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve, { once: true }));
         }

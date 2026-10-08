@@ -43,6 +43,22 @@
             document.documentElement.classList.toggle('dark-mode', dark);
             document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
         })();
+        // Choose the startup skeleton: signed out unless a session is stored (or a Google
+        // redirect is returning), otherwise the view this browser showed last. Keep in step
+        // with markStartupView() in embed.js.
+        (function () {
+            const root = document.documentElement;
+            let view = 'signed-out';
+            try {
+                const stored = Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth-token'));
+                if (stored || /[?#&](code|access_token)=/.test(location.href)) {
+                    const last = localStorage.getItem('stando_view');
+                    view = ['student', 'lecturer', 'global'].includes(last) ? last : 'student';
+                }
+            } catch { }
+            root.dataset.standoView = view;
+            if (/Android/i.test(navigator.userAgent) && 'NDEFReader' in window) root.dataset.standoNfc = '';
+        })();
     </script>
     <link rel="icon" type="image/png" href="favicon/favicon-96x96.png" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="favicon/favicon.svg" />
@@ -72,30 +88,83 @@
 </head>
 
 <body>
-    <div id="app-loading" class="skeleton-loader-overlay">
-        <div class="skeleton-loader-container">
-            <div class="skeleton-header">
-                <div class="skeleton-line title"></div>
-                <div class="skeleton-line subtitle"></div>
-                <div class="skeleton-info-bar">
-                    <div class="skeleton-info-item"></div>
-                    <div class="skeleton-info-item"></div>
-                    <div class="skeleton-info-item"></div>
+    <!-- Startup skeleton, shaped like the view it stands in for. The startup script
+         above chooses it through <html data-stando-view> and data-stando-nfc (embed.js
+         does the same for downloaded pages); showMainContent() fades it out. -->
+    <div id="app-loading" class="skeleton-loader-overlay" aria-hidden="true">
+        <!-- Signed out: the sign-in card, the scan button on NFC phones and the footer. -->
+        <div class="sk-signin">
+            <div class="sk-signin-main">
+                <div class="sk-signin-card">
+                    <span class="sk sk-accent sk-welcome"></span>
+                    <span class="sk sk-heading"></span>
+                    <span class="sk sk-heading sk-heading-phone"></span>
+                    <span class="sk sk-heading sk-heading-last"></span>
+                    <span class="sk-google"><span class="sk-google-g"></span></span>
+                    <span class="sk-signin-note">
+                        <span class="sk sk-text"></span>
+                        <span class="sk sk-text sk-text-short"></span>
+                    </span>
                 </div>
             </div>
-            <div class="skeleton-courses">
-                <div class="skeleton-course-btn"></div>
-                <div class="skeleton-course-btn"></div>
-                <div class="skeleton-course-btn"></div>
-                <div class="skeleton-course-btn"></div>
+            <span class="sk-scan sk-nfc"><span class="sk sk-on-primary"></span></span>
+            <span class="sk-footer"><span class="sk sk-logo"></span><span class="sk sk-text sk-copyright"></span></span>
+        </div>
+
+        <!-- Signed in: top bar, header, staff chips, courses, scan button and Scan History. -->
+        <div class="sk-app">
+            <div class="sk-topbar">
+                <span class="sk-topbar-group sk-staff">
+                    <span class="sk sk-status-dot"></span>
+                    <span class="sk sk-chip sk-chip-status"></span>
+                </span>
+                <span class="sk-topbar-group sk-topbar-end">
+                    <span class="sk sk-chip sk-chip-wide sk-student"></span>
+                    <span class="sk sk-chip sk-chip-wide sk-student"></span>
+                    <span class="sk-user"><span class="sk sk-avatar"></span><span class="sk sk-text sk-user-name"></span></span>
+                    <span class="sk sk-chip sk-chip-signout"></span>
+                </span>
             </div>
-            <div class="skeleton-module">
-                <div class="skeleton-module-header"></div>
-                <div class="skeleton-module-content">
-                    <div class="skeleton-line"></div>
-                    <div class="skeleton-line"></div>
-                    <div class="skeleton-line"></div>
-                    <div class="skeleton-line"></div>
+            <div class="sk-banner">
+                <span class="sk sk-on-primary sk-banner-title"></span>
+                <span class="sk sk-on-primary sk-banner-subtitle"></span>
+                <span class="sk-banner-chips sk-staff">
+                    <span class="sk sk-on-primary"></span>
+                    <span class="sk sk-on-primary"></span>
+                    <span class="sk sk-on-primary"></span>
+                </span>
+                <span class="sk-banner-tabs sk-global">
+                    <span class="sk-tab is-active"><span class="sk sk-on-primary"></span></span>
+                    <span class="sk-tab"><span class="sk sk-on-primary"></span></span>
+                </span>
+            </div>
+            <div class="sk-requests sk-staff"><span class="sk sk-chip sk-chip-request"></span></div>
+            <div class="sk-courses">
+                <span class="sk-course"><span class="sk"></span></span>
+                <span class="sk-course"><span class="sk"></span></span>
+                <span class="sk-course"><span class="sk"></span></span>
+                <span class="sk-course"><span class="sk"></span></span>
+            </div>
+            <span class="sk-scan sk-nfc"><span class="sk sk-on-primary"></span></span>
+            <div class="sk-module">
+                <div class="sk-module-header"><span class="sk sk-on-primary"></span></div>
+                <div class="sk-module-body">
+                    <div class="sk-filter"><span class="sk sk-field"></span><span class="sk sk-field sk-select"></span></div>
+                    <div class="sk-count">
+                        <span class="sk sk-text"></span>
+                        <span class="sk-tools sk-staff">
+                            <span class="sk sk-tool"></span>
+                            <span class="sk sk-tool"></span>
+                            <span class="sk sk-tool"></span>
+                            <span class="sk sk-tool"></span>
+                            <span class="sk sk-tool sk-tool-more"></span>
+                        </span>
+                    </div>
+                    <span class="sk sk-day"></span>
+                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
+                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
+                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
+                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
                 </div>
             </div>
         </div>
@@ -277,6 +346,9 @@
             <button id="scan-button" class="big-scan-button scan-button">
                 <i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>
             </button>
+            <!-- Shown while scanning and unlocked; see the scan lock in scripts.js. -->
+            <button type="button" id="scan-lock-btn" class="scan-lock-btn" title="Lock" aria-label="Lock Stando"
+                hidden><i class="fa-solid fa-lock" aria-hidden="true"></i></button>
         </div>
 
         <!-- Scanner & History Tab -->

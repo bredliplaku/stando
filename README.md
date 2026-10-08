@@ -26,11 +26,28 @@ available to you. Contact an administrator if you need access.
 ### Taking attendance
 
 Choose a course and start scanning. Each card tap records the student's
-attendance. You can search records by name, card, date or session to find an
-entry or make a correction.
+attendance. A card that is not in the student list still records attendance,
+but plays the failure sound and turns the scan result orange. You can search
+records by name, card, date or session to find an entry or make a correction.
+
+Scanning locks Stando so the phone can be left on a desk: the lock screen only
+records attendance. Tap your own staff card to unlock it; tap it again (or leave
+the screen untouched for 30 seconds) to lock it again. As with staff card
+sign-in, this needs your card in **Settings → Staff** and the phone in
+**Trusted Devices**; without them, scanning works but does not lock. A phone
+that has confirmed your card once also unlocks offline. The lock covers every
+Stando tab in the browser and stays after a reload. It cannot stop someone
+switching to other apps or tabs, but the lock screen then shows when Stando was
+left and for how long. Without your card, **Can't unlock? Sign out** ends the
+session instead.
 
 Card scanning uses NFC: it needs an NFC-capable Android phone, a supported
 Chrome browser and an HTTPS website. You can view records without a card reader.
+
+Students register a card by scanning it in **Register Card ID**; the Card ID is
+stored in the card's chip and differs from any number printed on the card.
+iPhones cannot scan, so a classmate with an Android phone chooses **Scan a
+friend's card** and the student types the Card ID it shows.
 
 If the connection drops, pending attendance changes stay on that device.
 Reconnect and check the sync status to make sure they have been saved online.

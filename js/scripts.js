@@ -1059,7 +1059,7 @@ function clearAllAppData() {
     // Find all keys used by this application.
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || [KIOSK_MODE_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course'].includes(key)) {
+        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || key.startsWith(SCAN_LOCK_KEY) || [KIOSK_MODE_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course', 'stando_view'].includes(key)) {
             keysToRemove.push(key);
         }
     }
@@ -1533,7 +1533,7 @@ function setupEventListeners() {
             if (scanBtn.classList.contains('is-scanning')) {
                 stopScanning();
             } else {
-                startScanning();
+                startScanningLocked();
             }
         });
     }
@@ -3153,18 +3153,14 @@ function showMainContent() {
     const loadingIndicator = document.getElementById('app-loading');
     const mainContainer = document.getElementById('main-container');
 
-    // Start fading out the loader
-    if (loadingIndicator) {
-        loadingIndicator.classList.add('hidden');
-    }
+    // Crossfade: the page fades in underneath while the skeleton fades out.
+    if (mainContainer) mainContainer.classList.remove('content-hidden');
+    if (loadingIndicator) loadingIndicator.classList.add('is-done');
 
-    // After the fade-out is complete (500ms), hide the loader and show the content.
+    // After the fade (0.35s in the stylesheet), remove the skeleton.
     setTimeout(() => {
         if (loadingIndicator) {
             loadingIndicator.style.display = 'none';
-        }
-        if (mainContainer) {
-            mainContainer.classList.remove('content-hidden');
         }
         // Re-enable scrolling
         document.body.classList.remove('is-loading');
@@ -3173,7 +3169,7 @@ function showMainContent() {
         updateAuthUI();
         updateUI();
 
-    }, 500); // This MUST match the CSS transition duration
+    }, 400);
 
     isInitializing = false;
     criticalErrorsOnly = false;
@@ -4078,6 +4074,7 @@ function init() {
 
     // Set up event listeners
     setupEventListeners();
+    setupScanLock();
 
     // Round the header chips per visual row (the scan chips and the sign-in chips)
     document.querySelectorAll('.app-info').forEach(appInfoEl => {
@@ -4140,6 +4137,11 @@ function init() {
                     const shiftX = Math.floor(Math.random() * 5) - 2; // -2 to +2 pixels
                     const shiftY = Math.floor(Math.random() * 5) - 2;
                     mainContainer.style.transform = `translate(${shiftX}px, ${shiftY}px)`;
+                }
+                // The lock screen can stay up for a whole lesson.
+                const lockInner = document.querySelector('#scan-lock .scan-lock-inner');
+                if (lockInner) {
+                    lockInner.style.transform = `translate(${Math.floor(Math.random() * 5) - 2}px, ${Math.floor(Math.random() * 5) - 2}px)`;
                 }
             }, 120000); // Every 2 minutes
         }
@@ -4389,6 +4391,8 @@ async function onSuccessfulAuth(isRestore = false) {
 
         // --- PHASE 2: SHOW THE APP ---
         isInitializing = false;
+        // A lock left on by this account covers the app before it is usable.
+        restoreScanLock();
         showMainContent();
         updateAuthUI();
         handleRouting();
@@ -4505,6 +4509,53 @@ function normalizeGooglePhotoUrl(url) {
     return url.replace(/=s\d+(-c)?$/, '') + '=s96-c';
 }
 
+// A card held against the back of a phone. Without motion it shows the card in place.
+function cardTapAnimationHtml() {
+    return `
+        <svg class="card-tap" viewBox="0 0 200 150" aria-hidden="true" focusable="false">
+            <g class="tap-phone">
+                <rect class="tap-phone-body" x="60" y="6" width="80" height="138" rx="14"/>
+                <rect class="tap-phone-camera" x="69" y="16" width="24" height="40" rx="8"/>
+                <circle class="tap-phone-lens" cx="81" cy="28" r="6"/>
+                <circle class="tap-phone-lens" cx="81" cy="44" r="6"/>
+            </g>
+            <g class="tap-waves">
+                <circle cx="100" cy="80" r="40"/>
+                <circle cx="100" cy="80" r="40"/>
+            </g>
+            <g transform="translate(58 53)">
+                <g class="tap-card">
+                    <rect class="tap-card-body" width="84" height="54" rx="6"/>
+                    <rect class="tap-card-chip" x="9" y="14" width="14" height="11" rx="2"/>
+                    <rect class="tap-card-photo" x="60" y="9" width="16" height="20" rx="3"/>
+                    <rect class="tap-card-line" x="9" y="34" width="42" height="4" rx="2"/>
+                    <rect class="tap-card-line" x="9" y="42" width="28" height="4" rx="2"/>
+                </g>
+            </g>
+            <g class="tap-check">
+                <circle cx="146" cy="22" r="13"/>
+                <path d="M140 22.5l4.2 4.2 7.8-8.4"/>
+            </g>
+        </svg>`;
+}
+
+// A typed Card ID: the digits a scan shows, or a colon-separated hardware UID.
+// Scanned 4-byte cards never exceed 16777215, so longer numbers are a printed number.
+function parseTypedCardId(value) {
+    const text = String(value || '').replace(/\s+/g, '').toLowerCase();
+    if (/^\d+$/.test(text)) {
+        const cardId = text.replace(/^0+(?=\d)/, '');
+        if (cardId.length > 8 || Number(cardId) < 1 || Number(cardId) > 0xFFFFFF) return null;
+        return { cardId, hardwareUid: convertExternalIdToUid(cardId) };
+    }
+    if (/^([0-9a-f]{2}:){3,9}[0-9a-f]{2}$/.test(text)) {
+        return { cardId: convertUidToExternalId(text), hardwareUid: text };
+    }
+    return null;
+}
+
+// Students register their card by scanning it. Phones that cannot scan (iPhones)
+// are guided to have a friend's Android phone scan it, then type the Card ID.
 function showRegisterUIDDialog() {
     if (!isSignedIn || isAdmin || !currentUser) return;
 
@@ -4513,115 +4564,271 @@ function showRegisterUIDDialog() {
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
     const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog');
+    dialog.setAttribute('class', 'dialog reg-dialog');
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
-
-    // Message for devices that don't support NFC
-    const nfcUnsupportedMsg = `
-        <div style="text-align: center; padding: 10px; border-radius: 8px; margin-top: 15px;">
-            <p style="margin: 0; color: var(--text-color); opacity: 1;">NFC scanning requires <a href="https://play.google.com/store/apps/details?id=com.android.chrome" target="_blank">Chrome on Android</a>.</p>
-            <p style="margin: 10px 0 0 0;">You can enter your UID manually.</p>
-        </div>`;
-
+    dialog.setAttribute('aria-labelledby', 'reg-dialog-title');
     dialog.innerHTML = `
-        <h3 class="dialog-title"><i class="fa-solid fa-id-card"></i> Register ID Card</h3>
-        <div class="dialog-content"><p>Your details will be sent to the lecturer for approval.</p>
-        <div class="form-group"><label class="dialog-label-fixed">Name</label><input class="form-control" value="${escapeHtml(currentUser.name)}" disabled></div>
-        <div class="form-group"><label class="dialog-label-fixed">Email</label><input class="form-control" value="${escapeHtml(currentUser.email)}" disabled></div>
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="register-hardware-uid">UID</label>
-            <input type="text" id="register-hardware-uid" class="form-control" placeholder="04:a2:3f:8a">
-        </div>
-        <div id="nfc-status-container"></div>
-        </div><div class="dialog-actions">
-            <button id="cancel-register-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
-            <button id="submit-register-btn" class="btn-green" disabled><i class="fa-solid fa-check"></i> Submit</button>
-        </div>`;
+        <h3 class="dialog-title" id="reg-dialog-title"><i class="fa-solid fa-id-card"></i> Register your card</h3>
+        <div class="dialog-content reg-content"></div>
+        <div class="dialog-actions"></div>`;
 
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
 
-    const hwInput = document.getElementById('register-hardware-uid');
-    const submitBtn = document.getElementById('submit-register-btn');
-    const nfcStatusContainer = document.getElementById('nfc-status-container');
-    let registrationNfcController = null;
+    const content = dialog.querySelector('.reg-content');
+    const actions = dialog.querySelector('.dialog-actions');
+    const userAgent = navigator.userAgent;
+    const isIos = /iPhone|iPad|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isAndroid = /Android/i.test(userAgent);
+    let nfcController = null;
+    let ownCard = null;
+    let friendCard = null;
+    let typedCardId = '';
+    let manualReason = '';
+    let currentStep = '';
+
+    const stopReader = () => {
+        if (nfcController) nfcController.abort();
+        nfcController = null;
+    };
 
     const closeDialog = () => {
-        if (registrationNfcController) registrationNfcController.abort();
-        document.body.removeChild(dialogBackdrop);
+        stopReader();
+        dialogBackdrop.remove();
         closeDialogMode();
     };
+    dialogBackdrop.addEventListener('dialogclose', stopReader, { once: true });
 
-    const checkSubmitButton = () => {
-        submitBtn.disabled = hwInput.value.trim() === '';
+    const notice = (heading, body) => `
+        <div class="reg-notice"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span><strong>${heading}</strong> ${body}</span></div>`;
+    const statusHtml = `
+        <div class="reg-status is-ready" role="status" aria-live="polite"><span class="reg-status-dot" aria-hidden="true"></span><span class="reg-status-text">Ready to scan</span></div>
+        <div class="reg-retry" hidden>
+            <button type="button" class="btn-blue" data-action="retry">Try again</button>
+            <button type="button" class="reg-link" data-action="manual">Type the Card ID instead</button>
+        </div>`;
+    const accountHtml = () => `<p class="reg-account">Sending as <strong>${escapeHtml(currentUser.name)}</strong> · ${escapeHtml(currentUser.email)}</p>`;
+    const progressHtml = (step) => `
+        <div class="reg-progress"><span class="is-active"></span><span class="${step === 2 ? 'is-active' : ''}"></span><em>Step ${step} of 2</em></div>`;
+
+    const STATUS = {
+        ready: ['is-ready', 'Ready to scan'],
+        unreadable: ['is-error', "Couldn't read the card. Hold it still against the phone."],
+        off: ['is-error', "Turn on NFC in your phone's settings, then try again."],
+        denied: ['is-error', 'Allow Stando to use NFC, then try again.'],
+        unsupported: ['is-error', "This phone can't scan cards."]
+    };
+    const setStatus = (key) => {
+        const status = content.querySelector('.reg-status');
+        if (!status) return;
+        const [className, text] = STATUS[key];
+        status.className = `reg-status ${className}`;
+        status.querySelector('.reg-status-text').textContent = text;
+        // A failed start needs the user; a failed read keeps listening.
+        const retry = content.querySelector('.reg-retry');
+        if (retry) retry.hidden = !['off', 'denied', 'unsupported'].includes(key);
     };
 
-    hwInput.addEventListener('input', checkSubmitButton);
-
-    // Start scanning if supported
-    if (nfcSupported) {
-        if (isScanning || nfcReader) stopScanning();
-        nfcStatusContainer.innerHTML = `<div class="sync-status syncing" style="justify-content: center; padding: 30px 0; font-size: 1em; color: var(--primary-color);"><i class="fa-solid fa-wifi"></i> <span>Ready to Scan...</span></div>`;
-        registrationNfcController = new AbortController();
-        dialogBackdrop.addEventListener('dialogclose', () => registrationNfcController.abort(), { once: true });
+    // Reads one card, then stops listening.
+    const readCard = (onRead) => {
+        stopReader();
+        const controller = new AbortController();
+        nfcController = controller;
+        setStatus('ready');
         const reader = new NDEFReader();
-        reader.scan({ signal: registrationNfcController.signal }).then(() => {
-            reader.onreading = ({ serialNumber }) => {
-                hwInput.value = serialNumber;
-                playSound(true);
-                nfcStatusContainer.innerHTML = `<div class="sync-status success" style="justify-content: center; padding: 30px 0; font-size: 1em; color: var(--success-color);"><i class="fa-solid fa-circle-check"></i> <span>Card Scanned!</span></div>`;
-                checkSubmitButton();
-                registrationNfcController.abort(); // Stop scanning after success
-            };
-        }).catch(err => {
-            if (err.name !== 'AbortError') nfcStatusContainer.innerHTML = `<div class="sync-status error" style="justify-content: center; padding: 30px 0; font-size: 1em; color: var(--danger-color);"><i class="fa-solid fa-circle-xmark"></i> <span>Couldn't scan the card. Please make sure NFC is turned on and try again.</span></div>`;
+        reader.onreading = ({ serialNumber }) => {
+            if (controller.signal.aborted) return;
+            if (typeof serialNumber !== 'string' || !serialNumber.trim()) {
+                setStatus('unreadable');
+                return;
+            }
+            stopReader();
+            playSound(true);
+            onRead({ cardId: convertUidToExternalId(serialNumber), hardwareUid: serialNumber });
+        };
+        reader.onreadingerror = () => {
+            if (!controller.signal.aborted) setStatus('unreadable');
+        };
+        reader.scan({ signal: controller.signal }).catch(err => {
+            if (controller.signal.aborted || err.name === 'AbortError') return;
+            console.warn('Card scan failed:', err);
+            setStatus(err.name === 'NotAllowedError' ? 'denied' : err.name === 'NotSupportedError' ? 'unsupported' : 'off');
         });
-    } else {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        if (isMobile) {
-            nfcStatusContainer.innerHTML = nfcUnsupportedMsg;
-        }
-    }
+    };
 
-    document.getElementById('submit-register-btn').addEventListener('click', () => {
-        const rawHw = hwInput.value.trim();
-        if (!rawHw || !currentUser) return;
-
-        const convertedId = convertUidToExternalId(rawHw) || rawHw;
-
+    const submit = (card, submitBtn) => {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting...';
-
-        const submitData = {
-            action: "submitRegistration",
-            name: currentUser.name,
-            email: currentUser.email,
-            uid: convertedId,
-            hardwareUid: rawHw
+        const restore = () => {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit';
         };
 
-        callWebApp('submitRegistration', submitData, 'POST')
+        callWebApp('submitRegistration', {
+            action: 'submitRegistration',
+            name: currentUser.name,
+            email: currentUser.email,
+            uid: card.cardId,
+            hardwareUid: card.hardwareUid
+        }, 'POST')
             .then(data => {
                 if (data && data.result === 'success') {
                     showNotification('success', 'Submission Sent!', 'Your card application has been sent for approval.');
                     closeDialog();
                 } else {
-                    const errorMessage = (data && data.message) ? data.message : "An unknown error occurred.";
+                    const errorMessage = (data && data.message) ? data.message : 'An unknown error occurred.';
                     console.error('Script Error:', errorMessage);
                     showNotification('error', 'Submission Failed', errorMessage);
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Submit';
+                    restore();
                 }
             }).catch(err => {
                 console.error('API Error:', err);
                 showNotification('error', 'Submission Failed', `A network error occurred: ${err.message}`);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="fa-solid fa-check"></i> Submit';
+                restore();
             });
+    };
+
+    const steps = {
+        // Android with NFC: scan your own card.
+        scan() {
+            content.innerHTML = `
+                ${notice("Scan your card. Don't type the number printed on it.", "Your Card ID is a different number, stored in the card's chip.")}
+                ${cardTapAnimationHtml()}
+                <p class="reg-instruction">Hold your card flat against the <strong>back of your phone</strong> and keep it still until it beeps.</p>
+                <p class="reg-hint">No beep? Slide the card slowly around the back, towards the camera.</p>
+                ${statusHtml}
+                <div class="reg-friend"><span>Helping a friend with an iPhone?</span><button type="button" class="reg-link" data-action="friend">Scan a friend's card</button></div>`;
+            actions.innerHTML = `<button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>`;
+            readCard(card => { ownCard = card; show('review'); });
+        },
+        review() {
+            content.innerHTML = `
+                <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">Your Card ID</span><span class="reg-result-id">${escapeHtml(ownCard.cardId)}</span></div>
+                <p class="reg-instruction">Card scanned. Submit it to send it for approval.</p>
+                ${accountHtml()}
+                <div class="reg-center"><button type="button" class="btn-blue" data-action="rescan">Scan again</button></div>`;
+            actions.innerHTML = `
+                <button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>
+                <button type="button" id="submit-register-btn" class="btn-green" data-action="submit">Submit</button>`;
+        },
+        // Android with NFC: read a classmate's card so they can type its Card ID.
+        friend() {
+            content.innerHTML = `
+                <p class="reg-instruction"><strong>Scan a friend's card.</strong> Hold their card flat against the back of your phone. Their Card ID appears here for them to type on their phone.</p>
+                ${cardTapAnimationHtml()}
+                ${statusHtml}
+                <p class="reg-hint">Nothing is sent or saved to your account.</p>`;
+            actions.innerHTML = `
+                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
+                <button type="button" id="reg-close-btn" class="btn-red" data-action="cancel">Close</button>`;
+            readCard(card => { friendCard = card; show('friendResult'); });
+        },
+        friendResult() {
+            content.innerHTML = `
+                <div class="reg-result is-friend"><span class="reg-result-label">Your friend's Card ID</span><span class="reg-result-id">${escapeHtml(friendCard.cardId)}</span></div>
+                <p class="reg-instruction">Your friend types this number in <strong>Register Card ID</strong> on their own phone.</p>
+                <div class="reg-center"><button type="button" class="btn-blue" data-action="friend">Scan another card</button></div>`;
+            actions.innerHTML = `
+                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
+                <button type="button" id="reg-done-btn" class="btn-blue" data-action="cancel">Done</button>`;
+        },
+        // No NFC here (iPhone, computer, another browser): a friend scans the card.
+        manualHelp() {
+            const reason = manualReason || (isIos
+                ? "iPhones can't scan cards in Stando, so ask a friend with an Android phone to scan it for you."
+                : isAndroid
+                    ? 'To scan with this phone, open Stando in Google Chrome. Or ask a friend with an Android phone to scan it for you.'
+                    : "This device can't scan cards. Ask a friend with an Android phone to scan it for you.");
+            content.innerHTML = `
+                ${progressHtml(1)}
+                ${notice('Your card must be scanned.', "Your Card ID is stored in the card's chip. It is not the number printed on your card.")}
+                <p class="reg-instruction">${reason}</p>
+                ${cardTapAnimationHtml()}
+                <ol class="reg-list">
+                    <li>Your friend opens Stando in Chrome and taps <strong>Register Card ID</strong>, then <strong>Scan a friend's card</strong>.</li>
+                    <li>Hold your card flat against the back of their phone until it beeps.</li>
+                    <li>Their screen shows your <strong>Card ID</strong>. Type it in the next step.</li>
+                </ol>
+                <p class="reg-hint">Not signed in? Your friend can tap <strong>Start scanning</strong> on the Stando sign-in page instead.</p>`;
+            actions.innerHTML = `
+                ${nfcSupported
+                    ? '<button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>'
+                    : '<button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>'}
+                <button type="button" id="reg-next-btn" class="btn-blue" data-action="next">Next</button>`;
+        },
+        manualEntry() {
+            content.innerHTML = `
+                ${progressHtml(2)}
+                <div class="form-group">
+                    <label class="dialog-label-fixed" for="register-card-id">Card ID</label>
+                    <input type="text" id="register-card-id" class="form-control reg-id-input" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="30" placeholder="e.g. 11930522" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
+                </div>
+                <p class="form-hint" id="register-card-id-hint">Type the digits from your friend's screen, not the number printed on your card.</p>
+                ${accountHtml()}`;
+            actions.innerHTML = `
+                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
+                <button type="button" id="submit-register-btn" class="btn-green" data-action="submit" ${typedCardId.trim() ? '' : 'disabled'}>Submit</button>`;
+            const input = content.querySelector('#register-card-id');
+            input.addEventListener('input', () => {
+                typedCardId = input.value;
+                clearInputError(input);
+                actions.querySelector('#submit-register-btn').disabled = !input.value.trim();
+            });
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') actions.querySelector('#submit-register-btn').click();
+            });
+            if (!isTouchDevice()) input.focus({ preventScroll: true });
+        }
+    };
+
+    const BACK = { friend: 'scan', friendResult: 'scan', manualHelp: 'scan', manualEntry: 'manualHelp' };
+
+    function show(step) {
+        stopReader();
+        currentStep = step;
+        content.classList.remove('reg-step-in');
+        void content.offsetWidth;
+        content.classList.add('reg-step-in');
+        content.scrollTop = 0;
+        steps[step]();
+    }
+
+    dialog.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-action]');
+        if (!button || button.disabled) return;
+        switch (button.dataset.action) {
+            case 'cancel': closeDialog(); break;
+            case 'back': show(BACK[currentStep] || 'scan'); break;
+            case 'retry': show(currentStep); break;
+            case 'rescan': show('scan'); break;
+            case 'friend': show('friend'); break;
+            case 'next': show('manualEntry'); break;
+            case 'manual':
+                manualReason = "This phone couldn't scan the card. Ask a friend with an Android phone to scan it for you.";
+                show('manualHelp');
+                break;
+            case 'submit': {
+                if (currentStep === 'review') {
+                    submit(ownCard, button);
+                    break;
+                }
+                const input = content.querySelector('#register-card-id');
+                const card = parseTypedCardId(input.value);
+                if (!card) {
+                    showInputError(input, "That isn't a Card ID. Check the number on your friend's screen.");
+                    input.focus();
+                    break;
+                }
+                submit(card, button);
+                break;
+            }
+        }
     });
 
-    document.getElementById('cancel-register-btn').addEventListener('click', closeDialog);
+    // One reader at a time: this dialog's scan replaces the attendance scan.
+    if (nfcSupported && (isScanning || nfcReader)) stopScanning();
+    show(nfcSupported ? 'scan' : 'manualHelp');
 }
 
 /**
@@ -7817,6 +8024,14 @@ function currentUserDisplayName() {
     return currentUser?.staffName || currentUser?.name || '';
 }
 
+// The next visit's startup skeleton matches this view (see the startup script in
+// index.html). Not while starting up, before sign-in has been restored.
+function rememberStartupView() {
+    if (isInitializing) return;
+    const view = !isSignedIn ? 'signed-out' : isGlobalAdmin ? 'global' : isAdmin ? 'lecturer' : 'student';
+    try { localStorage.setItem('stando_view', view); } catch { /* The skeleton falls back to a student view. */ }
+}
+
 function updateAuthUI() {
     // --- Initial UI State ---
     if (loadingTasks.has('auth')) {
@@ -7919,7 +8134,7 @@ function updateAuthUI() {
         // Hide course buttons
         if (courseButtonsContainer) courseButtonsContainer.style.display = 'none';
 
-        // A scanned card's UID shows under the sign-in card.
+        // A scanned card's Card ID shows under the sign-in card.
         if (lastScannedUID) {
             let notSignedInMsg = notSignedInMsgElement;
             if (!notSignedInMsg) {
@@ -7929,7 +8144,7 @@ function updateAuthUI() {
                 (loginContainer || document.getElementById('main-container'))?.appendChild(notSignedInMsg);
             }
             notSignedInMsg.innerHTML = `
-                <p><i class="fa-solid fa-id-card"></i> The UID of your ID Card is:</p>
+                <p><i class="fa-solid fa-id-card"></i> Your Card ID is:</p>
                 <h2 style="margin-top: 10px; font-weight: bold; font-family: monospace; font-size: 1.8em; letter-spacing: 1px; word-break: break-all; color: var(--primary-dark);">${escapeHtml(lastScannedUID)}</h2>`;
         } else if (notSignedInMsgElement) {
             notSignedInMsgElement.remove();
@@ -7941,6 +8156,8 @@ function updateAuthUI() {
         if (tableContainer) tableContainer.style.display = 'none';
         if (scanHistoryModule) scanHistoryModule.style.display = 'none';
     }
+
+    rememberStartupView();
 
     const syncBtn = document.getElementById('sync-btn');
     if (syncBtn) {
@@ -8077,6 +8294,7 @@ function setupAuthStateTracking() {
             availableCourses = [];
             refreshPendingChanges();
             stopScanning();
+            clearScanLock();
             stopAdminAutoRefresh();
             showNotification('warning', 'Session Expired', 'Please sign in again to continue.');
             updateAuthUI();
@@ -11645,7 +11863,9 @@ function updateScanButtons() {
 * SCENARIO B: If logged in, records attendance for the current course.
 */
 async function handleNfcReading({ serialNumber }) {
-    if (document.querySelector('.dialog-backdrop')) return;
+    // A dialog's own scan takes the card, unless the lock screen covers that dialog.
+    const locked = isScanLockScreenShown();
+    if (!locked && document.querySelector('.dialog-backdrop')) return;
     if (typeof serialNumber !== 'string' || !serialNumber.trim()) {
         playSound(false);
         showNotification('warning', 'Card Not Read', 'Hold your card against the reader and try again.');
@@ -11719,6 +11939,12 @@ async function handleNfcReading({ serialNumber }) {
     // Runs if Signed In OR in Lecturer Mode
     // ============================================================
 
+    // The lecturer's own unlock card locks and unlocks instead of recording attendance.
+    if ((scanLockSession || locked) && await isScanLockCard(serialNumber)) {
+        toggleScanLockWithCard();
+        return;
+    }
+
     const convertedUid = convertUidToExternalId(serialNumber);
     const primaryUid = lookupPrimaryUid(serialNumber);
     const finalUid = primaryUid || convertedUid || serialNumber;
@@ -11743,7 +11969,9 @@ async function handleNfcReading({ serialNumber }) {
     }
 
     const timestamp = new Date();
-    playSound(true);
+    // A card missing from the student list sounds the failure tone to get attention.
+    const isUnknown = !primaryUid;
+    playSound(!isUnknown);
 
     let newLog = {
         uid: convertedUid,
@@ -11763,33 +11991,53 @@ async function handleNfcReading({ serialNumber }) {
 
     saveAndMarkChanges(currentCourse);
     updateUI();
-
-    // Trigger the Welcome Overlay logic (Same as before)
-    const name = primaryUid ? databaseMap[primaryUid]?.name : 'Unknown';
-    const isMobile = window.innerWidth <= 700;
-
-    if (isMobile) {
-        const overlay = document.getElementById('scan-announcement-overlay');
-        const nameEl = document.getElementById('scan-announcement-name');
-        if (overlay && nameEl) {
-            nameEl.textContent = name;
-            // Don't use openDialogMode/closeDialogMode - the overlay should NOT block scrolling
-            overlay.style.display = 'flex';
-            void overlay.offsetWidth;
-            overlay.classList.add('visible');
-            if (window.overlayTimeout) clearTimeout(window.overlayTimeout);
-            if (window.overlayHideTimeout) clearTimeout(window.overlayHideTimeout);
-            const hideOverlay = () => {
-                if (window.overlayTimeout) clearTimeout(window.overlayTimeout);
-                overlay.classList.remove('visible');
-                window.overlayHideTimeout = setTimeout(() => {
-                    overlay.style.display = 'none';
-                }, 150);
-            };
-            window.overlayTimeout = setTimeout(hideOverlay, 2500);
-            overlay.onclick = hideOverlay;
-        }
+    if (scanLockSession) {
+        scanLockScanCount++;
+        updateScanLockScreen();
     }
+
+    // The lock screen shows the overlay on any screen size.
+    if (window.innerWidth <= 700 || locked) {
+        showScanAnnouncement(isUnknown
+            ? { unknown: true, name: convertedUid || serialNumber }
+            : { unknown: false, name: databaseMap[primaryUid]?.name || '' });
+    }
+}
+
+// Full-screen result of a scan: white with the name, or orange with the Card ID
+// when the card is not in the student list.
+function showScanAnnouncement({ unknown, name }) {
+    const overlay = document.getElementById('scan-announcement-overlay');
+    const nameEl = document.getElementById('scan-announcement-name');
+    if (!overlay || !nameEl) return;
+
+    overlay.classList.toggle('is-unknown', unknown);
+    // A fresh icon element lets the icon kit render the new glyph.
+    overlay.querySelector('.scan-announcement-icon').innerHTML = unknown
+        ? '<i class="fa-solid fa-triangle-exclamation"></i>'
+        : '<i class="fa-solid fa-circle-check"></i>';
+    overlay.querySelector('.scan-announcement-title').textContent = unknown ? 'Unknown card' : 'Welcome';
+    overlay.querySelector('.scan-announcement-subtitle').textContent = unknown
+        ? 'Attendance recorded · Not in the student list'
+        : 'Attendance Recorded';
+    nameEl.textContent = name;
+
+    // Don't use openDialogMode/closeDialogMode - the overlay should NOT block scrolling
+    overlay.style.display = 'flex';
+    void overlay.offsetWidth;
+    overlay.classList.add('visible');
+    if (window.overlayTimeout) clearTimeout(window.overlayTimeout);
+    if (window.overlayHideTimeout) clearTimeout(window.overlayHideTimeout);
+    const hideOverlay = () => {
+        if (window.overlayTimeout) clearTimeout(window.overlayTimeout);
+        overlay.classList.remove('visible');
+        window.overlayHideTimeout = setTimeout(() => {
+            overlay.style.display = 'none';
+        }, 150);
+    };
+    // An unknown card stays up longer so it is noticed.
+    window.overlayTimeout = setTimeout(hideOverlay, unknown ? 4000 : 2500);
+    overlay.onclick = hideOverlay;
 }
 
 /**
@@ -11825,6 +12073,475 @@ function stopScanning() {
     }
 
     if (nfcReader) nfcReader = null;
+
+    // Stopping while unlocked ends the lock session; a scanner that fails while
+    // locked stays locked and says that scanning is paused.
+    if (scanLockSession && !isScanLockScreenShown()) {
+        endScanLockSession();
+    } else if (isScanLockScreenShown()) {
+        updateScanLockScreen();
+        startScanLockReader();
+    }
+    updateScanLockButton();
+}
+
+// ============================================================
+// SCAN LOCK
+// A scanning phone is often left unattended, so scanning shows a lock screen
+// that only records attendance. The lecturer unlocks it by tapping their own
+// staff card on a trusted device, the same rules as staff card sign-in, which
+// the database checks. The last card confirmed on this phone is kept as a
+// salted hash so the phone also unlocks offline. The lock is shared by every
+// Stando tab of this website and survives a reload, and leaving the page while
+// locked is reported on the next unlock.
+// ============================================================
+const SCAN_LOCK_KEY = 'stando_scan_lock';
+const SCAN_LOCK_CARD_PREFIX = 'stando_scan_lock_card_';
+const SCAN_LOCK_IDLE_MS = 30000; // Relock after this long untouched while scanning
+const SCAN_LOCK_MIN_AWAY_MS = 2000; // Shorter absences are not reported
+let scanLockSession = false; // From Start scanning until the lecturer stops
+let scanLockScanCount = 0;
+let scanLockIdleTimer = null;
+let scanLockClockInterval = null;
+let scanLockReaderController = null;
+let scanLockLastCardToggle = 0;
+let scanLockUnavailableShown = false;
+
+function scanLockAccount() {
+    return String(currentUser?.email || '').trim().toLowerCase();
+}
+
+function readScanLockState() {
+    try {
+        return JSON.parse(localStorage.getItem(SCAN_LOCK_KEY) || 'null');
+    } catch {
+        return null;
+    }
+}
+
+function writeScanLockState(state) {
+    try {
+        if (state) localStorage.setItem(SCAN_LOCK_KEY, JSON.stringify(state));
+        else localStorage.removeItem(SCAN_LOCK_KEY);
+    } catch (error) {
+        console.warn('Could not save the scan lock:', error);
+    }
+}
+
+function isScanLockScreenShown() {
+    return !!document.getElementById('scan-lock');
+}
+
+// Only administrators record attendance, and hashing needs a secure context (as NFC does).
+function scanLockAvailable() {
+    return isSignedIn && isAdmin && !!scanLockAccount() && !!supabaseClient && !!window.crypto?.subtle;
+}
+
+async function hashScanLockValue(value, salt) {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`${salt}:${value}`));
+    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+// Every form a staff card may be stored in, as staff card sign-in matches them.
+function staffCardCandidates(serialNumber) {
+    const raw = String(serialNumber || '').trim();
+    return [...new Set([raw, raw.toLowerCase(), raw.toUpperCase(), raw.replace(/:/g, ''), convertUidToExternalId(raw)])]
+        .filter(Boolean);
+}
+
+function scanLockCardValue(serialNumber) {
+    return String(convertUidToExternalId(serialNumber) || serialNumber).trim().toLowerCase();
+}
+
+// The staff card last confirmed on this phone, for unlocking offline.
+function getSavedUnlockCard() {
+    try {
+        return JSON.parse(localStorage.getItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount()) || 'null');
+    } catch {
+        return null;
+    }
+}
+
+async function saveUnlockCard(serialNumber) {
+    const salt = crypto.randomUUID();
+    const hash = await hashScanLockValue(scanLockCardValue(serialNumber), salt);
+    try {
+        localStorage.setItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount(), JSON.stringify({ salt, hash }));
+    } catch (error) {
+        console.warn('Could not save the unlock card:', error);
+    }
+}
+
+async function isSavedUnlockCard(serialNumber) {
+    const saved = getSavedUnlockCard();
+    return !!saved?.hash && await hashScanLockValue(scanLockCardValue(serialNumber), saved.salt) === saved.hash;
+}
+
+// Whether the signed-in lecturer has a staff card and this phone is trusted.
+async function canUnlockWithStaffCard() {
+    if (navigator.onLine) {
+        try {
+            const { data, error } = await supabaseClient.rpc('staff_card_unlock_ready', { p_device_id: getDeviceFingerprint() });
+            if (error) throw error;
+            return data === true;
+        } catch (error) {
+            console.warn('Staff card check unavailable:', error?.message || error);
+        }
+    }
+    return !!getSavedUnlockCard();
+}
+
+// Online, the database decides (so a changed staff card takes effect at once);
+// offline, the card last confirmed on this phone still works.
+async function isScanLockCard(serialNumber) {
+    if (!serialNumber || !scanLockAvailable()) return false;
+    const saved = await isSavedUnlockCard(serialNumber);
+    // Students' cards skip the server check; a card this phone already confirmed does not.
+    if (!saved && lookupPrimaryUid(serialNumber)) return false;
+    if (navigator.onLine) {
+        try {
+            const { data, error } = await supabaseClient.rpc('verify_staff_card', {
+                p_card_ids: staffCardCandidates(serialNumber),
+                p_device_id: getDeviceFingerprint()
+            });
+            if (error) throw error;
+            if (data === true) await saveUnlockCard(serialNumber);
+            else if (saved) localStorage.removeItem(SCAN_LOCK_CARD_PREFIX + scanLockAccount());
+            return data === true;
+        } catch (error) {
+            console.warn('Staff card check unavailable; using the card saved on this phone:', error?.message || error);
+        }
+    }
+    return saved;
+}
+
+function formatScanLockDuration(ms) {
+    const seconds = Math.max(1, Math.round(ms / 1000));
+    return seconds < 60 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
+}
+
+function formatScanLockTime(timestamp) {
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+// Start scanning behind the lock screen when the lecturer can unlock it again.
+async function startScanningLocked() {
+    if (!scanLockAvailable()) return startScanning();
+
+    await startScanning();
+    if (!isScanning) return;
+    if (!(await canUnlockWithStaffCard())) {
+        if (!scanLockUnavailableShown) {
+            scanLockUnavailableShown = true;
+            showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
+                ? 'To lock Stando while scanning, add your card in Settings → Staff and trust this phone in Settings → Trusted Devices.'
+                : 'To lock Stando while scanning, ask an administrator to add your staff card and trust this phone.', 10000);
+        }
+        return;
+    }
+    scanLockSession = true;
+    scanLockScanCount = 0;
+    // Full screen hides the address bar and tabs. It needs a recent tap, so it
+    // can fail after a slow NFC permission prompt; the lock works without it.
+    requestScanLockFullscreen();
+    lockScanner();
+    updateScanLockButton();
+}
+
+function requestScanLockFullscreen() {
+    const root = document.documentElement;
+    if (document.fullscreenElement || !root.requestFullscreen) return;
+    root.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Optional; the lock works without it. */ });
+}
+
+function exitScanLockFullscreen() {
+    if (document.fullscreenElement && document.exitFullscreen) document.exitFullscreen().catch(() => { });
+}
+
+function lockScanner() {
+    if (!scanLockAvailable()) return;
+    clearTimeout(scanLockIdleTimer);
+    const state = readScanLockState();
+    if (!state || state.email !== scanLockAccount()) {
+        writeScanLockState({ email: scanLockAccount(), since: Date.now(), events: [] });
+    }
+    showScanLockScreen();
+}
+
+function unlockScanner() {
+    const state = readScanLockState();
+    writeScanLockState(null);
+    hideScanLockScreen();
+    reportScanLockAbsences(state?.events);
+    if (scanLockSession) {
+        if (isScanning) armScanLockIdle();
+        else endScanLockSession();
+    }
+    updateScanLockButton();
+}
+
+function endScanLockSession() {
+    scanLockSession = false;
+    clearTimeout(scanLockIdleTimer);
+    scanLockIdleTimer = null;
+    exitScanLockFullscreen();
+    updateScanLockButton();
+}
+
+// Signing out removes what the lock protects, so the lock goes too.
+function clearScanLock() {
+    endScanLockSession();
+    writeScanLockState(null);
+    hideScanLockScreen();
+}
+
+function toggleScanLockWithCard() {
+    // One tap can be read twice; ignore the echo.
+    if (Date.now() - scanLockLastCardToggle < 1500) return;
+    scanLockLastCardToggle = Date.now();
+    playSound(true);
+    if (isScanLockScreenShown()) unlockScanner();
+    else lockScanner();
+}
+
+function armScanLockIdle() {
+    clearTimeout(scanLockIdleTimer);
+    scanLockIdleTimer = setTimeout(() => {
+        if (scanLockSession && isScanning && !isScanLockScreenShown()) lockScanner();
+    }, SCAN_LOCK_IDLE_MS);
+}
+
+function updateScanLockButton() {
+    const lockBtn = document.getElementById('scan-lock-btn');
+    if (lockBtn) lockBtn.hidden = !(scanLockSession && isScanning);
+}
+
+function setScanLockInert(inert) {
+    Array.from(document.body.children).forEach(el => {
+        if (el.id === 'scan-lock' || el.id === 'scan-announcement-overlay' || el.tagName === 'SCRIPT') return;
+        if (inert && !el.inert) {
+            el.inert = true;
+            el.dataset.scanLockInert = '1';
+        } else if (!inert && el.dataset.scanLockInert) {
+            el.inert = false;
+            delete el.dataset.scanLockInert;
+        }
+    });
+}
+
+function scanLockBeforeUnload(event) {
+    event.preventDefault();
+    event.returnValue = '';
+}
+
+function showScanLockScreen() {
+    let screen = document.getElementById('scan-lock');
+    if (!screen) {
+        // Close open row menus; they float above everything.
+        document.querySelectorAll('.row-menu-list:not([hidden])').forEach(menu => { menu.hidden = true; });
+        screen = document.createElement('div');
+        screen.id = 'scan-lock';
+        screen.className = 'scan-lock';
+        screen.tabIndex = -1;
+        screen.setAttribute('role', 'dialog');
+        screen.setAttribute('aria-modal', 'true');
+        screen.setAttribute('aria-labelledby', 'scan-lock-title');
+        screen.innerHTML = `
+            <div class="scan-lock-inner">
+                <div class="scan-lock-top">
+                    <span class="scan-lock-badge"><i class="fa-solid fa-lock" aria-hidden="true"></i> Locked</span>
+                    <span class="scan-lock-course"></span>
+                </div>
+                <div class="scan-lock-view">
+                    <div class="scan-lock-clock" aria-hidden="true"></div>
+                    <h2 class="scan-lock-title" id="scan-lock-title"></h2>
+                    ${cardTapAnimationHtml()}
+                    <p class="scan-lock-status" role="status" aria-live="polite"></p>
+                    <p class="scan-lock-alert" hidden></p>
+                </div>
+                <div class="scan-lock-footer">
+                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i> Lecturer: tap your staff card to unlock.</p>
+                    <button type="button" class="scan-lock-link" data-key="signout">Can't unlock? Sign out</button>
+                </div>
+            </div>`;
+        screen.addEventListener('click', handleScanLockClick);
+        document.body.appendChild(screen);
+        document.documentElement.classList.add('scan-locked');
+        setScanLockInert(true);
+        window.addEventListener('beforeunload', scanLockBeforeUnload);
+        scanLockClockInterval = setInterval(updateScanLockScreen, 1000);
+    }
+    updateScanLockScreen();
+    // Without the attendance scanner (another tab, or after a reload), listen for the unlock card.
+    if (!nfcReader) startScanLockReader();
+    screen.focus({ preventScroll: true });
+}
+
+function hideScanLockScreen() {
+    const screen = document.getElementById('scan-lock');
+    if (!screen) return;
+    stopScanLockReader();
+    clearInterval(scanLockClockInterval);
+    scanLockClockInterval = null;
+    window.removeEventListener('beforeunload', scanLockBeforeUnload);
+    setScanLockInert(false);
+    document.documentElement.classList.remove('scan-locked');
+    screen.remove();
+}
+
+// Runs every second; text is only written when it changes, so live regions stay quiet.
+function updateScanLockScreen() {
+    const screen = document.getElementById('scan-lock');
+    if (!screen) return;
+    const setText = (selector, text) => {
+        const el = screen.querySelector(selector);
+        if (el.textContent !== text) el.textContent = text;
+    };
+    const session = getCurrentActiveSession();
+    setText('.scan-lock-course', [currentCourse, session !== 'Default' ? session : ''].filter(Boolean).join(' · '));
+    setText('.scan-lock-clock', formatScanLockTime(Date.now()));
+    screen.classList.toggle('is-paused', !isScanning);
+    setText('.scan-lock-title', isScanning ? 'Tap your card on the back of this phone' : 'Scanning is paused');
+    if (!screen.querySelector('.scan-lock-status').dataset.message) {
+        setText('.scan-lock-status', isScanning
+            ? `${scanLockScanCount} ${scanLockScanCount === 1 ? 'card' : 'cards'} recorded`
+            : 'Cards are not being recorded. Unlock to start scanning again.');
+    }
+
+    const events = readScanLockState()?.events || [];
+    screen.querySelector('.scan-lock-alert').hidden = events.length === 0;
+    if (events.length) {
+        const last = events[events.length - 1];
+        setText('.scan-lock-alert', `${events.length === 1 ? 'Stando was left' : `Stando was left ${events.length} times, last`} at ${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}. Cards tapped then were not recorded.`);
+    }
+}
+
+// A short message in place of the scan count, for example for a card tapped while paused.
+function flashScanLockStatus(message) {
+    const status = document.querySelector('#scan-lock .scan-lock-status');
+    if (!status) return;
+    status.dataset.message = '1';
+    status.textContent = message;
+    clearTimeout(status._timer);
+    status._timer = setTimeout(() => {
+        delete status.dataset.message;
+        updateScanLockScreen();
+    }, 4000);
+}
+
+// Without the staff card (forgotten, or the phone is offline and has never
+// confirmed it), signing out is the way out; it gives nobody else access.
+function handleScanLockClick(event) {
+    if (!event.target.closest('button[data-key="signout"]')) return;
+    showConfirmationDialog({
+        title: 'Sign out to unlock?',
+        message: 'Scanning stops, and you sign in again with Google or your staff card. Attendance saved on this phone stays on it and syncs when you sign in again with the same account.',
+        confirmText: 'Sign out',
+        isDestructive: true,
+        onConfirm: () => {
+            clearScanLock();
+            handleSignoutClick();
+        }
+    });
+}
+
+function startScanLockReader() {
+    if (!nfcSupported || scanLockReaderController) return;
+    const controller = new AbortController();
+    scanLockReaderController = controller;
+    const reader = new NDEFReader();
+    reader.onreading = async ({ serialNumber }) => {
+        if (controller.signal.aborted) return;
+        if (await isScanLockCard(serialNumber)) {
+            toggleScanLockWithCard();
+        } else {
+            playSound(false);
+            flashScanLockStatus("Scanning is paused, so this card wasn't recorded.");
+        }
+    };
+    // Without an earlier NFC permission this fails quietly; signing out still works.
+    reader.scan({ signal: controller.signal }).catch(() => {
+        if (scanLockReaderController === controller) scanLockReaderController = null;
+    });
+}
+
+function stopScanLockReader() {
+    if (scanLockReaderController) scanLockReaderController.abort();
+    scanLockReaderController = null;
+}
+
+// Record when the locked page is hidden or closed; report it when it is back.
+function noteScanLockHidden() {
+    const state = readScanLockState();
+    if (state && state.email === scanLockAccount() && !state.hiddenAt) {
+        writeScanLockState({ ...state, hiddenAt: Date.now() });
+    }
+}
+
+function noteScanLockReturn() {
+    const state = readScanLockState();
+    if (!state?.hiddenAt || state.email !== scanLockAccount()) return;
+    const away = Date.now() - state.hiddenAt;
+    const events = away >= SCAN_LOCK_MIN_AWAY_MS
+        ? [...(state.events || []), { at: state.hiddenAt, ms: away }].slice(-20)
+        : (state.events || []);
+    writeScanLockState({ ...state, hiddenAt: null, events });
+    updateScanLockScreen();
+}
+
+function reportScanLockAbsences(events) {
+    if (!events?.length) return;
+    const last = events[events.length - 1];
+    const times = events.length === 1 ? 'once' : `${events.length} times`;
+    showNotification('warning', 'Stando Was Left While Locked',
+        `Stando was left ${times}, last at ${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}. Cards tapped then were not recorded.`, 10000);
+}
+
+// After sign-in (or in another tab), show the lock if this account left it locked.
+function restoreScanLock() {
+    const state = readScanLockState();
+    if (!state) return;
+    if (!scanLockAccount() || state.email !== scanLockAccount()) {
+        writeScanLockState(null);
+        return;
+    }
+    showScanLockScreen();
+    noteScanLockReturn();
+}
+
+function syncScanLockFromStorage() {
+    if (!isSignedIn) return;
+    const state = readScanLockState();
+    if (state && state.email === scanLockAccount()) {
+        if (isScanLockScreenShown()) updateScanLockScreen();
+        else showScanLockScreen();
+    } else if (isScanLockScreenShown()) {
+        hideScanLockScreen();
+        if (scanLockSession && isScanning) armScanLockIdle();
+    }
+}
+
+function setupScanLock() {
+    document.getElementById('scan-lock-btn')?.addEventListener('click', () => {
+        requestScanLockFullscreen();
+        lockScanner();
+    });
+
+    // Any touch or key while unlocked and scanning restarts the relock countdown.
+    ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(type => {
+        document.addEventListener(type, () => {
+            if (scanLockSession && isScanning && !isScanLockScreenShown()) armScanLockIdle();
+        }, { capture: true, passive: true });
+    });
+
+    window.addEventListener('storage', (event) => {
+        if (event.key === SCAN_LOCK_KEY || event.key === null) syncScanLockFromStorage();
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') noteScanLockHidden();
+        else noteScanLockReturn();
+    });
+    window.addEventListener('pagehide', noteScanLockHidden);
 }
 
 /**

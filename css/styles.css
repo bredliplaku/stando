@@ -1258,13 +1258,15 @@
 
         .skeleton-bar {
             height: 12px;
-            background: #e0e0e0;
-            border-radius: 4px;
+            background: #eceef3;
+            border-radius: 6px;
             width: 100%;
             display: block;
-            animation: shimmer 1.5s infinite linear;
-            background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
-            background-size: 200% 100%;
+            animation: sk-breathe 2.4s ease-in-out infinite;
+        }
+
+        .dark-mode .skeleton-bar {
+            background: rgba(255, 255, 255, 0.08);
         }
 
         .skeleton-bar.short {
@@ -4687,36 +4689,6 @@
             }
         }
 
-        /* --- Skeleton Loader Styles --- */
-        .skeleton-loader-overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10000;
-            background-color: var(--background-color);
-            opacity: 1;
-            transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
-        }
-
-        .skeleton-loader-container {
-            max-width: 1000px;
-            margin: 0 auto;
-            padding: 20px;
-            position: relative;
-        }
-
-        @keyframes shimmer {
-            0% {
-                background-position: -200% 0;
-            }
-
-            100% {
-                background-position: 200% 0;
-            }
-        }
-
         /* --- Cat Companion Styles --- */
         #cat-companion {
             position: fixed;
@@ -4799,124 +4771,6 @@
             #cat-companion {
                 display: none !important;
             }
-        }
-
-        .skeleton-line,
-        .skeleton-info-item,
-        .skeleton-course-btn,
-        .skeleton-module-header,
-        .skeleton-module-content {
-            background-color: #e0e0e0;
-            /* Use background-color instead of background */
-            border-radius: 8px;
-
-            /* Add the shimmer gradient */
-            background-image: linear-gradient(90deg, #e0e0e0, #f5f5f5, #e0e0e0);
-            background-size: 200% 100%;
-            background-repeat: no-repeat;
-
-            /* Apply the animation */
-            animation: shimmer 2s linear infinite;
-        }
-
-        /* Style for the first info card */
-        .skeleton-info-item:first-child {
-            border-top-left-radius: var(--border-radius);
-            border-bottom-left-radius: var(--border-radius);
-        }
-
-        /* Style for the last info card */
-        .skeleton-info-item:last-child {
-            border-top-right-radius: var(--border-radius);
-            border-bottom-right-radius: var(--border-radius);
-        }
-
-        /* Style for the first course button skeleton */
-        .skeleton-course-btn:first-child {
-            border-top-left-radius: var(--border-radius-lg);
-            border-bottom-left-radius: var(--border-radius-lg);
-        }
-
-        /* Style for the last course button skeleton */
-        .skeleton-course-btn:last-child {
-            border-top-right-radius: var(--border-radius-lg);
-            border-bottom-right-radius: var(--border-radius-lg);
-        }
-
-        .skeleton-header {
-            background-color: #e0e0e0;
-            padding: 30px;
-            border-radius: 20px;
-            margin-top: 50px;
-            margin-bottom: 20px;
-
-            /* Add the same shimmer properties */
-            background-image: linear-gradient(90deg, #e0e0e0, #f5f5f5, #e0e0e0);
-            background-size: 200% 100%;
-            background-repeat: no-repeat;
-            animation: shimmer 2s linear infinite;
-        }
-
-        .skeleton-line {
-            height: 20px;
-            margin-bottom: 10px;
-        }
-
-        .skeleton-line.title {
-            height: 40px;
-            width: 60%;
-        }
-
-        .skeleton-line.subtitle {
-            height: 24px;
-            width: 40%;
-        }
-
-        .skeleton-info-bar {
-            display: flex;
-            gap: 5px;
-            margin-top: 20px;
-        }
-
-        .skeleton-info-item {
-            flex: 1;
-            height: 50px;
-        }
-
-        .skeleton-courses {
-            display: flex;
-            gap: 5px;
-            margin-bottom: 20px;
-        }
-
-        .skeleton-course-btn {
-            height: 45px;
-            width: 120px;
-        }
-
-        .skeleton-module {
-            border-radius: 20px;
-            overflow: hidden;
-        }
-
-        .skeleton-module-header {
-            height: 50px;
-        }
-
-        .skeleton-module-content {
-            margin-top: 2px;
-            height: 200px;
-        }
-
-        .dark-mode .skeleton-header,
-        .dark-mode .skeleton-line,
-        .dark-mode .skeleton-info-item,
-        .dark-mode .skeleton-course-btn,
-        .dark-mode .skeleton-module-header,
-        .dark-mode .skeleton-module-content {
-            background-color: #2c2c2e;
-            /* Add the dark mode shimmer gradient */
-            background-image: linear-gradient(90deg, #2c2c2e, #3a3a3c, #2c2c2e);
         }
 
         .cat-companion {
@@ -8086,5 +7940,1389 @@ body.is-admin .toolbar-menu.admin-only {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
         scroll-behavior: auto !important;
+    }
+}
+
+/* =========================================================================
+   Card tap illustration: a card held against the back of a phone.
+   The resting state shows the card in place, which is what reduced motion sees.
+   ========================================================================= */
+.card-tap {
+    display: block;
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    margin: 6px auto 12px;
+    overflow: visible;
+}
+
+.tap-phone,
+.tap-card,
+.tap-check,
+.tap-waves circle {
+    transform-box: fill-box;
+    transform-origin: center;
+}
+
+.tap-phone-body { fill: #37474f; }
+.tap-phone-camera { fill: #263238; }
+.tap-phone-lens { fill: #11171a; stroke: #546e7a; stroke-width: 1.5; }
+.tap-card-body { fill: #fff; stroke: #cfd8dc; stroke-width: 1.5; }
+.tap-card-chip { fill: #f9a825; }
+.tap-card-photo { fill: #c5cae9; }
+.tap-card-line { fill: #cfd8dc; }
+.tap-waves circle { fill: none; stroke: var(--primary-color); stroke-width: 3; opacity: 0; }
+.tap-waves circle:first-child { opacity: 0.35; }
+.tap-check circle { fill: var(--success-color); }
+.tap-check path { fill: none; stroke: #fff; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+
+.dark-mode .tap-phone-body { fill: #546e7a; }
+.dark-mode .tap-phone-camera { fill: #37474f; }
+.dark-mode .tap-card-body { fill: #eceff1; stroke: transparent; }
+.dark-mode .tap-waves circle { stroke: var(--primary-light); }
+
+@media (prefers-reduced-motion: no-preference) {
+    .tap-card { animation: tap-card 3.6s ease-in-out infinite both; }
+    .tap-waves circle { animation: tap-wave 3.6s ease-out infinite both; }
+    .tap-waves circle:nth-child(2) { animation-name: tap-wave-late; }
+    .tap-check { animation: tap-check 3.6s ease-out infinite both; }
+    .tap-phone { animation: tap-buzz 3.6s linear infinite; }
+}
+
+@keyframes tap-card {
+    0% { transform: translate(52px, 40px) rotate(14deg); opacity: 0; }
+    10% { transform: translate(46px, 34px) rotate(12deg); opacity: 1; }
+    34%, 84% { transform: translate(0, 0) rotate(0); opacity: 1; }
+    100% { transform: translate(0, 0) rotate(0); opacity: 0; }
+}
+
+@keyframes tap-wave {
+    0%, 36% { transform: scale(0.85); opacity: 0; }
+    40% { opacity: 0.7; }
+    64%, 100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes tap-wave-late {
+    0%, 46% { transform: scale(0.85); opacity: 0; }
+    50% { opacity: 0.7; }
+    74%, 100% { transform: scale(1.6); opacity: 0; }
+}
+
+@keyframes tap-check {
+    0%, 56% { transform: scale(0); opacity: 0; }
+    64% { transform: scale(1.15); opacity: 1; }
+    70%, 84% { transform: scale(1); opacity: 1; }
+    100% { transform: scale(1); opacity: 0; }
+}
+
+@keyframes tap-buzz {
+    0%, 56%, 64%, 100% { transform: translateX(0); }
+    58% { transform: translateX(-1.5px); }
+    60% { transform: translateX(1.5px); }
+    62% { transform: translateX(-1px); }
+}
+
+/* =========================================================================
+   Register your card: one step at a time
+   ========================================================================= */
+.reg-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.reg-content.reg-step-in {
+    animation: reg-step-in 0.22s ease-out;
+}
+
+@keyframes reg-step-in {
+    from { opacity: 0; transform: translateX(12px); }
+    to { opacity: 1; transform: none; }
+}
+
+.reg-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid rgba(251, 140, 0, 0.3);
+    border-left-width: 3px;
+    margin-bottom: 12px;
+    border-radius: 10px;
+    background: rgba(251, 140, 0, 0.08);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.reg-notice > i,
+.reg-notice > svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: var(--warning-color);
+}
+
+.dark-mode .reg-notice {
+    border-color: rgba(255, 183, 77, 0.3);
+    background: rgba(255, 183, 77, 0.08);
+}
+
+.dialog p.reg-instruction {
+    margin: 0 0 6px;
+    text-align: center;
+    font-size: 0.9375rem;
+}
+
+.dialog p.reg-hint,
+.dialog p.reg-account {
+    margin: 0 0 12px;
+    text-align: center;
+    color: #78909c;
+    font-size: 0.8125rem;
+    overflow-wrap: anywhere;
+}
+
+.dark-mode .dialog p.reg-hint,
+.dark-mode .dialog p.reg-account {
+    color: #90a4ae;
+}
+
+.reg-status {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 8px 14px;
+    border-radius: 18px;
+    background: rgba(57, 73, 171, 0.08);
+    color: var(--primary-color);
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.35;
+}
+
+.reg-status-dot {
+    flex-shrink: 0;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.reg-status.is-ready .reg-status-dot {
+    animation: reg-pulse 1.4s ease-in-out infinite;
+}
+
+.reg-status.is-error {
+    background: rgba(229, 57, 53, 0.08);
+    color: #c62828;
+}
+
+.dark-mode .reg-status {
+    background: rgba(121, 134, 203, 0.16);
+    color: #c5cae9;
+}
+
+.dark-mode .reg-status.is-error {
+    background: rgba(239, 83, 80, 0.14);
+    color: #ef9a9a;
+}
+
+@keyframes reg-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.35; transform: scale(0.7); }
+}
+
+.reg-retry {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 8px 14px;
+    margin-top: 12px;
+}
+
+.reg-retry[hidden] {
+    display: none;
+}
+
+.dialog .reg-link,
+.dialog .reg-link:hover,
+.dialog .reg-link:active {
+    margin: 0;
+    padding: 6px 2px;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    opacity: 1;
+    filter: none;
+    transform: none;
+}
+
+.dark-mode .dialog .reg-link {
+    color: var(--primary-light);
+}
+
+.reg-friend {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 0 8px;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    color: #607d8b;
+    font-size: 0.875rem;
+}
+
+.dark-mode .reg-friend {
+    border-top-color: rgba(255, 255, 255, 0.1);
+    color: #9eaab3;
+}
+
+.reg-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    margin: 4px 0 14px;
+    padding: 18px 12px;
+    border: 1px solid rgba(67, 160, 71, 0.3);
+    border-radius: 16px;
+    background: rgba(67, 160, 71, 0.08);
+}
+
+.reg-result > i,
+.reg-result > svg {
+    margin-bottom: 4px;
+    color: var(--success-color);
+    font-size: 1.8rem;
+}
+
+.reg-result.is-friend {
+    border-color: rgba(57, 73, 171, 0.25);
+    background: rgba(57, 73, 171, 0.06);
+}
+
+.dark-mode .reg-result.is-friend {
+    border-color: rgba(121, 134, 203, 0.35);
+    background: rgba(121, 134, 203, 0.1);
+}
+
+.reg-result-label {
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.reg-result-id {
+    color: var(--text-color);
+    font-family: 'Google Sans Code', monospace;
+    font-size: clamp(1.9rem, 9vw, 2.6rem);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.06em;
+    text-align: center;
+    word-break: break-all;
+    -webkit-user-select: all;
+    user-select: all;
+}
+
+.reg-center {
+    display: flex;
+    justify-content: center;
+}
+
+.reg-progress {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 12px;
+}
+
+.reg-progress > span {
+    width: 22px;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.12);
+}
+
+.dark-mode .reg-progress > span {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.reg-progress > span.is-active {
+    background: var(--primary-color);
+}
+
+.reg-progress > em {
+    margin-left: 4px;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-style: normal;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.reg-list {
+    margin: 0 0 10px;
+    padding-left: 1.4em;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+}
+
+.reg-list li {
+    margin-bottom: 6px;
+    padding-left: 2px;
+}
+
+.reg-list li::marker {
+    color: var(--primary-color);
+    font-weight: 700;
+}
+
+.dialog input.reg-id-input {
+    font-family: 'Google Sans Code', monospace;
+    font-size: 1.25rem;
+    letter-spacing: 0.08em;
+}
+
+@media (max-width: 560px) {
+    .reg-dialog .card-tap {
+        max-width: 190px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .reg-content.reg-step-in,
+    .reg-status.is-ready .reg-status-dot {
+        animation: none;
+    }
+}
+
+/* =========================================================================
+   Scan results: an unknown card turns the overlay orange
+   ========================================================================= */
+#scan-announcement-overlay {
+    z-index: 10046; /* Above the scan lock screen */
+}
+
+#scan-announcement-overlay.is-unknown {
+    background-color: rgba(239, 108, 0, 0.97);
+    color: #fff;
+}
+
+.dark-mode #scan-announcement-overlay.is-unknown {
+    background-color: rgba(230, 81, 0, 0.97);
+    color: #fff;
+}
+
+#scan-announcement-overlay.is-unknown .scan-announcement-icon {
+    color: #fff;
+}
+
+#scan-announcement-overlay.is-unknown .scan-announcement-name {
+    font-family: 'Google Sans Code', monospace;
+    letter-spacing: 0.04em;
+}
+
+#scan-announcement-overlay.is-unknown .scan-announcement-subtitle {
+    padding: 0 24px;
+    opacity: 1;
+}
+
+#scan-announcement-overlay.is-unknown::before {
+    background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.25) 30%, rgba(255, 255, 255, 0) 60%);
+}
+
+/* =========================================================================
+   Scan lock: the lock button, the full-screen lock and its PIN pad
+   ========================================================================= */
+.scan-buttons {
+    gap: 10px;
+}
+
+.scan-lock-btn,
+.scan-lock-btn:hover {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 76px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 16px;
+    background: #455a64;
+    color: #fff;
+    font-size: 1.4em;
+    box-shadow: 0 4px 12px rgba(69, 90, 100, 0.3);
+}
+
+.scan-lock-btn[hidden] {
+    display: none;
+}
+
+.dark-mode .scan-lock-btn,
+.dark-mode .scan-lock-btn:hover {
+    background: #546e7a;
+}
+
+html.scan-locked,
+html.scan-locked body {
+    overflow: hidden;
+}
+
+.scan-lock {
+    position: fixed;
+    inset: 0;
+    z-index: 10045; /* Above floating row menus; below scan results and confirmations */
+    display: flex;
+    justify-content: center;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #f4f4f4;
+    color: #263238;
+    -webkit-user-select: none;
+    user-select: none;
+    animation: scan-lock-in 0.25s ease-out;
+}
+
+.dark-mode .scan-lock {
+    background: #000;
+    color: #e0e0e0;
+}
+
+@keyframes scan-lock-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+.scan-lock-inner {
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 440px;
+    min-height: 100%;
+    padding: calc(16px + env(safe-area-inset-top, 0px)) 20px calc(20px + env(safe-area-inset-bottom, 0px));
+    transition: transform 1s ease;
+}
+
+.scan-lock-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    min-height: 32px;
+}
+
+.scan-lock-badge {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(57, 73, 171, 0.1);
+    color: var(--primary-color);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.dark-mode .scan-lock-badge {
+    background: rgba(121, 134, 203, 0.18);
+    color: #c5cae9;
+}
+
+.scan-lock-course {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.875rem;
+    font-weight: 600;
+    opacity: 0.7;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-lock-view {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 0;
+    text-align: center;
+}
+
+.scan-lock-view[hidden] {
+    display: none;
+}
+
+.scan-lock-clock {
+    font-size: clamp(3rem, 16vw, 4.5rem);
+    font-variant-numeric: tabular-nums;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+}
+
+.scan-lock-title {
+    margin: 14px 0 6px;
+    font-size: clamp(1.25rem, 5.5vw, 1.6rem);
+    font-weight: 700;
+    line-height: 1.25;
+}
+
+.scan-lock .card-tap {
+    max-width: 260px;
+    margin: 8px auto;
+}
+
+.scan-lock.is-paused .card-tap {
+    display: none;
+}
+
+.scan-lock-status {
+    margin: 4px 0 0;
+    font-size: 1rem;
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.scan-lock-alert {
+    margin: 14px 0 0;
+    padding: 10px 14px;
+    border: 1px solid rgba(251, 140, 0, 0.35);
+    border-radius: 12px;
+    background: rgba(251, 140, 0, 0.1);
+    color: #e65100;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.dark-mode .scan-lock-alert {
+    border-color: rgba(255, 183, 77, 0.35);
+    background: rgba(255, 183, 77, 0.1);
+    color: #ffcc80;
+}
+
+.scan-lock-alert[hidden] {
+    display: none;
+}
+
+.scan-lock button {
+    margin: 0;
+    box-shadow: none;
+    font-family: inherit;
+    letter-spacing: normal;
+    text-transform: none;
+    opacity: 1;
+    filter: none;
+    -webkit-tap-highlight-color: transparent;
+}
+
+/* Unlocking, at the foot of the lock screen. Signing out is the quiet way out. */
+.scan-lock-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding-top: 12px;
+    text-align: center;
+}
+
+.scan-lock-hint {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    opacity: 0.75;
+}
+
+.scan-lock .scan-lock-link,
+.scan-lock .scan-lock-link:hover,
+.scan-lock .scan-lock-link:active {
+    padding: 8px 4px;
+    border: 0;
+    background: none;
+    color: #78909c;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    transform: none;
+}
+
+.dark-mode .scan-lock .scan-lock-link {
+    color: #90a4ae;
+}
+
+/* Short phones: a smaller illustration keeps everything on one screen. */
+@media (max-height: 640px) {
+    .scan-lock .card-tap {
+        max-width: 190px;
+    }
+}
+
+/* Muted hints; plain ".dialog p" would otherwise colour them as body text. */
+.reg-dialog p.form-hint {
+    color: #78909c;
+    font-size: 0.8125rem;
+    text-align: left;
+}
+
+.dark-mode .reg-dialog p.form-hint {
+    color: #90a4ae;
+}
+
+/* =========================================================================
+   Startup skeleton
+   One shape per view, picked before the first paint by <html data-stando-view>
+   (signed-out, student, lecturer or global) and data-stando-nfc. It uses the
+   page's own colours in either theme, so it settles into the real page; its
+   bones breathe slowly, in a gentle wave down the page.
+   ========================================================================= */
+.skeleton-loader-overlay {
+    --sk-page: #f4f4f4;
+    --sk-card: #fff;
+    --sk-card-border: transparent;
+    --sk-course: #fff;
+    --sk-bone: #eceef3;
+    --sk-bone-page: #e1e4eb;
+    --sk-bone-course: #eceef3;
+    --sk-accent: rgba(57, 73, 171, 0.2);
+    --sk-on-primary: rgba(255, 255, 255, 0.2);
+    --sk-banner: linear-gradient(135deg, #3949ab, #1a237e);
+    --sk-tab-active: rgba(0, 0, 0, 0.18);
+    --sk-module-head: #3949ab;
+    --sk-primary: #3949ab;
+    --sk-scan: #3949ab;
+    --sk-divider: rgba(0, 0, 0, 0.08);
+    --sk-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    --sk-shadow-soft: 0 2px 5px rgba(0, 0, 0, 0.05);
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    overflow: hidden;
+    background: var(--sk-page);
+    transition: opacity 0.35s ease-out;
+}
+
+.dark-mode .skeleton-loader-overlay {
+    --sk-page: #000;
+    --sk-card: #121212;
+    --sk-card-border: #333;
+    --sk-course: #444;
+    --sk-bone: rgba(255, 255, 255, 0.08);
+    --sk-bone-page: rgba(255, 255, 255, 0.1);
+    --sk-bone-course: rgba(255, 255, 255, 0.12);
+    --sk-accent: rgba(159, 168, 218, 0.28);
+    --sk-on-primary: rgba(255, 255, 255, 0.14);
+    --sk-banner: linear-gradient(135deg, #2c3e50, #1a237e);
+    --sk-tab-active: rgba(0, 0, 0, 0.25);
+    --sk-module-head: #2c3e50;
+    --sk-scan: #5c6bc0;
+    --sk-divider: rgba(255, 255, 255, 0.1);
+    --sk-shadow: none;
+    --sk-shadow-soft: none;
+}
+
+/* The page fades in underneath while the skeleton fades out (showMainContent). */
+.skeleton-loader-overlay.is-done {
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Only the view this visit expects. Without a choice, the sign-in card. */
+html:not([data-stando-view]) .sk-app,
+html[data-stando-view="signed-out"] .sk-app,
+html[data-stando-view="student"] .sk-signin,
+html[data-stando-view="lecturer"] .sk-signin,
+html[data-stando-view="global"] .sk-signin,
+html:not([data-stando-view="lecturer"]):not([data-stando-view="global"]) .sk-staff,
+html:not([data-stando-view="global"]) .sk-global,
+html:not([data-stando-view="student"]) .sk-student,
+html:not([data-stando-nfc]) .sk-nfc {
+    display: none !important;
+}
+
+/* A fast load never shows the bones: they arrive after a short pause. */
+.sk-signin,
+.sk-app {
+    animation: sk-appear 0.45s ease-out 0.12s both;
+}
+
+@keyframes sk-appear {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Bones: placeholders for text and controls. --sk-delay staggers the wave. */
+.sk {
+    display: block;
+    flex-shrink: 0;
+    height: 14px;
+    border-radius: 7px;
+    background: var(--sk-bone);
+    animation: sk-breathe 2.4s ease-in-out var(--sk-delay, 0s) infinite;
+}
+
+@keyframes sk-breathe {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.sk-on-primary {
+    background: var(--sk-on-primary);
+}
+
+.sk-accent {
+    background: var(--sk-accent);
+}
+
+/* --- Signed out --- */
+.sk-signin {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 100%;
+}
+
+.sk-signin-main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 40px 16px;
+}
+
+.sk-signin-card {
+    --sk-delay: 0s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 440px;
+    box-sizing: border-box;
+    padding: 30px 28px 0;
+    border: 1px solid var(--sk-card-border);
+    border-radius: 16px;
+    background: var(--sk-card);
+    box-shadow: var(--sk-shadow);
+}
+
+.sk-welcome {
+    width: 140px;
+    height: 16px;
+    margin-bottom: 11px;
+}
+
+/* Title lines as wide as the real ones: two lines here, three on narrow phones. */
+.sk-heading {
+    --sk-delay: 0.12s;
+    width: 264px;
+    max-width: 100%;
+    height: 26px;
+    margin-bottom: 6px;
+    border-radius: 8px;
+}
+
+.sk-heading-last {
+    width: 310px;
+}
+
+/* The title takes three lines only on narrow phones. */
+.sk-heading-phone {
+    display: none;
+}
+
+.sk-google {
+    --sk-delay: 0.24s;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    max-width: 300px;
+    height: 52px;
+    margin-top: 23px;
+    padding: 0 8px;
+    box-sizing: border-box;
+    border-radius: 26px;
+    background: var(--sk-primary);
+    box-shadow: var(--sk-shadow-soft);
+}
+
+.sk-google-g {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #fff;
+}
+
+/* Two left-aligned lines, centred as a block, under a full-width divider. */
+.sk-signin-note {
+    --sk-delay: 0.36s;
+    display: grid;
+    justify-content: center;
+    justify-items: start;
+    gap: 4px;
+    width: calc(100% + 56px);
+    margin-top: 27px;
+    padding: 18px 0 21px;
+    border-top: 1px solid var(--sk-divider);
+}
+
+.sk-text {
+    width: 224px;
+    height: 12px;
+    border-radius: 6px;
+}
+
+.sk-text-short {
+    width: 156px;
+}
+
+.sk-signin > .sk-scan {
+    width: calc(100% - 30px);
+    margin: 16px 15px 21px;
+}
+
+/* As tall as the real footer (logo, page links, copyright), so the card centres alike. */
+.sk-footer {
+    --sk-delay: 0.48s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 22px 0 33px;
+}
+
+.sk-logo {
+    width: 50px;
+    height: 36px;
+    margin-bottom: 85px;
+    border-radius: 10px;
+    background: var(--sk-bone-page);
+}
+
+.sk-copyright {
+    width: 230px;
+    height: 10px;
+    background: var(--sk-bone-page);
+}
+
+/* --- Signed in --- */
+.sk-app {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.sk-topbar {
+    --sk-delay: 0s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 36px;
+    padding: 10px 0;
+    margin-bottom: 17px;
+}
+
+.sk-topbar-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sk-topbar-end {
+    margin-left: auto;
+}
+
+.sk-topbar .sk {
+    background: var(--sk-bone-page);
+}
+
+.sk-status-dot {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+}
+
+.sk-chip {
+    width: 89px;
+    height: 36px;
+    border-radius: 18px;
+}
+
+.sk-chip-status {
+    width: 68px;
+    height: 26px;
+    border-radius: 13px;
+}
+
+.sk-chip-wide:first-child {
+    width: 184px;
+}
+
+.sk-chip-wide:nth-child(2) {
+    width: 141px;
+}
+
+.sk-user {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px 0 5px;
+}
+
+.sk-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+}
+
+.sk-user-name {
+    width: 72px;
+}
+
+.sk-banner {
+    --sk-delay: 0.12s;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 36px 30px 30px;
+    margin-bottom: 20px;
+    border-radius: 20px;
+    background: var(--sk-banner);
+    box-shadow: var(--sk-shadow);
+}
+
+.sk-banner-title {
+    width: 108px;
+    height: 28px;
+    margin-bottom: 18px;
+    border-radius: 8px;
+}
+
+.sk-banner-subtitle {
+    width: 238px;
+    height: 14px;
+    margin-bottom: 6px;
+}
+
+.sk-banner-chips {
+    display: flex;
+    gap: 3px;
+    margin-top: 13px;
+}
+
+.sk-banner-chips .sk {
+    width: 82px;
+    height: 44px;
+    border-radius: 4px;
+}
+
+.sk-banner-chips .sk:first-child {
+    border-radius: 10px 4px 4px 10px;
+}
+
+.sk-banner-chips .sk:nth-child(2) {
+    width: 105px;
+}
+
+.sk-banner-chips .sk:last-child {
+    width: 142px;
+    border-radius: 4px 10px 10px 4px;
+}
+
+.sk-banner-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-self: stretch;
+    margin-top: 21px;
+    padding: 0 10px;
+}
+
+.sk-tab {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 57px;
+    border-radius: 20px;
+}
+
+.sk-tab.is-active {
+    background: var(--sk-tab-active);
+}
+
+.sk-tab .sk {
+    width: 30%;
+    height: 16px;
+}
+
+.sk-requests {
+    --sk-delay: 0.2s;
+    display: flex;
+    margin-bottom: 16px;
+}
+
+.sk-chip-request {
+    width: 235px;
+    background: var(--sk-bone-page);
+}
+
+.sk-courses {
+    --sk-delay: 0.24s;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 3px;
+    margin-bottom: 20px;
+}
+
+.sk-course {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 51px;
+    border-radius: 8px;
+    background: var(--sk-course);
+    box-shadow: var(--sk-shadow-soft);
+}
+
+.sk-course:first-child {
+    border-radius: 20px 8px 8px 20px;
+}
+
+.sk-course:last-child {
+    border-radius: 8px 20px 20px 8px;
+}
+
+.sk-course .sk {
+    width: 64px;
+    height: 14px;
+    background: var(--sk-bone-course);
+}
+
+.sk-scan {
+    --sk-delay: 0.3s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 76px;
+    border-radius: 16px;
+    background: var(--sk-scan);
+    box-shadow: 0 4px 12px rgba(92, 107, 192, 0.3);
+}
+
+/* Its top margin collapses into the courses' bottom margin, as on the real page. */
+.sk-app > .sk-scan {
+    margin: 21px 15px 25px;
+}
+
+.sk-scan .sk {
+    width: 180px;
+    height: 18px;
+}
+
+.sk-module {
+    --sk-delay: 0.36s;
+    overflow: hidden;
+    border-radius: 20px;
+    background: var(--sk-card);
+    box-shadow: var(--sk-shadow);
+}
+
+.dark-mode .sk-module {
+    background: #1c1c1e;
+}
+
+.sk-module-header {
+    display: flex;
+    align-items: center;
+    height: 64px;
+    padding: 0 30px;
+    background: var(--sk-module-head);
+}
+
+.sk-module-header .sk {
+    width: 104px;
+    height: 16px;
+}
+
+.sk-module-body {
+    --sk-delay: 0.44s;
+    display: flex;
+    flex-direction: column;
+    padding: 16px 15px 22px;
+}
+
+.sk-filter {
+    display: flex;
+    gap: 3px;
+}
+
+.sk-field {
+    flex: 1;
+    height: 35px;
+    border-radius: 10px;
+}
+
+.sk-select {
+    flex: 0 0 135px;
+}
+
+.sk-count {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    min-height: 32px;
+    margin: 10px 0 22px;
+}
+
+.sk-count > .sk-text {
+    width: 85px;
+}
+
+.sk-tools {
+    display: flex;
+    gap: 3px;
+}
+
+.sk-tool {
+    width: 72px;
+    height: 32px;
+    border-radius: 6px;
+}
+
+.sk-tool:first-child {
+    border-radius: 16px 6px 6px 16px;
+}
+
+.sk-tool-more {
+    width: 32px;
+    border-radius: 6px 16px 16px 6px;
+}
+
+.sk-day {
+    --sk-delay: 0.52s;
+    width: 94px;
+    height: 26px;
+    margin-bottom: 14px;
+    border-radius: 13px;
+}
+
+.sk-log {
+    --sk-delay: 0.6s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    border-top: 1px solid var(--sk-divider);
+}
+
+.sk-log .sk-text {
+    width: 34%;
+}
+
+.sk-log .sk-time {
+    width: 52px;
+}
+
+.sk-log:nth-of-type(odd) .sk-text:first-child {
+    width: 42%;
+}
+
+/* --- Phones and small tablets: the top bar shows icons, courses go two by two --- */
+@media (max-width: 768px) {
+    .sk-topbar {
+        margin-bottom: 14px;
+    }
+
+    .sk-topbar-end {
+        gap: 11px;
+    }
+
+    .sk-chip-wide:first-child,
+    .sk-chip-wide:nth-child(2),
+    .sk-chip-signout {
+        width: 36px;
+        border-radius: 50%;
+    }
+
+    .sk-chip-status {
+        width: 68px;
+        height: 30px;
+        border-radius: 15px;
+    }
+
+    .sk-user {
+        padding: 0;
+    }
+
+    .sk-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    .sk-user-name {
+        display: none;
+    }
+
+    .sk-banner {
+        padding: 24px 20px 20px;
+        border-radius: 15px;
+    }
+
+    .sk-banner-title {
+        width: 86px;
+        height: 24px;
+        margin-bottom: 16px;
+    }
+
+    .sk-banner-subtitle {
+        width: 72%;
+        max-width: 222px;
+        height: 12px;
+        margin-bottom: 14px;
+    }
+
+    .sk-banner-chips {
+        margin-top: 5px;
+    }
+
+    .sk-banner-chips .sk {
+        height: 28px;
+    }
+
+    /* The database status chip is hidden on phones. */
+    .sk-banner-chips .sk:nth-child(2) {
+        display: none;
+    }
+
+    .sk-banner-chips .sk:first-child {
+        width: 67px;
+    }
+
+    .sk-banner-chips .sk:last-child {
+        width: 121px;
+    }
+
+    .sk-banner-tabs {
+        gap: 10px;
+        margin-top: 22px;
+        padding: 0 3px;
+    }
+
+    .sk-tab {
+        height: 55px;
+    }
+
+    .sk-tab .sk {
+        width: 50%;
+    }
+
+    .sk-requests {
+        margin-bottom: 15px;
+    }
+
+    .sk-chip-request {
+        width: 209px;
+        height: 31px;
+    }
+
+    .sk-courses {
+        grid-template-columns: 1fr 1fr;
+        gap: 6px 4px;
+        margin-bottom: 10px;
+    }
+
+    .sk-course:nth-child(odd) {
+        border-radius: 20px 8px 8px 20px;
+    }
+
+    .sk-course:nth-child(even) {
+        border-radius: 8px 20px 20px 8px;
+    }
+
+    .sk-app > .sk-scan {
+        margin-bottom: 15px;
+    }
+
+    .sk-scan .sk {
+        width: 130px;
+    }
+
+    .sk-module-header .sk {
+        width: 104px;
+        height: 16px;
+    }
+
+    .sk-tool,
+    .sk-tool-more {
+        width: 32px;
+    }
+
+    .sk-tool:first-child {
+        width: 34px;
+    }
+}
+
+@media (max-width: 480px) {
+    .sk-welcome {
+        margin-bottom: 13px;
+    }
+
+    .sk-heading {
+        width: 122px;
+    }
+
+    .sk-heading-phone {
+        display: block;
+        width: 246px;
+    }
+
+    .sk-heading-last {
+        width: 204px;
+    }
+
+    .sk-google {
+        height: 54px;
+        margin-top: 21px;
+        border-radius: 27px;
+    }
+
+    .sk-signin-note {
+        margin-top: 26px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sk,
+    .sk-signin,
+    .sk-app,
+    .skeleton-bar {
+        animation: none;
+    }
+
+    .skeleton-loader-overlay {
+        transition: none;
     }
 }
