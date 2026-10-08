@@ -5213,6 +5213,37 @@ body.signed-out #main-container {
     opacity: 0.8;
 }
 
+/* A student's card greets them: a quiet check that the card works. */
+.not-signed-in-message.is-known {
+    background-color: rgba(76, 175, 80, 0.1);
+    color: #1b5e20;
+}
+
+.dark-mode .not-signed-in-message.is-known {
+    background-color: rgba(129, 199, 132, 0.12);
+    color: #c8e6c9;
+}
+
+.card-greeting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    font-size: 1.05rem !important;
+}
+
+.card-greeting > i,
+.card-greeting > svg {
+    flex-shrink: 0;
+    color: #2e7d32;
+    font-size: 1.25em;
+}
+
+.dark-mode .card-greeting > i,
+.dark-mode .card-greeting > svg {
+    color: #81c784;
+}
+
 /* --- Signed out, on NFC phones: "or", then a quiet pill shaped like the Google
    button. A staff card signs in; any other card shows its Card ID. --- */
 .signin-card .scan-buttons {
@@ -8678,6 +8709,46 @@ body.is-admin .toolbar-menu.admin-only {
     word-break: break-all;
     -webkit-user-select: all;
     user-select: all;
+}
+
+/* The friend's code can be copied and sent in a message. */
+.dialog .reg-result .reg-copy,
+.dialog .reg-result .reg-copy:hover:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 6px;
+    padding: 7px 16px;
+    border: 1px solid rgba(57, 73, 171, 0.3);
+    border-radius: 999px;
+    background: var(--card-background);
+    color: var(--primary-color);
+    font-size: 0.875rem;
+    font-weight: 600;
+    box-shadow: none;
+    transform: none;
+}
+
+.dialog .reg-result .reg-copy:disabled {
+    opacity: 0.45;
+}
+
+.dark-mode .dialog .reg-result .reg-copy {
+    border-color: rgba(159, 168, 218, 0.35);
+    color: #c5cae9;
+}
+
+/* The code field, with Paste beside it. */
+.reg-code-field {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.reg-code-field > button {
+    flex-shrink: 0;
 }
 
 /* Your own card is read but never shown, like a password. */

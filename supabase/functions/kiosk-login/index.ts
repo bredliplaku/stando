@@ -140,7 +140,19 @@ Deno.serve(async (req) => {
       .in("uid", candidateUids);
     if (staffErr) throw staffErr;
     if (!staffRows || staffRows.length === 0) {
-      return json({ result: "not_admin", message: "UID not recognized as staff." });
+      // A student's card is greeted by name on the sign-in page, as a check that
+      // it works. Only the name is returned, never the card's other details.
+      const findStudent = async (column: "uids" | "hardware_uids") => {
+        const { data, error } = await admin.from("students").select("name").overlaps(column, candidateUids).limit(1);
+        if (error) throw error;
+        return data?.[0]?.name as string | undefined;
+      };
+      const studentName = (await findStudent("uids")) ?? (await findStudent("hardware_uids"));
+      return json({
+        result: "not_admin",
+        message: "UID not recognized as staff.",
+        ...(studentName ? { student: { name: studentName } } : {}),
+      });
     }
 
     const { name, email, role } = staffRows[0];

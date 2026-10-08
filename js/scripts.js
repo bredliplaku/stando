@@ -40,7 +40,7 @@ let isInitializing = true;
 let isChangingCourses = false;
 let pendingNotifications = [];
 let criticalErrorsOnly = true;
-let lastScannedUID = null;
+let signedOutCard = null; // The last card read on the sign-in page: { name }, empty when unregistered
 let courseIDMap = {}; // Object to store course information - name to ID mapping
 let courseInfoMap = {};
 let courseDictionary = {};
@@ -1167,6 +1167,20 @@ function normalizeName(str) {
         .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // 2. Separate accents from letters, then remove the accents
         .replace(/\s+/g, ' ') // 3. Clean up whitespace
         .trim(); // 4. Trim the ends
+}
+
+// The sign-in page's answer to a card, for a few seconds; the next card replaces it.
+function showSignedOutCard(card) {
+    signedOutCard = card;
+    updateAuthUI();
+    clearTimeout(showSignedOutCard.timer);
+    if (card) {
+        showSignedOutCard.timer = setTimeout(() => {
+            if (signedOutCard !== card) return;
+            signedOutCard = null;
+            document.getElementById('not-signed-in-message')?.remove();
+        }, 8000);
+    }
 }
 
 // One pill in both places. Signed out, it sits in the sign-in card and a staff
@@ -3190,10 +3204,7 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
 // A student's profile: who they are, whether their Student ID card is registered
 // (its Card ID hidden, like a password), and their absence requests.
 async function showStudentProfileDialog() {
-    const email = String(currentUser?.email || '').toLowerCase();
-    const own = Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === email);
-    const cardCount = new Set([...(own?.uids || []), ...(own?.hardware_uids || []).map(convertUidToExternalId)]
-        .map(id => String(id || '').trim()).filter(Boolean)).size;
+    const cardCount = ownStudentCardCount();
 
     openDialogMode();
     const backdrop = document.createElement('div');
@@ -3224,7 +3235,7 @@ async function showStudentProfileDialog() {
                         <strong>${cardCount === 1 ? 'Card registered' : `${cardCount} cards registered`}</strong>
                         <span class="sp-masked" aria-label="Card ID hidden">••••••••</span>
                     </span>
-                    <span class="sp-pill is-ok">Active</span>
+                    <button type="button" class="btn-blue btn-sm" data-action="register" title="Got a new card? Update it">Update</button>
                 </div>` : `
                 <div class="sp-card is-empty">
                     <span class="sp-card-icon" aria-hidden="true"><i class="fa-solid fa-id-card"></i></span>
@@ -4199,28 +4210,21 @@ function init() {
     window.addEventListener('offline', updateOnlineStatus);
     window.addEventListener('hashchange', handleRouting, false);
 
-    // Check if NFC is supported - ONLY in Google Chrome on Android
-    const isAndroid = /Android/i.test(navigator.userAgent);
+    // Scanning is on in any browser that offers Web NFC on an HTTPS page, rather
+    // than a list of browser names: Chrome on Android does, and other Android
+    // browsers (Edge, Samsung Internet, Opera and more) can. A phone without an
+    // NFC chip, or with NFC switched off, says so when scanning starts.
+    nfcSupported = 'NDEFReader' in window && window.isSecureContext;
+    console.log(nfcSupported ? 'Web NFC available' : 'Web NFC not available in this browser');
 
-    // This is a more specific check for Google Chrome, excluding other Chromium browsers
-    const isGoogleChrome = /Chrome/i.test(navigator.userAgent) && !/SamsungBrowser|OPR|Brave|YaBrowser/i.test(navigator.userAgent);
-
-    if (isAndroid && isGoogleChrome && 'NDEFReader' in window) {
-        console.log('NFC support detected (Google Chrome on Android with NDEFReader)');
-        nfcSupported = true;
-    } else {
-        console.log('NFC not supported on this device/browser');
-        nfcSupported = false;
-
-        // Only show notification on mobile devices where NFC might be expected
-        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-        if (isMobile) {
-            pendingNotifications.push({
-                type: 'warning',
-                title: 'NFC Unsupported',
-                message: 'NFC scanning is only supported in Chrome on Android.'
-            });
-        }
+    // Only where it helps: an Android browser without Web NFC. iPhones never
+    // scan, and their students register through a friend's phone instead.
+    if (!nfcSupported && /Android/i.test(navigator.userAgent)) {
+        pendingNotifications.push({
+            type: 'warning',
+            title: 'NFC Unsupported',
+            message: "This browser can't scan cards. To scan, open Stando in Google Chrome."
+        });
     }
 
     updateScanButtons();
@@ -4699,6 +4703,26 @@ function cardTapAnimationHtml() {
         </svg>`;
 }
 
+// How many cards the signed-in student has registered, from the student list.
+function ownStudentCardCount() {
+    const email = String(currentUser?.email || '').toLowerCase();
+    if (!email) return 0;
+    const own = Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === email);
+    return new Set([...(own?.uids || []), ...(own?.hardware_uids || []).map(convertUidToExternalId)]
+        .map(id => String(id || '').trim()).filter(Boolean)).size;
+}
+
+// "Update Card ID" once a card is registered: students get new cards.
+function updateRegisterCardButton() {
+    const button = document.getElementById('register-uid-btn');
+    if (!button || isAdmin) return;
+    const label = ownStudentCardCount() ? 'Update Card ID' : 'Register Card ID';
+    const text = button.querySelector('.btn-text');
+    if (text && text.textContent !== label) text.textContent = label;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+}
+
 // A friend's card travels as a code: eight letters and digits that can't be
 // confused (no 0, O, 1 or I), shown as two groups of four.
 function normalizeCardCode(value) {
@@ -4729,6 +4753,8 @@ function parseTypedCardId(value) {
 // are guided to have a friend's Android phone scan it, then type the Card ID.
 function showRegisterUIDDialog() {
     if (!isSignedIn || isAdmin || !currentUser) return;
+    // A student with a card registered may have a new one; helping a friend works either way.
+    const updating = ownStudentCardCount() > 0;
 
     openDialogMode();
 
@@ -4740,7 +4766,7 @@ function showRegisterUIDDialog() {
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', 'reg-dialog-title');
     dialog.innerHTML = `
-        <h3 class="dialog-title" id="reg-dialog-title"><i class="fa-solid fa-id-card"></i> Register your card</h3>
+        <h3 class="dialog-title" id="reg-dialog-title"><i class="fa-solid fa-id-card"></i> ${updating ? 'Update your card' : 'Register your card'}</h3>
         <div class="dialog-content reg-content"></div>
         <div class="dialog-actions"></div>`;
 
@@ -4870,7 +4896,7 @@ function showRegisterUIDDialog() {
         // Android with NFC: scan your own card.
         scan() {
             content.innerHTML = `
-                ${notice('Scan your Student ID card.', 'Your Student ID No. printed on it is not the number Stando uses; the card is read from its chip.')}
+                ${notice(updating ? 'Scan your new Student ID card.' : 'Scan your Student ID card.', 'Your Student ID No. printed on it is not the number Stando uses; the card is read from its chip.')}
                 ${cardTapAnimationHtml()}
                 <p class="reg-instruction">Hold your card flat against the <strong>back of your phone</strong> and keep it still until it beeps.</p>
                 <p class="reg-hint">No beep? Slide the card slowly around the back, towards the camera.</p>
@@ -4903,13 +4929,17 @@ function showRegisterUIDDialog() {
             readCard(card => { friendCard = card; show('friendResult'); });
         },
         // The card travels as a code: the server keeps the Card ID it stands for,
-        // and the code works once, for 30 minutes.
+        // and the code works once, for 48 hours.
         friendResult() {
             friendCode = '';
             content.innerHTML = `
-                <div class="reg-result is-friend"><span class="reg-result-label">Your friend's code</span><span class="reg-result-id"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i></span></div>
-                <p class="reg-instruction">Your friend types this code in <strong>Register Card ID</strong> on their own phone.</p>
-                <p class="reg-hint">It works once, for the next 30 minutes.</p>
+                <div class="reg-result is-friend">
+                    <span class="reg-result-label">Your friend's code</span>
+                    <span class="reg-result-id"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i></span>
+                    <button type="button" class="reg-copy" data-action="copy-code" disabled><i class="fa-regular fa-copy" aria-hidden="true"></i> Copy</button>
+                </div>
+                <p class="reg-instruction">Send it to your friend, or let them type it in <strong>Register Card ID</strong> on their own phone.</p>
+                <p class="reg-hint">It works once, for the next 48 hours.</p>
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="friend">Scan another card</button></div>`;
             actions.innerHTML = `
                 <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
@@ -4921,6 +4951,7 @@ function showRegisterUIDDialog() {
                     if (friendCard !== card || currentStep !== 'friendResult') return;
                     friendCode = code;
                     shown.textContent = formatCardCode(code);
+                    content.querySelector('.reg-copy').disabled = false;
                 })
                 .catch(err => {
                     if (friendCard !== card || currentStep !== 'friendResult') return;
@@ -4929,6 +4960,7 @@ function showRegisterUIDDialog() {
                         content.querySelector('.reg-result-label').textContent = "Your friend's Card ID";
                         shown.textContent = card.cardId;
                         content.querySelector('.reg-hint').hidden = true;
+                        content.querySelector('.reg-copy').disabled = false;
                     } else {
                         shown.textContent = '—';
                         showNotification('error', 'No Code', err.message || 'Could not create a code. Check the connection and scan again.');
@@ -4948,9 +4980,9 @@ function showRegisterUIDDialog() {
                 <p class="reg-instruction">${reason}</p>
                 ${cardTapAnimationHtml()}
                 <ol class="reg-list">
-                    <li>Your friend opens Stando in Chrome and taps <strong>Register Card ID</strong>, then <strong>Scan a friend's card</strong>.</li>
+                    <li>Your friend opens Stando in Chrome, taps <strong>Register Card ID</strong> (or <strong>Update Card ID</strong>), then <strong>Scan a friend's card</strong>.</li>
                     <li>Hold your card flat against the back of their phone until it beeps.</li>
-                    <li>Their screen shows a <strong>code</strong>. Type it in the next step.</li>
+                    <li>Their screen shows a <strong>code</strong>. They can copy it and send it to you. Type or paste it in the next step.</li>
                 </ol>`;
             actions.innerHTML = `
                 ${nfcSupported
@@ -4963,7 +4995,10 @@ function showRegisterUIDDialog() {
                 ${progressHtml(2)}
                 <div class="form-group">
                     <label class="dialog-label-fixed" for="register-card-id">Code</label>
-                    <input type="text" id="register-card-id" class="form-control reg-id-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="e.g. K7MP-Q4XD" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
+                    <div class="reg-code-field">
+                        <input type="text" id="register-card-id" class="form-control reg-id-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="e.g. K7MP-Q4XD" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
+                        ${navigator.clipboard?.readText ? '<button type="button" class="btn-blue btn-sm" data-action="paste-code"><i class="fa-regular fa-paste" aria-hidden="true"></i> Paste</button>' : ''}
+                    </div>
                 </div>
                 <p class="form-hint" id="register-card-id-hint">Type the code from your friend's screen. Your Student ID No. is not the code.</p>
                 ${accountHtml()}`;
@@ -4990,6 +5025,37 @@ function showRegisterUIDDialog() {
 
     const BACK = { friend: 'scan', friendResult: 'scan', manualHelp: 'scan', manualEntry: 'manualHelp' };
 
+    const copyFriendCode = async (button) => {
+        const text = content.querySelector('.reg-result-id')?.textContent.trim();
+        if (!text) return;
+        try {
+            await navigator.clipboard.writeText(text);
+            button.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Copied';
+            setTimeout(() => {
+                if (button.isConnected) button.innerHTML = '<i class="fa-regular fa-copy" aria-hidden="true"></i> Copy';
+            }, 2000);
+        } catch {
+            showNotification('warning', 'Not Copied', `Copy the code by hand: ${text}`);
+        }
+    };
+
+    // The code is found anywhere in the copied text, such as a forwarded message.
+    const pasteFriendCode = async () => {
+        const input = content.querySelector('#register-card-id');
+        try {
+            const text = await navigator.clipboard.readText();
+            const found = String(text).toUpperCase().match(/[2-9A-HJ-NP-Z]{4}-?[2-9A-HJ-NP-Z]{4}/);
+            if (!found) {
+                showInputError(input, "The copied text doesn't contain a code.");
+                return;
+            }
+            input.value = formatCardCode(found[0]);
+            input.dispatchEvent(new Event('input'));
+        } catch {
+            input.focus(); // Pasting by hand still works.
+        }
+    };
+
     function show(step) {
         stopReader();
         currentStep = step;
@@ -5010,6 +5076,8 @@ function showRegisterUIDDialog() {
             case 'rescan': show('scan'); break;
             case 'friend': show('friend'); break;
             case 'next': show('manualEntry'); break;
+            case 'copy-code': copyFriendCode(button); break;
+            case 'paste-code': pasteFriendCode(); break;
             case 'manual':
                 manualReason = "This phone couldn't scan the card. Ask a friend with an Android phone to scan it for you.";
                 show('manualHelp');
@@ -8559,19 +8627,23 @@ function updateAuthUI() {
         // Hide course buttons
         if (courseButtonsContainer) courseButtonsContainer.style.display = 'none';
 
-        // A card that is not a staff card signs nobody in. Its Card ID stays
-        // hidden: students register their card after signing in.
-        if (lastScannedUID) {
+        // A student's card read here greets them by name, as a check that it
+        // works. Its Card ID stays hidden.
+        if (signedOutCard) {
             let notSignedInMsg = notSignedInMsgElement;
             if (!notSignedInMsg) {
                 notSignedInMsg = document.createElement('div');
                 notSignedInMsg.id = 'not-signed-in-message';
                 notSignedInMsg.setAttribute('class', 'not-signed-in-message');
+                notSignedInMsg.setAttribute('role', 'status');
                 (loginContainer || document.getElementById('main-container'))?.appendChild(notSignedInMsg);
             }
-            notSignedInMsg.innerHTML = `
-                <p><i class="fa-solid fa-id-card" aria-hidden="true"></i> <strong>Not a staff card.</strong></p>
-                <p>Students: sign in, then choose <strong>Register Card ID</strong> to register your Student ID.</p>`;
+            notSignedInMsg.classList.toggle('is-known', !!signedOutCard.name);
+            notSignedInMsg.innerHTML = signedOutCard.name
+                ? '<p class="card-greeting"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Hello, <strong></strong></span></p>'
+                : `<p><i class="fa-solid fa-id-card" aria-hidden="true"></i> This card isn't registered yet.</p>
+                   <p>Sign in, then choose <strong>Register Card ID</strong>.</p>`;
+            if (signedOutCard.name) notSignedInMsg.querySelector('strong').textContent = signedOutCard.name;
         } else if (notSignedInMsgElement) {
             notSignedInMsgElement.remove();
         }
@@ -12167,6 +12239,7 @@ async function updateUI() {
     updateDatabaseList();
     updateDatabaseStatus();
     updatePageTitle();
+    updateRegisterCardButton();
 
 
     // This logic ensures the course buttons are correctly hidden when on the database tab.
@@ -12316,21 +12389,21 @@ async function handleNfcReading({ serialNumber }) {
                 showNotification('success', 'Session Active', `Welcome, ${currentUser.name}`);
                 playSound(true);
                 await onSuccessfulAuth(false);
+            } else if (data && data.result === 'error') {
+                // A staff card that cannot sign in here, for example on an untrusted device.
+                if (data.message) showNotification('warning', 'Staff Sign-In', data.message);
+                showSignedOutCard(null);
             } else {
-                if (data && data.result === 'error' && data.message) {
-                    showNotification('warning', 'Kiosk Login', data.message);
-                }
-                // === STUDENT CARD (GUEST MODE) ===
-                // Just show the converted ID
-                lastScannedUID = convertedCardId;
-                updateAuthUI();
+                // Any other card: its student is greeted by name.
+                const name = data?.student?.name || '';
+                playSound(!!name);
+                showSignedOutCard({ name });
             }
 
         } catch (err) {
             console.warn('Kiosk login error fallback:', err);
-            // Network error implies offline or unauthenticated guest, show converted ID
-            lastScannedUID = convertUidToExternalId(serialNumber);
-            updateAuthUI();
+            showSignedOutCard(null);
+            showNotification('warning', 'Card Not Checked', 'Stando could not check this card. Check the connection and try again.');
         } finally {
             nfcLoginInProgress = false;
         }
@@ -12354,7 +12427,6 @@ async function handleNfcReading({ serialNumber }) {
     const convertedUid = convertUidToExternalId(serialNumber);
     const primaryUid = lookupPrimaryUid(serialNumber);
     const finalUid = primaryUid || convertedUid || serialNumber;
-    lastScannedUID = convertedUid;
 
     // Security Check: Only block if we are signed in but NOT an admin
     // (If isLecturerMode is true, we bypass this because auth is offline)

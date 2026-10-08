@@ -92,7 +92,8 @@
             }
         } catch { /* Storage blocked: the sign-in skeleton. */ }
         root.dataset.standoView = view;
-        if (/Android/i.test(navigator.userAgent) && 'NDEFReader' in window) root.dataset.standoNfc = '';
+        // The same test as scripts.js: the browser offers Web NFC on an HTTPS page.
+        if ('NDEFReader' in window && window.isSecureContext) root.dataset.standoNfc = '';
     }
 
     async function mount() {

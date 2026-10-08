@@ -45,16 +45,26 @@ Stando tab in the browser and stays after a reload. It cannot stop someone
 switching to other apps or tabs, but the lock screen then shows when Stando was
 left and for how long. Without a card, **Sign out** ends the session instead.
 
-Card scanning uses NFC: it needs an NFC-capable Android phone, a supported
-Chrome browser and an HTTPS website. You can view records without a card reader.
+Card scanning uses Web NFC: it needs an Android phone with NFC switched on, a
+browser that offers Web NFC, and an HTTPS website. Stando checks the browser
+itself rather than its name: Chrome on Android works, and any other browser that
+offers Web NFC (some Chromium-based Android browsers do) gets the scan button
+too. iPhones and computers cannot scan. You can view records without a card
+reader.
 
-Students register their Student ID by scanning it in **Register Card ID**. The
-card is read from its chip; the Student ID No. printed on it is not used, and
-the Card ID that is read stays hidden. iPhones cannot scan, so a classmate with
-an Android phone chooses **Scan a friend's card**: their phone shows an
-eight-character code (valid once, for 30 minutes) that the student types. The
-server turns the code back into the card, so the Card ID never appears on either
-screen. This needs [supabase/migrations/card_codes.sql](supabase/migrations/card_codes.sql).
+Students register their Student ID by scanning it in **Register Card ID**
+(**Update Card ID** once a card is registered, for a new card). The card is read
+from its chip; the Student ID No. printed on it is not used, and the Card ID that
+is read stays hidden. iPhones cannot scan, so a classmate with an Android phone
+chooses **Scan a friend's card**: their phone shows an eight-character code,
+valid once for 48 hours, with a **Copy** button to send it in a message. The
+student types or pastes it. The server turns the code back into the card, so the
+Card ID never appears on either screen. This needs
+[supabase/migrations/card_codes.sql](supabase/migrations/card_codes.sql).
+
+On the sign-in page, a student's card is greeted with their name, as a check
+that it works; a staff card signs in. The greeting needs the current
+`kiosk-login` function (see [Deploy the functions](#deploy-the-functions)).
 
 If the connection drops, pending attendance changes stay on that device.
 Reconnect and check the sync status to make sure they have been saved online.
