@@ -48,7 +48,6 @@ let loadingTasks = new Set(['session', 'auth', 'courses', 'database']);
 let cooldownUIDs = new Set();
 let nfcAbortController = null;
 let guestCourse = null; // Track the course global admin is "visiting" but not officially admin of
-let scanClockInterval = null;
 let globalNotificationCount = 0;
 let myNotificationCount = 0;
 
@@ -883,7 +882,6 @@ async function showAbsenceHistoryDialog() {
     const dialog = document.createElement('div');
     dialog.setAttribute('class', 'dialog');
     dialog.style.maxWidth = '900px';
-    dialog.style.maxHeight = '85vh';
     dialog.setAttribute('role', 'dialog');
 
     dialog.innerHTML = `
@@ -1171,27 +1169,15 @@ function normalizeName(str) {
         .trim(); // 4. Trim the ends
 }
 
-// Signed out, the scan button sits in the sign-in card: a staff card signs in,
-// any other card shows its Card ID. Signed in, it takes attendance and shows
-// the time while scanning.
+// One pill in both places. Signed out, it sits in the sign-in card and a staff
+// card signs in; signed in, it takes attendance.
 function scanButtonHtml() {
     const icon = '<span class="scan-btn-icon" aria-hidden="true"><i class="fa-solid fa-wifi fa-rotate-90"></i></span>';
-    if (!isSignedIn) {
-        return isScanning
-            ? `${icon}<span class="scan-btn-label">Hold a card to the phone<small>Tap to stop</small></span>`
-            : `${icon}<span class="scan-btn-label">Scan Card</span>`;
-    }
-    if (!isScanning) return '<i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>';
-    // Format: 10:45 (or 10:45 PM depending on locale)
-    const timeString = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    return `
-        <div class="scan-time-display">
-            <span class="scan-time-digits">${timeString}</span>
-            <span class="scan-time-text">Stop scanning</span>
-        </div>`;
+    if (isScanning) return `${icon}<span class="scan-btn-label">Scanning…<small>Tap to stop</small></span>`;
+    return `${icon}<span class="scan-btn-label">${isSignedIn ? 'Start Scanning' : 'Scan Card'}</span>`;
 }
 
-// Rewrites the button only when its content changes, so its icon is not redrawn every second.
+// Rewrites the button only when its content changes, so its icon is not redrawn needlessly.
 function renderScanButton() {
     const scanBtn = document.getElementById('scan-button');
     if (!scanBtn) return;
@@ -1201,10 +1187,6 @@ function renderScanButton() {
         scanBtn._shownHtml = html;
         scanBtn.innerHTML = html;
     }
-}
-
-function updateScanClock() {
-    if (isScanning) renderScanButton();
 }
 
 // Signed out, the scan button moves into the sign-in card; signed in, it goes back above Scan History.
@@ -2441,7 +2423,6 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     const dialog = document.createElement('div');
     dialog.setAttribute('class', 'dialog settings-dialog');
     dialog.style.maxWidth = '1000px';
-    dialog.style.height = '85vh';
     dialog.setAttribute('role', 'dialog');
 
     // --- Variables for Bomb ---
@@ -3106,7 +3087,6 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     const dialog = document.createElement('div');
     dialog.setAttribute('class', 'dialog settings-dialog');
     dialog.style.maxWidth = '1000px';
-    dialog.style.height = '85vh';
     dialog.setAttribute('role', 'dialog');
 
     // --- Variables for Bomb ---
@@ -3207,118 +3187,119 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     })();
 }
 
-/**
-* Shows the Student Profile Dialog (Revamped Design)
-*/
+// A student's profile: who they are, whether their Student ID card is registered
+// (its Card ID hidden, like a password), and their absence requests.
 async function showStudentProfileDialog() {
-    // 1. Find IDs & UIDs (Local)
-    let userIDs = [];
-    let userUIDs = [];
-    for (const dbKey in databaseMap) {
-        const entry = databaseMap[dbKey];
-        if (entry.email && entry.email.toLowerCase() === currentUser.email.toLowerCase()) {
-            userIDs = entry.uids || [];
-            userUIDs = entry.hardware_uids || (entry.uids ? entry.uids.map(convertExternalIdToUid).filter(Boolean) : []);
-            break;
-        }
-    }
+    const email = String(currentUser?.email || '').toLowerCase();
+    const own = Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === email);
+    const cardCount = new Set([...(own?.uids || []), ...(own?.hardware_uids || []).map(convertUidToExternalId)]
+        .map(id => String(id || '').trim()).filter(Boolean)).size;
 
-    // 2. Build ID / UID Badges HTML (Compact)
-    let uidContent = '';
-    const maxCount = Math.max(userIDs.length, userUIDs.length);
-    if (maxCount > 0) {
-        const badges = [];
-        for (let i = 0; i < maxCount; i++) {
-            const idVal = userIDs[i] || (userUIDs[i] ? convertUidToExternalId(userUIDs[i]) : '');
-            const hwVal = userUIDs[i] || (userIDs[i] ? convertExternalIdToUid(userIDs[i]) : '');
-            if (idVal || hwVal) {
-                badges.push(`
-                    <li class="profile-uid-badge" style="display:inline-flex; align-items:center; gap:6px; padding:4px 10px; margin:3px; font-size:0.85em; background:rgba(0,0,0,0.04); border-radius:6px;">
-                        <span><i class="fa-solid fa-id-card" style="opacity:0.6; margin-right:2px;"></i> ${escapeHtml(idVal || '—')}</span>
-                        ${hwVal ? `<span style="opacity:0.3;">|</span><span style="font-family:monospace; opacity:0.8;"><i class="fa-solid fa-wifi" style="font-size:0.85em; opacity:0.6; margin-right:2px;"></i>${escapeHtml(hwVal)}</span>` : ''}
-                    </li>
-                `);
-            }
-        }
-        uidContent = `<ul class="profile-uid-list" style="margin:6px 0; padding:0; display:flex; flex-wrap:wrap; justify-content:center; list-style:none;">${badges.join('')}</ul>`;
-    } else {
-        uidContent = `<p style="text-align:center; opacity:0.6; font-style:italic; font-size:0.85em; margin:6px 0;">No IDs linked.</p>`;
-    }
-
-    // 3. Compact Base HTML
-    const profileHtml = `
-<div style="user-select:none; -webkit-user-select:none;">
-    <div class="profile-header-section" style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:8px; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid rgba(0,0,0,0.06);">
-        <a href="https://myaccount.google.com/" target="_blank" rel="noopener noreferrer" class="profile-avatar-link" title="Manage Google Account" aria-label="Manage Google Account">
-            ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
-        </a>
-        <div style="text-align:center; max-width:100%;">
-            <h3 class="profile-name-large" style="margin:0 0 3px 0; font-size:1.15em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(currentUserDisplayName())}</h3>
-            <p class="profile-email-large" style="margin:0; font-size:0.85em; opacity:0.7; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${escapeHtml(currentUser.email)}</p>
+    openDialogMode();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dialog-backdrop';
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog student-profile';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'sp-name');
+    dialog.innerHTML = `
+        <div class="sp-header">
+            <a href="https://myaccount.google.com/" target="_blank" rel="noopener noreferrer" class="profile-avatar-link" title="Manage Google Account" aria-label="Manage Google Account">
+                ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar sp-avatar')}
+            </a>
+            <div class="sp-identity">
+                <h3 id="sp-name">${escapeHtml(currentUserDisplayName())}</h3>
+                <span class="sp-email">${escapeHtml(currentUser.email)}</span>
+            </div>
+            <button type="button" class="btn-icon icon-only-btn" data-action="close" title="Close" aria-label="Close profile"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         </div>
-    </div>
+        <div class="dialog-content sp-content">
+            <section class="sp-section" aria-labelledby="sp-card-title">
+                <h4 class="sp-section-title" id="sp-card-title">Student ID card</h4>
+                ${cardCount ? `
+                <div class="sp-card">
+                    <span class="sp-card-icon" aria-hidden="true"><i class="fa-solid fa-id-card"></i></span>
+                    <span class="sp-card-text">
+                        <strong>${cardCount === 1 ? 'Card registered' : `${cardCount} cards registered`}</strong>
+                        <span class="sp-masked" aria-label="Card ID hidden">••••••••</span>
+                    </span>
+                    <span class="sp-pill is-ok">Active</span>
+                </div>` : `
+                <div class="sp-card is-empty">
+                    <span class="sp-card-icon" aria-hidden="true"><i class="fa-solid fa-id-card"></i></span>
+                    <span class="sp-card-text">
+                        <strong>No card registered</strong>
+                        <span>Register your Student ID so scans count for you.</span>
+                    </span>
+                    <button type="button" class="btn-blue btn-sm" data-action="register">Register</button>
+                </div>`}
+            </section>
+            <section class="sp-section" aria-labelledby="sp-requests-title">
+                <div class="sp-section-head">
+                    <h4 class="sp-section-title" id="sp-requests-title">Absence requests</h4>
+                    <span class="sp-counts"></span>
+                </div>
+                <div class="sp-requests" aria-live="polite">
+                    <div class="sp-empty"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Loading requests...</div>
+                </div>
+            </section>
+        </div>
+        <div class="dialog-actions">
+            <button type="button" class="btn-orange" data-action="request"><i class="fa-solid fa-hand-point-up" aria-hidden="true"></i> Request for Permission</button>
+            <button type="button" class="btn-blue" data-action="close">Close</button>
+        </div>`;
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
 
-    <div class="form-section-title" style="margin-top:0; font-size:0.9em; text-align:center;">My Card IDs</div>
-    ${uidContent}
+    const close = () => {
+        backdrop.remove();
+        closeDialogMode();
+    };
+    backdrop.addEventListener('click', (event) => {
+        if (event.target === backdrop) return close();
+        const action = event.target.closest('[data-action]')?.dataset.action;
+        if (action === 'close') close();
+        else if (action === 'register') { close(); showRegisterUIDDialog(); }
+        else if (action === 'request') { close(); showRequestPermissionDialog(); }
+    });
+    dialog.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') close();
+    });
 
-    <div class="form-section-title" style="margin-top:14px; font-size:0.9em; text-align:center;">Permission History</div>
-    <div id="student-requests-loader" style="text-align:center; padding:15px; opacity:0.6; font-size:0.9em;">
-        <i class="fa-solid fa-circle-notch fa-spin"></i> Loading requests...
-    </div>
-    <div id="student-requests-list" style="max-height:220px; overflow-y:auto; padding-right:2px;"></div>
-</div>
-`;
-
-    // 4. Show Dialog
-    showAlertDialog('', profileHtml);
-
-    // 5. Fetch & Render Requests
+    const list = dialog.querySelector('.sp-requests');
     try {
         const requests = await callWebApp('getStudentAbsenceRequests', {}, 'POST');
-        const loader = document.getElementById('student-requests-loader');
-        const listContainer = document.getElementById('student-requests-list');
-
-        if (loader) loader.style.display = 'none';
-        if (!listContainer) return;
-
-        if (!requests || requests.length === 0) {
-            listContainer.innerHTML = `<div class="empty-logs" style="padding:10px; font-size:0.85em;">No requests found.</div>`;
-        } else {
-            // Build Cards with Clean Course Name (no EIS ID)
-            const cardsHtml = requests.map(req => {
-                const statusClass = `status-${String(req.status || 'pending').toLowerCase()}`;
-                const cleanCourse = getCleanCourseCode(req.course, courseInfoMap[req.course]?.eisId);
-
-                // Admin note logic
-                let noteHtml = '';
-                if (req.adminNotes) {
-                    noteHtml = `<div class="req-note" style="margin-top:4px; font-size:0.8em; padding:4px 8px; background:rgba(0,0,0,0.03); border-radius:4px;"><i class="fa-solid fa-reply" style="margin-right:5px; opacity:0.6;"></i> <strong>Reply:</strong> ${escapeHtml(req.adminNotes)}</div>`;
-                } else if (req.reason) {
-                    noteHtml = `<div class="req-note" style="margin-top:4px; font-size:0.8em; font-style:italic; opacity:0.8;">"${escapeHtml(req.reason)}"</div>`;
-                }
-
-                return `
-        <div class="req-card ${statusClass}" style="margin-bottom:8px; padding:8px 12px; border-radius:6px; border-left:3px solid var(--primary-color); background:rgba(0,0,0,0.02);">
-            <div class="req-header" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-                <div class="req-course" style="font-size:0.92em; font-weight:600;">${escapeHtml(cleanCourse)}</div>
-                <div class="req-status-pill" style="font-size:0.75em; padding:2px 8px;">${escapeHtml(req.status)}</div>
-            </div>
-            <div class="req-details" style="font-size:0.82em; opacity:0.8; display:flex; gap:12px;">
-                <span><i class="fa-regular fa-calendar" style="margin-right:4px;"></i>${escapeHtml(req.absenceDate)}</span>
-                <span><i class="fa-regular fa-clock" style="margin-right:4px;"></i>${escapeHtml(req.hours)}</span>
-            </div>
-            ${noteHtml}
-        </div>`;
-            }).join('');
-
-            listContainer.innerHTML = cardsHtml;
+        if (!requests?.length) {
+            list.innerHTML = '<div class="sp-empty">No absence requests yet.</div>';
+            return;
         }
-
+        const count = status => requests.filter(req => String(req.status || 'Pending').toLowerCase() === status).length;
+        dialog.querySelector('.sp-counts').innerHTML = ['pending', 'approved', 'rejected']
+            .filter(status => count(status))
+            .map(status => `<span class="sp-pill status-${status}">${count(status)} ${status}</span>`).join('');
+        list.innerHTML = requests.map(req => {
+            const status = String(req.status || 'Pending');
+            const [y, m, d] = String(req.absenceDate || '').split('-').map(Number);
+            const date = y ? new Date(y, m - 1, d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : req.absenceDate;
+            const note = req.adminNotes
+                ? `<p class="sp-request-note"><i class="fa-solid fa-reply" aria-hidden="true"></i><span>${escapeHtml(req.adminNotes)}</span></p>`
+                : req.reason ? `<p class="sp-request-note is-reason">${escapeHtml(req.reason)}</p>` : '';
+            return `
+                <article class="sp-request status-${escapeHtml(status.toLowerCase())}">
+                    <div class="sp-request-top">
+                        <strong>${escapeHtml(getCleanCourseCode(req.course, courseInfoMap[req.course]?.eisId))}</strong>
+                        <span class="sp-pill status-${escapeHtml(status.toLowerCase())}">${escapeHtml(status)}</span>
+                    </div>
+                    <div class="sp-request-meta">
+                        <span><i class="fa-regular fa-calendar" aria-hidden="true"></i> ${escapeHtml(date || '')}</span>
+                        <span class="sp-request-hours">${formatHoursAsPills(req.hours)}</span>
+                    </div>
+                    ${note}
+                </article>`;
+        }).join('');
     } catch (err) {
-        const loader = document.getElementById('student-requests-loader');
-        if (loader) {
-            loader.innerHTML = `<span style="color:var(--danger-color); font-size:0.85em;"><i class="fa-solid fa-exclamation-circle"></i> Failed to load requests.</span>`;
-        }
+        list.innerHTML = '<div class="sp-empty is-error"><i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> Failed to load requests.</div>';
     }
 }
 
@@ -4247,6 +4228,7 @@ function init() {
     // Set up event listeners
     setupEventListeners();
     setupScanLock();
+    setupIdleSignOut();
 
     // Round the header chips per visual row (the scan chips and the sign-in chips)
     document.querySelectorAll('.app-info').forEach(appInfoEl => {
@@ -4463,6 +4445,14 @@ async function onSuccessfulAuth(isRestore = false) {
             };
         }
 
+        // Coming back after the inactivity limit signs out at once, unless
+        // attendance on this device still waits to sync.
+        if (isRestore && isIdleSessionStale()) {
+            signOutForInactivity();
+            return;
+        }
+        noteActivity(true);
+
         // Update UI (Moved outside the if-block so it runs for both modes)
         console.log('User:', currentUser.email);
         renderUserChip();
@@ -4479,15 +4469,16 @@ async function onSuccessfulAuth(isRestore = false) {
             console.log('Admin status:', { isAdmin, isGlobalAdmin, adminCourses });
         }
 
-        // A staff member's custom name (for example with a title) replaces the
-        // Google name in the top bar. Loaded alongside the rest; never blocks.
+        // A staff member's custom name (for example with a title) and photo replace
+        // the Google ones in the top bar. After a staff card sign-in the session has
+        // no Google details, so the Google name and photo stored with the staff
+        // profile fill in. Loaded alongside the rest; never blocks.
         sbGetStaffProfiles().then(profiles => {
             const own = profiles.get(String(currentUser?.email || '').trim().toLowerCase());
-            if ((own?.name || own?.customPhoto) && currentUser) {
-                currentUser.staffName = own.name;
-                currentUser.staffPhoto = own.customPhoto;
-                renderUserChip();
-            }
+            if (!own || !currentUser) return;
+            currentUser.staffName = own.name || (currentUser.name === currentUser.email ? own.googleName : '');
+            currentUser.staffPhoto = own.photo;
+            renderUserChip();
         });
         // Scanning needs a trusted device; knowing now lets it start offline later.
         if (isAdmin) checkDeviceTrusted();
@@ -4600,22 +4591,6 @@ async function onSuccessfulAuth(isRestore = false) {
             }
         })();
 
-        // --- PHASE 4: SESSION AUTO-DESTRUCT (KIOSK ONLY) ---
-        const isKioskMode = !!localStorage.getItem(KIOSK_MODE_KEY);
-
-        if (isKioskMode) {
-            // Set this to MATCH your Backend.js SESSION_DURATION (in milliseconds)
-            // e.g. 10800 * 1000 for 3 hours
-            const SESSION_TIMEOUT_MS = 1800 * 1000;
-
-            if (window.sessionTimer) clearTimeout(window.sessionTimer);
-
-            window.sessionTimer = setTimeout(() => {
-                console.warn("Kiosk session time limit reached. Signing out...");
-                handleSignoutClick(); // clears the kiosk flag, ends the session, reloads
-            }, SESSION_TIMEOUT_MS);
-        }
-
     } catch (bootError) {
         console.error('Error during auth:', bootError);
         showNotification('error', 'Authentication Error', 'Failed to complete sign-in. Please try again.');
@@ -4724,6 +4699,17 @@ function cardTapAnimationHtml() {
         </svg>`;
 }
 
+// A friend's card travels as a code: eight letters and digits that can't be
+// confused (no 0, O, 1 or I), shown as two groups of four.
+function normalizeCardCode(value) {
+    return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+}
+
+function formatCardCode(value) {
+    const code = normalizeCardCode(value).slice(0, 8);
+    return code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
+}
+
 // A typed Card ID: the digits a scan shows, or a colon-separated hardware UID.
 // Scanned 4-byte cards never exceed 16777215, so longer numbers are a printed number.
 function parseTypedCardId(value) {
@@ -4769,6 +4755,7 @@ function showRegisterUIDDialog() {
     let nfcController = null;
     let ownCard = null;
     let friendCard = null;
+    let friendCode = '';
     let typedCardId = '';
     let manualReason = '';
     let currentStep = '';
@@ -4791,9 +4778,9 @@ function showRegisterUIDDialog() {
         <div class="reg-status is-ready" role="status" aria-live="polite"><span class="reg-status-dot" aria-hidden="true"></span><span class="reg-status-text">Ready to scan</span></div>
         <div class="reg-retry" hidden>
             <button type="button" class="btn-blue" data-action="retry">Try again</button>
-            <button type="button" class="reg-link" data-action="manual">Type the Card ID instead</button>
+            <button type="button" class="reg-link" data-action="manual">Ask a friend to scan it instead</button>
         </div>`;
-    const accountHtml = () => `<p class="reg-account">Sending as <strong>${escapeHtml(currentUser.name)}</strong> · ${escapeHtml(currentUser.email)}</p>`;
+    const accountHtml = () => `<p class="reg-account">Sending as <strong>${escapeHtml(currentUser.name)}</strong><br>${escapeHtml(currentUser.email)}</p>`;
     const progressHtml = (step) => `
         <div class="reg-progress"><span class="is-active"></span><span class="${step === 2 ? 'is-active' : ''}"></span><em>Step ${step} of 2</em></div>`;
 
@@ -4842,7 +4829,9 @@ function showRegisterUIDDialog() {
         });
     };
 
-    const submit = (card, submitBtn) => {
+    // A scanned card is sent as read; a typed code is turned into its card by the
+    // server, so the Card ID never reaches this phone.
+    const submit = (card, submitBtn, code = '') => {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting...';
         const restore = () => {
@@ -4850,7 +4839,10 @@ function showRegisterUIDDialog() {
             submitBtn.textContent = 'Submit';
         };
 
-        callWebApp('submitRegistration', {
+        callWebApp(code ? 'submitCardCode' : 'submitRegistration', code ? {
+            code,
+            name: currentUser.name
+        } : {
             action: 'submitRegistration',
             name: currentUser.name,
             email: currentUser.email,
@@ -4878,7 +4870,7 @@ function showRegisterUIDDialog() {
         // Android with NFC: scan your own card.
         scan() {
             content.innerHTML = `
-                ${notice("Scan your card. Don't type the number printed on it.", "Your Card ID is a different number, stored in the card's chip.")}
+                ${notice('Scan your Student ID card.', 'Your Student ID No. printed on it is not the number Stando uses; the card is read from its chip.')}
                 ${cardTapAnimationHtml()}
                 <p class="reg-instruction">Hold your card flat against the <strong>back of your phone</strong> and keep it still until it beeps.</p>
                 <p class="reg-hint">No beep? Slide the card slowly around the back, towards the camera.</p>
@@ -4887,20 +4879,21 @@ function showRegisterUIDDialog() {
             actions.innerHTML = `<button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>`;
             readCard(card => { ownCard = card; show('review'); });
         },
+        // Your own card: read, but shown hidden, like a password.
         review() {
             content.innerHTML = `
-                <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">Your Card ID</span><span class="reg-result-id">${escapeHtml(ownCard.cardId)}</span></div>
-                <p class="reg-instruction">Card scanned. Submit it to send it for approval.</p>
+                <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">Card scanned</span><span class="reg-result-id is-masked" aria-label="Card ID hidden">••••••••</span></div>
+                <p class="reg-instruction">Submit it to send it for approval.</p>
                 ${accountHtml()}
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="rescan">Scan again</button></div>`;
             actions.innerHTML = `
                 <button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>
                 <button type="button" id="submit-register-btn" class="btn-green" data-action="submit">Submit</button>`;
         },
-        // Android with NFC: read a classmate's card so they can type its Card ID.
+        // Android with NFC: read a classmate's card so they can type its code.
         friend() {
             content.innerHTML = `
-                <p class="reg-instruction"><strong>Scan a friend's card.</strong> Hold their card flat against the back of your phone. Their Card ID appears here for them to type on their phone.</p>
+                <p class="reg-instruction"><strong>Scan a friend's card.</strong> Hold their card flat against the back of your phone. A code appears here for them to type on their phone.</p>
                 ${cardTapAnimationHtml()}
                 ${statusHtml}
                 <p class="reg-hint">Nothing is sent or saved to your account.</p>`;
@@ -4909,14 +4902,38 @@ function showRegisterUIDDialog() {
                 <button type="button" id="reg-close-btn" class="btn-red" data-action="cancel">Close</button>`;
             readCard(card => { friendCard = card; show('friendResult'); });
         },
+        // The card travels as a code: the server keeps the Card ID it stands for,
+        // and the code works once, for 30 minutes.
         friendResult() {
+            friendCode = '';
             content.innerHTML = `
-                <div class="reg-result is-friend"><span class="reg-result-label">Your friend's Card ID</span><span class="reg-result-id">${escapeHtml(friendCard.cardId)}</span></div>
-                <p class="reg-instruction">Your friend types this number in <strong>Register Card ID</strong> on their own phone.</p>
+                <div class="reg-result is-friend"><span class="reg-result-label">Your friend's code</span><span class="reg-result-id"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i></span></div>
+                <p class="reg-instruction">Your friend types this code in <strong>Register Card ID</strong> on their own phone.</p>
+                <p class="reg-hint">It works once, for the next 30 minutes.</p>
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="friend">Scan another card</button></div>`;
             actions.innerHTML = `
                 <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
                 <button type="button" id="reg-done-btn" class="btn-blue" data-action="cancel">Done</button>`;
+            const shown = content.querySelector('.reg-result-id');
+            const card = friendCard;
+            callWebApp('createCardCode', { cardId: card.cardId, hardwareUid: card.hardwareUid })
+                .then(code => {
+                    if (friendCard !== card || currentStep !== 'friendResult') return;
+                    friendCode = code;
+                    shown.textContent = formatCardCode(code);
+                })
+                .catch(err => {
+                    if (friendCard !== card || currentStep !== 'friendResult') return;
+                    if (err.cardCodesUnavailable) {
+                        // Until the database issues codes, the Card ID itself is shown.
+                        content.querySelector('.reg-result-label').textContent = "Your friend's Card ID";
+                        shown.textContent = card.cardId;
+                        content.querySelector('.reg-hint').hidden = true;
+                    } else {
+                        shown.textContent = '—';
+                        showNotification('error', 'No Code', err.message || 'Could not create a code. Check the connection and scan again.');
+                    }
+                });
         },
         // No NFC here (iPhone, computer, another browser): a friend scans the card.
         manualHelp() {
@@ -4927,15 +4944,14 @@ function showRegisterUIDDialog() {
                     : "This device can't scan cards. Ask a friend with an Android phone to scan it for you.");
             content.innerHTML = `
                 ${progressHtml(1)}
-                ${notice('Your card must be scanned.', "Your Card ID is stored in the card's chip. It is not the number printed on your card.")}
+                ${notice('Your card must be scanned.', 'Your Student ID No. printed on the card is not the number to type.')}
                 <p class="reg-instruction">${reason}</p>
                 ${cardTapAnimationHtml()}
                 <ol class="reg-list">
                     <li>Your friend opens Stando in Chrome and taps <strong>Register Card ID</strong>, then <strong>Scan a friend's card</strong>.</li>
                     <li>Hold your card flat against the back of their phone until it beeps.</li>
-                    <li>Their screen shows your <strong>Card ID</strong>. Type it in the next step.</li>
-                </ol>
-                <p class="reg-hint">Not signed in? Your friend can tap <strong>Start scanning</strong> on the Stando sign-in page instead.</p>`;
+                    <li>Their screen shows a <strong>code</strong>. Type it in the next step.</li>
+                </ol>`;
             actions.innerHTML = `
                 ${nfcSupported
                     ? '<button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>'
@@ -4946,16 +4962,21 @@ function showRegisterUIDDialog() {
             content.innerHTML = `
                 ${progressHtml(2)}
                 <div class="form-group">
-                    <label class="dialog-label-fixed" for="register-card-id">Card ID</label>
-                    <input type="text" id="register-card-id" class="form-control reg-id-input" inputmode="numeric" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="30" placeholder="e.g. 11930522" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
+                    <label class="dialog-label-fixed" for="register-card-id">Code</label>
+                    <input type="text" id="register-card-id" class="form-control reg-id-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="e.g. K7MP-Q4XD" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
                 </div>
-                <p class="form-hint" id="register-card-id-hint">Type the digits from your friend's screen, not the number printed on your card.</p>
+                <p class="form-hint" id="register-card-id-hint">Type the code from your friend's screen. Your Student ID No. is not the code.</p>
                 ${accountHtml()}`;
             actions.innerHTML = `
                 <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
                 <button type="button" id="submit-register-btn" class="btn-green" data-action="submit" ${typedCardId.trim() ? '' : 'disabled'}>Submit</button>`;
             const input = content.querySelector('#register-card-id');
             input.addEventListener('input', () => {
+                // Codes read as two groups of four; digits (before codes existed) are left alone.
+                if (/[a-z]/i.test(input.value)) {
+                    const formatted = formatCardCode(input.value);
+                    if (formatted !== input.value) input.value = formatted;
+                }
                 typedCardId = input.value;
                 clearInputError(input);
                 actions.querySelector('#submit-register-btn').disabled = !input.value.trim();
@@ -4999,13 +5020,13 @@ function showRegisterUIDDialog() {
                     break;
                 }
                 const input = content.querySelector('#register-card-id');
-                const card = parseTypedCardId(input.value);
-                if (!card) {
-                    showInputError(input, "That isn't a Card ID. Check the number on your friend's screen.");
+                const code = normalizeCardCode(input.value);
+                if (code.length !== 8 && !parseTypedCardId(input.value)) {
+                    showInputError(input, "That isn't a code. Check the code on your friend's screen.");
                     input.focus();
                     break;
                 }
-                submit(card, button);
+                submit(null, button, input.value.trim());
                 break;
             }
         }
@@ -7560,6 +7581,32 @@ async function callSupabase(action, payload = {}) {
             return { result: 'success', message: 'Registration submitted successfully' };
         }
 
+        // A friend's card becomes a code; the Card ID stays on the server.
+        case 'createCardCode': {
+            const { data, error } = await supabaseClient.rpc('create_card_code', {
+                p_card_id: payload.cardId || '', p_hardware_uid: payload.hardwareUid || ''
+            });
+            if (error) {
+                const codeError = new Error(error.message);
+                codeError.cardCodesUnavailable = error.code === 'PGRST202';
+                throw codeError;
+            }
+            return data;
+        }
+
+        // The server turns the code into its card and files the registration.
+        case 'submitCardCode': {
+            const { data, error } = await supabaseClient.rpc('submit_card_code_registration', {
+                p_code: normalizeCardCode(payload.code), p_name: payload.name || ''
+            });
+            if (!error) return data;
+            if (error.code !== 'PGRST202') throw new Error(error.message);
+            // Before the database issues codes, a typed Card ID is sent as it is.
+            const card = parseTypedCardId(payload.code);
+            if (!card) throw new Error("That isn't a Card ID. Check the number on your friend's screen.");
+            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid });
+        }
+
         case 'deleteAbsenceRequest': {
             sbUnwrap(await supabaseClient.from('absences').delete()
                 .eq('request_id', payload.requestID));
@@ -8194,6 +8241,162 @@ function handleSignoutClick() {
     supabaseClient.auth.signOut({ scope: 'local' }).finally(() => window.location.reload());
 }
 
+// ============================================================
+// SIGN-OUT AFTER INACTIVITY
+// After 30 minutes without a touch, click or key in any Stando tab, a one-minute
+// countdown offers to stay signed in, then signs out. Coming back later than
+// that signs out at once. Never while scanning or locked for scanning, while
+// syncing, or while attendance on this device waits to sync.
+// ============================================================
+const IDLE_SIGNOUT_MS = 30 * 60 * 1000;
+const IDLE_WARNING_MS = 60 * 1000;
+const LAST_ACTIVITY_KEY = 'stando_last_activity';
+const IDLE_SIGNED_OUT_KEY = 'stando_idle_signed_out';
+let lastActivityWrite = 0;
+let idleCountdown = null;
+
+function readLastActivity() {
+    try {
+        return Number(localStorage.getItem(LAST_ACTIVITY_KEY)) || 0;
+    } catch {
+        return 0;
+    }
+}
+
+// Shared by every tab through localStorage; written at most every 15 seconds.
+function noteActivity(force = false) {
+    const now = Date.now();
+    if (!force && now - lastActivityWrite < 15000) return;
+    lastActivityWrite = now;
+    try { localStorage.setItem(LAST_ACTIVITY_KEY, String(now)); } catch { /* This tab still counts it. */ }
+}
+
+// Attendance saved on this device for the signed-in account and not yet synced.
+function hasPendingAttendance() {
+    if (refreshPendingChanges()) return true;
+    const prefix = `${LOGS_STORAGE_KEY}_account_${encodeURIComponent(String(currentUser?.email || '').trim().toLowerCase())}_`;
+    try {
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!key?.startsWith(prefix)) continue;
+            const cached = JSON.parse(localStorage.getItem(key) || 'null');
+            if (cached?.pending === true || cached?.tombstones?.length) return true;
+        }
+    } catch {
+        return true; // Unreadable storage: keep the session rather than risk it.
+    }
+    return false;
+}
+
+function idleSignOutBlocked() {
+    return isScanning || scanLockSession || isSyncing || hasPendingAttendance();
+}
+
+function idleTime() {
+    const last = readLastActivity();
+    return last ? Date.now() - last : 0;
+}
+
+function isIdleSessionStale() {
+    return idleTime() >= IDLE_SIGNOUT_MS && !idleSignOutBlocked();
+}
+
+function signOutForInactivity() {
+    hideIdleCountdown();
+    try { sessionStorage.setItem(IDLE_SIGNED_OUT_KEY, '1'); } catch { /* The message is optional. */ }
+    clearScanLock();
+    handleSignoutClick();
+}
+
+function checkIdleSignOut() {
+    if (!isSignedIn) return;
+    // While blocked the clock is held at zero, so the countdown starts afresh afterwards.
+    if (idleSignOutBlocked()) {
+        noteActivity(true);
+        hideIdleCountdown();
+        return;
+    }
+    const idle = idleTime();
+    if (idle >= IDLE_SIGNOUT_MS) signOutForInactivity();
+    else if (idle >= IDLE_SIGNOUT_MS - IDLE_WARNING_MS) showIdleCountdown();
+    else hideIdleCountdown();
+}
+
+// Above everything, the lock screen included, so it is seen before it acts.
+function showIdleCountdown() {
+    if (!idleCountdown) {
+        const backdrop = document.createElement('div');
+        backdrop.className = 'dialog-backdrop idle-backdrop';
+        backdrop.innerHTML = `
+            <div class="dialog idle-dialog" role="alertdialog" aria-modal="true" aria-labelledby="idle-title" aria-describedby="idle-text">
+                <h3 class="dialog-title" id="idle-title"><i class="fa-solid fa-hourglass-half" aria-hidden="true"></i> Still there?</h3>
+                <div class="dialog-content">
+                    <p id="idle-text">You haven't used Stando for a while. To keep your account safe, you'll be signed out in <strong class="idle-seconds"></strong>.</p>
+                </div>
+                <div class="dialog-actions">
+                    <button type="button" class="btn-red" data-idle="signout"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+                    <button type="button" class="btn-green" data-idle="stay"><i class="fa-solid fa-check" aria-hidden="true"></i> Stay signed in</button>
+                </div>
+            </div>`;
+        backdrop.addEventListener('click', (event) => {
+            const action = event.target.closest('[data-idle]')?.dataset.idle;
+            if (action === 'signout') signOutForInactivity();
+            else if (action === 'stay') {
+                noteActivity(true);
+                hideIdleCountdown();
+            }
+        });
+        document.body.appendChild(backdrop);
+        openDialogMode();
+        idleCountdown = { backdrop, timer: setInterval(updateIdleCountdown, 1000) };
+        backdrop.querySelector('[data-idle="stay"]').focus({ preventScroll: true });
+    }
+    updateIdleCountdown();
+}
+
+function updateIdleCountdown() {
+    if (!idleCountdown) return;
+    const seconds = Math.max(0, Math.ceil((IDLE_SIGNOUT_MS - idleTime()) / 1000));
+    idleCountdown.backdrop.querySelector('.idle-seconds').textContent = `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+    if (seconds === 0) checkIdleSignOut();
+}
+
+function hideIdleCountdown() {
+    if (!idleCountdown) return;
+    clearInterval(idleCountdown.timer);
+    idleCountdown.backdrop.remove();
+    idleCountdown = null;
+    closeDialogMode();
+}
+
+function setupIdleSignOut() {
+    ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(type => {
+        document.addEventListener(type, (event) => {
+            if (!isSignedIn) return;
+            // The countdown's own buttons decide for themselves.
+            if (idleCountdown && event.target?.closest?.('[data-idle]')) return;
+            noteActivity(!!idleCountdown);
+            if (idleCountdown) hideIdleCountdown();
+        }, { capture: true, passive: true });
+    });
+    // Activity in another tab closes this tab's countdown.
+    window.addEventListener('storage', (event) => {
+        if (event.key === LAST_ACTIVITY_KEY && idleCountdown) checkIdleSignOut();
+    });
+    // Timers sleep with the phone; check as soon as the page is back.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkIdleSignOut();
+    });
+    setInterval(checkIdleSignOut, 15000);
+
+    try {
+        if (sessionStorage.getItem(IDLE_SIGNED_OUT_KEY)) {
+            sessionStorage.removeItem(IDLE_SIGNED_OUT_KEY);
+            pendingNotifications.push({ type: 'info', title: 'Signed Out', message: 'You were signed out after 30 minutes without activity.', duration: 8000 });
+        }
+    } catch { /* The message is optional. */ }
+}
+
 // Update sync status indicator
 function updateSyncStatus(message, status) {
     // When status is good (online/success), clear any previous error/warning messages.
@@ -8305,6 +8508,7 @@ function updateAuthUI() {
     // --- Core Auth UI Toggling ---
     if (loginContainer) loginContainer.style.display = isSignedIn ? 'none' : 'flex';
     placeScanButtons();
+    updateScanButtons();
     if (userContainer) userContainer.style.display = isSignedIn ? 'flex' : 'none';
     if (tabsContainer) tabsContainer.style.display = isGlobalAdmin ? 'flex' : 'none';
 
@@ -8355,7 +8559,8 @@ function updateAuthUI() {
         // Hide course buttons
         if (courseButtonsContainer) courseButtonsContainer.style.display = 'none';
 
-        // A scanned card's Card ID shows under the sign-in card.
+        // A card that is not a staff card signs nobody in. Its Card ID stays
+        // hidden: students register their card after signing in.
         if (lastScannedUID) {
             let notSignedInMsg = notSignedInMsgElement;
             if (!notSignedInMsg) {
@@ -8365,8 +8570,8 @@ function updateAuthUI() {
                 (loginContainer || document.getElementById('main-container'))?.appendChild(notSignedInMsg);
             }
             notSignedInMsg.innerHTML = `
-                <p><i class="fa-solid fa-id-card"></i> Your Card ID is:</p>
-                <h2 style="margin-top: 10px; font-weight: bold; font-family: monospace; font-size: 1.8em; letter-spacing: 1px; word-break: break-all; color: var(--primary-dark);">${escapeHtml(lastScannedUID)}</h2>`;
+                <p><i class="fa-solid fa-id-card" aria-hidden="true"></i> <strong>Not a staff card.</strong></p>
+                <p>Students: sign in, then choose <strong>Register Card ID</strong> to register your Student ID.</p>`;
         } else if (notSignedInMsgElement) {
             notSignedInMsgElement.remove();
         }
@@ -12016,8 +12221,6 @@ async function startScanning() {
         if (controller.signal.aborted || nfcReader !== reader) return;
         isScanning = true;
         renderScanButton();
-        if (scanClockInterval) clearInterval(scanClockInterval);
-        scanClockInterval = setInterval(updateScanClock, 1000);
     } catch (error) {
         if (controller.signal.aborted || nfcReader !== reader) return;
         handleScanningError(error);
@@ -12047,9 +12250,10 @@ function updateScanButtons() {
 
     if (!scanBtn || !scanButtonsContainer) return;
 
-    // Show button if supported
-    scanBtn.style.display = nfcSupported ? 'flex' : 'none';
-    scanButtonsContainer.style.display = nfcSupported ? 'flex' : 'none';
+    // Lecturers take attendance and staff sign in by card; students never scan here.
+    const shown = nfcSupported && (!isSignedIn || isAdmin);
+    scanBtn.style.display = shown ? 'flex' : 'none';
+    scanButtonsContainer.style.display = shown ? 'flex' : 'none';
     renderScanButton();
 }
 
@@ -12093,18 +12297,21 @@ async function handleNfcReading({ serialNumber }) {
             if (data && data.result === 'success') {
                 // === ADMIN LOGIN SUCCESS ===
                 // Exchange the one-time token for a real Supabase session
-                const { error: otpError } = await supabaseClient.auth.verifyOtp({
+                const { data: otpData, error: otpError } = await supabaseClient.auth.verifyOtp({
                     type: 'email',
                     token_hash: data.token_hash
                 });
                 if (otpError) throw otpError;
 
                 localStorage.setItem(KIOSK_MODE_KEY, '1');
-                // A staff row may have no custom name yet; the avatar draws its own initials.
+                // The account keeps the Google name and photo from its last Google
+                // sign-in; the staff name comes first, and without any the avatar
+                // draws initials.
+                const meta = otpData?.user?.user_metadata || {};
                 currentUser = {
                     ...data.user,
-                    name: data.user.name || data.user.email,
-                    picture: /ui-avatars\.com/.test(data.user.picture || '') ? '' : data.user.picture
+                    name: data.user.name || meta.full_name || meta.name || data.user.email,
+                    picture: normalizeGooglePhotoUrl(meta.avatar_url || meta.picture || '')
                 };
                 showNotification('success', 'Session Active', `Welcome, ${currentUser.name}`);
                 playSound(true);
@@ -12256,12 +12463,7 @@ function stopScanning() {
         nfcAbortController = null;
     }
 
-    // --- STOP CLOCK ---
     isScanning = false;
-    if (scanClockInterval) {
-        clearInterval(scanClockInterval);
-        scanClockInterval = null;
-    }
 
     // Reset button UI
     renderScanButton();
@@ -13078,58 +13280,48 @@ function showNotification(type, title, message, duration = 5000) {
         setTimeout(() => safeRemove(notification), 300);
     });
 
-    // Limit total notifications to 2
-    const allNotifications = notificationArea.querySelectorAll('.in-page-notification');
-    if (allNotifications.length >= 2) {
-        const oldest = allNotifications[0];
-        oldest.classList.add('removing');
-        setTimeout(() => safeRemove(oldest), 300);
-    }
+    const dismiss = (element) => {
+        element.classList.add('removing');
+        setTimeout(() => safeRemove(element), 300);
+    };
+
+    // At most three at a time; the oldest (lowest) makes room.
+    const shown = notificationArea.querySelectorAll('.in-page-notification:not(.removing)');
+    if (shown.length >= 3) dismiss(shown[shown.length - 1]);
 
     // Create the new notification
     const notification = document.createElement('div');
     notification.setAttribute('class', `in-page-notification in-page-notification-${type}`);
     notification.dataset.notificationType = type;
 
-    let icon;
-    switch (type) {
-        case 'success': icon = 'check-circle'; break;
-        case 'error': icon = 'times-circle'; break;
-        case 'warning': icon = 'exclamation-circle'; break;
-        case 'delete': icon = 'trash'; break;
-        default: icon = 'info-circle';
-    }
+    const icon = { success: 'check', error: 'xmark', warning: 'exclamation', delete: 'trash-can' }[type] || 'info';
 
     // Title and message are plain text: they often carry names and server errors.
     // Line breaks ("\n") in the message are kept.
     notification.innerHTML = `
-        <i class="fa-solid fa-${icon}" aria-hidden="true"></i>
-        <div class="in-page-notification-text"><strong></strong><br><span class="in-page-notification-message"></span></div>
-        <button type="button" class="notification-close" title="Close" aria-label="Close notification">&times;</button>
+        <span class="toast-icon" aria-hidden="true"><i class="fa-solid fa-${icon}"></i></span>
+        <div class="in-page-notification-text"><strong></strong><span class="in-page-notification-message"></span></div>
+        <button type="button" class="notification-close" title="Dismiss" aria-label="Dismiss notification"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     `;
     notification.querySelector('strong').textContent = title;
     notification.querySelector('.in-page-notification-message').textContent = message ?? '';
     if (type === 'error') notification.setAttribute('role', 'alert');
 
-    notificationArea.appendChild(notification);
+    // Newest at the top, like a phone's notifications.
+    notificationArea.prepend(notification);
 
-    // Add click handler to close button
-    const closeBtn = notification.querySelector('.notification-close');
-    if (closeBtn) {
-        closeBtn.addEventListener('click', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            notification.classList.add('removing');
-            setTimeout(() => safeRemove(notification), 300);
-        });
-    }
+    // A tap anywhere on it, or a swipe up, dismisses it.
+    notification.addEventListener('click', () => dismiss(notification));
+    let touchStartY = null;
+    notification.addEventListener('touchstart', (event) => { touchStartY = event.touches[0].clientY; }, { passive: true });
+    notification.addEventListener('touchend', (event) => {
+        if (touchStartY !== null && event.changedTouches[0].clientY - touchStartY < -24) dismiss(notification);
+        touchStartY = null;
+    });
 
-    // Auto-remove non-error notifications
+    // Errors stay until dismissed; everything else leaves on its own.
     if (type !== 'error') {
-        setTimeout(() => {
-            notification.classList.add('removing');
-            setTimeout(() => safeRemove(notification), 300);
-        }, duration || 5000);
+        setTimeout(() => dismiss(notification), duration || 5000);
     }
 }
 

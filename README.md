@@ -15,7 +15,9 @@ Part of [bredliplaku.com](https://bredliplaku.com).
 ## Using Stando
 
 Sign in with your authorised Google account to see your courses and the tools
-available to you. Contact an administrator if you need access.
+available to you. Contact an administrator if you need access. After 30 minutes
+without activity Stando signs you out, after a one-minute warning, but never
+while scanning or while attendance on the device waits to sync.
 
 | User | What you can do |
 |---|---|
@@ -46,10 +48,13 @@ left and for how long. Without a card, **Sign out** ends the session instead.
 Card scanning uses NFC: it needs an NFC-capable Android phone, a supported
 Chrome browser and an HTTPS website. You can view records without a card reader.
 
-Students register a card by scanning it in **Register Card ID**; the Card ID is
-stored in the card's chip and differs from any number printed on the card.
-iPhones cannot scan, so a classmate with an Android phone chooses **Scan a
-friend's card** and the student types the Card ID it shows.
+Students register their Student ID by scanning it in **Register Card ID**. The
+card is read from its chip; the Student ID No. printed on it is not used, and
+the Card ID that is read stays hidden. iPhones cannot scan, so a classmate with
+an Android phone chooses **Scan a friend's card**: their phone shows an
+eight-character code (valid once, for 30 minutes) that the student types. The
+server turns the code back into the card, so the Card ID never appears on either
+screen. This needs [supabase/migrations/card_codes.sql](supabase/migrations/card_codes.sql).
 
 If the connection drops, pending attendance changes stay on that device.
 Reconnect and check the sync status to make sure they have been saved online.

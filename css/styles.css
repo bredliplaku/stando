@@ -1454,6 +1454,7 @@
         .scan-buttons {
             display: flex;
             justify-content: center;
+            align-items: center;
             margin-top: 15px;
             margin-bottom: 25px;
             width: 100%;
@@ -1461,77 +1462,121 @@
             box-sizing: border-box;
         }
 
-        .big-scan-button {
+        /* The scan button: a pill with an icon disc on the left and the label
+           centred, the same shape as the sign-in buttons. Filled here; the
+           sign-in card draws it outlined. */
+        .big-scan-button,
+        .big-scan-button:hover:not(:disabled) {
             display: inline-flex;
-            gap: 10px;
-            background-color: var(--primary-color);
-            color: var(--text-light);
-            padding: 26px 32px;
-            border-radius: 16px;
-            text-decoration: none;
-            font-size: 1.1em;
-            transition: all 0.2s ease-out;
-            text-align: center;
-            justify-content: center;
             align-items: center;
-            box-shadow: 0 4px 12px rgba(92, 107, 192, 0.3);
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            max-width: 480px;
+            min-height: 58px;
+            box-sizing: border-box;
+            margin: 0;
+            padding: 8px;
             border: 0;
+            border-radius: 29px;
+            background: var(--primary-color);
+            color: #fff;
+            font-family: inherit;
+            font-size: 1.05em;
+            font-weight: 600;
+            letter-spacing: normal;
+            text-transform: none;
+            box-shadow: 0 4px 14px rgba(57, 73, 171, 0.28);
+            transform: none;
+            filter: none;
+            font-variation-settings: inherit;
             cursor: pointer;
             user-select: none;
-            font-weight: 600;
-            letter-spacing: 0.02em;
-            width: 100%;
+            transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         }
 
-        .big-scan-button i,
-        .big-scan-button svg {
-            font-size: 1.5em;
+        .big-scan-button:hover:not(:disabled) {
+            background: var(--primary-dark);
+            box-shadow: 0 6px 18px rgba(57, 73, 171, 0.34);
         }
 
-        /* Pushed-down effect when ANY state is clicked */
-        .big-scan-button:active {
-            transform: scale(0.96);
-            background-color: var(--primary-dark);
-            box-shadow: 0 2px 6px rgba(92, 107, 192, 0.2);
+        .big-scan-button:active:not(:disabled) {
+            transform: scale(0.97);
+            box-shadow: 0 2px 8px rgba(57, 73, 171, 0.25);
         }
 
-        .big-scan-button:hover {
-            box-shadow: 0 6px 16px rgba(92, 107, 192, 0.4);
-            transform: translateY(-1px);
+        .big-scan-button:focus-visible {
+            outline: 2px solid var(--primary-color);
+            outline-offset: 3px;
         }
 
-        /* The "Stop Scanning" state */
-        .big-scan-button.is-scanning {
-            background-color: var(--success-color);
-            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.35);
-            animation: pulse-green 2s infinite;
+        .big-scan-button .scan-btn-icon {
+            display: grid;
+            place-items: center;
+            flex-shrink: 0;
+            width: 42px;
+            height: 42px;
+            margin-right: auto;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.18);
         }
 
-        .big-scan-button.is-scanning:hover {
-            box-shadow: 0 6px 16px rgba(76, 175, 80, 0.45);
+        .big-scan-button .scan-btn-icon > i,
+        .big-scan-button .scan-btn-icon > svg {
+            font-size: 1.1rem;
         }
 
-        @keyframes pulse-green {
-            0% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+        /* A spacer as wide as the disc keeps the label centred. */
+        .big-scan-button::after {
+            content: "";
+            flex-shrink: 0;
+            width: 42px;
+            margin-left: auto;
+        }
+
+        .big-scan-button .scan-btn-label {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            line-height: 1.2;
+        }
+
+        .big-scan-button .scan-btn-label small {
+            font-size: 0.75em;
+            font-weight: 500;
+            opacity: 0.85;
+        }
+
+        /* Scanning: green, the icon disc pulsing. Tapping again stops. */
+        .big-scan-button.is-scanning,
+        .big-scan-button.is-scanning:hover:not(:disabled) {
+            background: #2e7d32;
+            box-shadow: 0 4px 14px rgba(46, 125, 50, 0.3);
+        }
+
+        .big-scan-button.is-scanning .scan-btn-icon {
+            animation: scan-btn-wait 1.6s ease-out infinite;
+        }
+
+        .dark-mode .big-scan-button,
+        .dark-mode .big-scan-button:hover:not(:disabled) {
+            background: #3949ab;
+            box-shadow: none;
+        }
+
+        .dark-mode .big-scan-button:hover:not(:disabled) {
+            background: #5c6bc0;
+        }
+
+        .dark-mode .big-scan-button.is-scanning,
+        .dark-mode .big-scan-button.is-scanning:hover:not(:disabled) {
+            background: #388e3c;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .big-scan-button.is-scanning .scan-btn-icon {
+                animation: none;
             }
-
-            70% {
-                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
-            }
-        }
-
-        /* Keep the click effect even when in the "Stop" state */
-        .big-scan-button.is-scanning:active {
-            background-color: var(--warning-color);
-            transform: scale(0.96);
-            filter: brightness(90%);
-            animation: none;
-            box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         button {
@@ -1939,90 +1984,6 @@
 
         body:not(.is-admin) #session-controls {
             display: none !important;
-        }
-
-        .in-page-notifications {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            z-index: 20000;
-            width: 350px;
-            max-width: 70%;
-            pointer-events: none;
-            /* This allows clicks to pass through */
-        }
-
-        .in-page-notification {
-            background-color: white;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            animation: slide-in 0.3s ease-out forwards;
-            overflow: hidden;
-            display: flex;
-            align-items: center;
-            opacity: 1;
-            transition: transform 0.3s ease-in, opacity 0.3s ease-in;
-            pointer-events: none;
-            /* Allow clicks to pass through notification body */
-        }
-
-        .in-page-notification.removing {
-            opacity: 0;
-            transform: translateX(100%);
-        }
-
-        @keyframes slide-in {
-            from {
-                transform: translateX(100%);
-                opacity: 0;
-            }
-
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-
-        .in-page-notification i,
-        .in-page-notification svg {
-            margin-right: 10px;
-            font-size: 1.2em;
-        }
-
-        /* Make icon properly aligned */
-        .in-page-notification i:first-child,
-        .in-page-notification svg:first-child {
-            margin-top: 1px;
-            /* Fine-tune vertical alignment */
-        }
-
-        .in-page-notification-info {
-            background-color: #e3f2fd;
-            color: #0d47a1;
-        }
-
-        .in-page-notification-warning {
-            background-color: #fff3e0;
-            color: #e65100;
-        }
-
-        .in-page-notification-error {
-            background-color: #ffebee;
-            color: #b71c1c;
-        }
-
-        .in-page-notification-success {
-            background-color: #e8f5e9;
-            color: #1b5e20;
-        }
-
-        .in-page-notification-delete {
-            background-color: #fbe9e7;
-            /* soft salmon */
-            color: #bf360c;
-            /* muted deep red-orange */
         }
 
         .filter-container {
@@ -2774,33 +2735,6 @@
             background-color: #2a2a2a;
         }
 
-        .notification-close {
-            background: none;
-            border: none;
-            border-radius: 0;
-            box-shadow: none;
-            cursor: pointer;
-            font-size: 18px;
-            color: inherit;
-            opacity: 0.7;
-            padding: 0;
-            margin-left: 8px;
-            transition: none;
-            width: auto;
-            height: auto;
-            display: inline-block;
-            pointer-events: auto;
-            /* Make only the close button clickable */
-        }
-
-        .notification-close:hover {
-            opacity: 1;
-            background: none;
-            color: inherit;
-            box-shadow: none;
-        }
-
-
         .notification {
             padding: 15px;
             border-radius: 10px;
@@ -2926,6 +2860,7 @@
             width: 95%;
             max-width: 550px;
             max-height: 85vh;
+            max-height: 85dvh;
             margin: auto;
             display: flex;
             flex-direction: column;
@@ -4030,29 +3965,6 @@
             display: none;
         }
 
-        .scan-time-display {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            line-height: 1.4;
-        }
-
-        .scan-time-text {
-            font-size: 1.0em;
-            font-weight: 500;
-            opacity: 0.9;
-            margin-bottom: 2px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .scan-time-digits {
-            font-size: 2.5em;
-            font-weight: 800;
-            font-variant-numeric: tabular-nums;
-            color: white;
-        }
-
         /* Responsive adjustments */
         @media (max-width: 768px) {
 
@@ -4291,14 +4203,6 @@
                 /* On mobile, align the date to the left */
             }
 
-            #not-signed-in-message p {
-                font-size: 1.1em;
-            }
-
-            #not-signed-in-message h2 {
-                font-size: 1.8em;
-            }
-
             .logs-count {
                 margin-bottom: 10px;
             }
@@ -4330,33 +4234,6 @@
                 display: flex;
                 justify-content: flex-end;
                 /* Align buttons to the right */
-            }
-
-            /* 1. Reposition and center the notification container */
-            .in-page-notifications {
-                /* Make it responsive */
-                /* Set a max-width for small tablets */
-                bottom: 20px;
-                /* Position from the bottom */
-                right: auto;
-                /* Unset the right positioning */
-                left: 50%;
-                /* Position the left edge at the center */
-                transform: translateX(-50%);
-                /* Pull it back by half its width to truly center it */
-            }
-
-            /* 2. Apply the vertical slide-up animation on entrance */
-            .in-page-notification {
-                animation: slide-in-mobile 0.3s ease-out forwards;
-            }
-
-            /* 3. Make the notification slide down on exit */
-            .in-page-notification.removing {
-                opacity: 0;
-                transform: translateY(100%);
-                /* Slide it down */
-                transition: opacity 0.3s ease, transform 0.3s ease;
             }
 
             .container {
@@ -4391,112 +4268,12 @@
 
             /* Better Table View */
 
-            /* Smaller Notifications */
-            .in-page-notifications {
-                width: 90%;
-                max-width: 350px;
-                /* Set a max-width */
-            }
-
-            .actions-cell {
-                text-align: right;
-                /* Align icons to the right */
-            }
-
-
-            /* Hide Desktop-focused elements: the student count is the only header chip. */
-            .app-header .app-info {
-                display: none !important;
-            }
-
-
-            /* Main focus is on scanning */
-            #scanner-tab .module {
-                margin-top: -10px;
-                /* Close the gap from hidden header items */
-            }
-
-            /* --- Animation Definitions --- */
-
-            /* Animation for Light Mode */
-            @keyframes highlight-fade {
-                from {
-                    background-color: rgba(92, 107, 192, 0.2);
-                }
-
-                to {
-                    background-color: transparent;
-                }
-            }
-
-            /* A separate animation for Dark Mode with different colours */
-            @keyframes highlight-fade-dark {
-                from {
-                    background-color: rgba(92, 107, 192, 0.4);
-                }
-
-                to {
-                    background-color: transparent;
-                }
-            }
-
-            /* --- Animation Application --- */
-
-            /* Apply the correct animation based on the theme */
-            .new-item-flash {
-                animation: highlight-fade 1.5s ease-out;
-            }
-
-            .dark-mode .new-item-flash {
-                animation-name: highlight-fade-dark;
-                /* Just change the name here */
-            }
-
-            .sync-auth-container {
-                display: flex;
-                flex-direction: row;
-                /* Ensure it's a row */
-                justify-content: space-between;
-                align-items: center;
-                gap: 10px;
-                margin-bottom: 10px;
-            }
-
-            .sync-container,
-            .auth-container {
-                margin-bottom: 0;
-            }
-
-            .user-info {
-                justify-content: flex-end;
-                gap: 8px;
-            }
-
-            .logs-table,
-            .database-table {
-                font-size: 0.9em;
-                /* Make font slightly smaller */
-            }
-
-            .logs-table th,
-            .logs-table td,
             .database-table th,
             .database-table td {
                 padding: 8px;
                 /* Reduce padding */
             }
 
-            @keyframes slide-in-mobile {
-                from {
-                    transform: translateY(100%);
-                    opacity: 0;
-                }
-
-                to {
-                    transform: translateY(0);
-                    opacity: 1;
-                }
-            }
         }
 
         body.is-loading {
@@ -4734,8 +4511,8 @@
             line-height: 1.5;
             width: 170px;
 
-            /* --- JUSTIFICATION SETTINGS --- */
-            text-align: justify;
+            /* Too narrow to justify without wide gaps; hyphens keep the edge even. */
+            text-align: left;
             -webkit-hyphens: auto;
             -moz-hyphens: auto;
             hyphens: auto;
@@ -4853,18 +4630,27 @@
    <i> for <svg>, so every icon selector covers both.
    ========================================================================= */
 
-/* --- Paragraph text: justified, with hyphenation from <html lang>. The last line
-   stays left-aligned. Centred text, table cells, chips and labels are left out. --- */
+/* --- Paragraph text: justified only where a line is long enough to justify
+   well (dialogs and panels on wider screens), with hyphenation from <html lang>
+   and the last line left-aligned. Phones, notifications and short notes stay
+   left-aligned: justified narrow lines open wide gaps between words. --- */
 .dialog-content > p,
 .dialog-disclaimer,
 .req-note,
 .website-download .website-download-copy p,
-.in-page-notification-text,
 .collapsible-content p {
-    text-align: justify;
-    -webkit-hyphens: auto;
-    hyphens: auto;
     text-wrap: pretty;
+}
+
+@media (min-width: 600px) {
+    .dialog-content > p,
+    .dialog-disclaimer,
+    .website-download .website-download-copy p,
+    .collapsible-content p {
+        text-align: justify;
+        -webkit-hyphens: auto;
+        hyphens: auto;
+    }
 }
 
 /* Long tokens (addresses, IDs, error text) break only when they would overflow. */
@@ -4877,14 +4663,145 @@
     overflow-wrap: anywhere;
 }
 
+/* --- Notifications: cards at the top of the screen, newest first, clear of the
+   buttons at the foot of a phone. A tap or a swipe up dismisses one. The icon
+   disc carries the colour of its kind. --- */
+.in-page-notifications {
+    position: fixed;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    z-index: 20000;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    width: min(420px, calc(100% - 24px));
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.in-page-notification {
+    --toast-accent: #3949ab;
+    --toast-tint: rgba(57, 73, 171, 0.12);
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px 8px 12px 12px;
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.97);
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+    box-shadow: 0 12px 32px -10px rgba(15, 23, 42, 0.28), 0 2px 6px rgba(15, 23, 42, 0.06);
+    color: #263238;
+    font-size: 0.9375rem;
+    line-height: 1.4;
+    text-align: left;
+    pointer-events: auto;
+    cursor: pointer;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    animation: toast-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.in-page-notification.removing {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.98);
+    pointer-events: none;
+}
+
+@keyframes toast-in {
+    from { opacity: 0; transform: translateY(-14px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+
+.toast-icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: var(--toast-tint);
+    color: var(--toast-accent);
+    font-size: 0.95rem;
+}
+
 .in-page-notification-text {
-    flex-grow: 1;
+    flex: 1 1 auto;
     min-width: 0;
+    padding-top: 1px;
+}
+
+.in-page-notification-text strong {
+    display: block;
+    font-weight: 700;
 }
 
 /* Messages are plain text; "\n" separates lines such as a list of form errors. */
 .in-page-notification-message {
+    display: block;
+    margin-top: 1px;
+    color: #546e7a;
+    font-size: 0.875rem;
     white-space: pre-line;
+}
+
+.in-page-notification-message:empty {
+    display: none;
+}
+
+.in-page-notification .notification-close,
+.in-page-notification .notification-close:hover {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    margin: 2px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: none;
+    color: #90a4ae;
+    font-size: 0.875rem;
+    transform: none;
+    filter: none;
+}
+
+.in-page-notification .notification-close:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #546e7a;
+}
+
+.in-page-notification-success { --toast-accent: #2e7d32; --toast-tint: rgba(76, 175, 80, 0.15); }
+.in-page-notification-warning { --toast-accent: #ef6c00; --toast-tint: rgba(251, 140, 0, 0.16); }
+.in-page-notification-error { --toast-accent: #c62828; --toast-tint: rgba(229, 57, 53, 0.13); border-color: rgba(229, 57, 53, 0.22); }
+.in-page-notification-delete { --toast-accent: #d84315; --toast-tint: rgba(244, 81, 30, 0.13); }
+
+.dark-mode .in-page-notification {
+    --toast-accent: #9fa8da;
+    --toast-tint: rgba(159, 168, 218, 0.16);
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(34, 34, 36, 0.97);
+    box-shadow: 0 12px 32px -10px rgba(0, 0, 0, 0.7);
+    color: #eceff1;
+}
+
+.dark-mode .in-page-notification-success { --toast-accent: #81c784; --toast-tint: rgba(129, 199, 132, 0.16); }
+.dark-mode .in-page-notification-warning { --toast-accent: #ffb74d; --toast-tint: rgba(255, 183, 77, 0.16); }
+.dark-mode .in-page-notification-error { --toast-accent: #ef9a9a; --toast-tint: rgba(239, 154, 154, 0.16); border-color: rgba(239, 154, 154, 0.25); }
+.dark-mode .in-page-notification-delete { --toast-accent: #ffab91; --toast-tint: rgba(255, 171, 145, 0.16); }
+
+.dark-mode .in-page-notification-message {
+    color: #b0bec5;
+}
+
+.dark-mode .in-page-notification .notification-close:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #cfd8dc;
 }
 
 /* --- Top bar: the photo + name chip opens Settings or the profile --- */
@@ -5285,6 +5202,17 @@ body.signed-out #main-container {
     margin: 16px 0 0;
 }
 
+.not-signed-in-message p {
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.45;
+}
+
+.not-signed-in-message p + p {
+    margin-top: 4px;
+    opacity: 0.8;
+}
+
 /* --- Signed out, on NFC phones: "or", then a quiet pill shaped like the Google
    button. A staff card signs in; any other card shows its Card ID. --- */
 .signin-card .scan-buttons {
@@ -5477,6 +5405,304 @@ body.signed-out #main-container {
 .dark-mode .dialog p.settings-device-hint {
     color: #90a4ae;
 }
+
+/* --- Inactivity countdown: above everything, the lock screen included --- */
+.dialog-backdrop.idle-backdrop {
+    z-index: 10060;
+}
+
+.idle-dialog {
+    max-width: 420px;
+}
+
+.idle-seconds {
+    font-variant-numeric: tabular-nums;
+}
+
+/* --- Student profile: identity, the Student ID card, absence requests --- */
+.student-profile {
+    max-width: 520px;
+}
+
+.sp-header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 18px 16px 22px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    user-select: none;
+}
+
+.sp-header .user-avatar.sp-avatar {
+    width: 56px;
+    height: 56px;
+    font-size: 1.15rem;
+    box-shadow: 0 0 0 2px var(--card-background), 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.sp-identity {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.sp-identity h3 {
+    margin: 0;
+    overflow: hidden;
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.sp-email {
+    display: block;
+    overflow: hidden;
+    color: #78909c;
+    font-size: 0.875rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    user-select: text;
+}
+
+.sp-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.sp-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    margin-bottom: 10px;
+}
+
+.sp-section-title {
+    margin: 0 0 10px;
+    color: #90a4ae;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.sp-section-head .sp-section-title {
+    margin: 0;
+}
+
+.sp-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sp-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid #e6e8ef;
+    border-radius: 14px;
+}
+
+.sp-card-icon {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: #00458c;
+    color: #fff;
+    font-size: 1.05rem;
+}
+
+.sp-card.is-empty .sp-card-icon {
+    background: rgba(0, 0, 0, 0.06);
+    color: #90a4ae;
+}
+
+.sp-card-text {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    font-size: 0.875rem;
+    color: #78909c;
+}
+
+.sp-card-text strong {
+    color: var(--text-color);
+    font-size: 0.9375rem;
+}
+
+/* The Card ID stays hidden, like a password. */
+.sp-masked {
+    letter-spacing: 0.18em;
+    user-select: none;
+}
+
+.sp-pill {
+    flex-shrink: 0;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(0, 0, 0, 0.05);
+    color: #607d8b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: capitalize;
+    white-space: nowrap;
+}
+
+.sp-pill.is-ok,
+.sp-pill.status-approved {
+    background: rgba(76, 175, 80, 0.14);
+    color: #2e7d32;
+}
+
+.sp-pill.status-pending {
+    background: rgba(251, 140, 0, 0.15);
+    color: #ef6c00;
+}
+
+.sp-pill.status-rejected {
+    background: rgba(229, 57, 53, 0.13);
+    color: #c62828;
+}
+
+.sp-requests {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sp-request {
+    padding: 12px 14px;
+    border: 1px solid #e6e8ef;
+    border-left: 4px solid #b0bec5;
+    border-radius: 12px;
+}
+
+.sp-request.status-approved { border-left-color: #43a047; }
+.sp-request.status-pending { border-left-color: #fb8c00; }
+.sp-request.status-rejected { border-left-color: #e53935; }
+
+.sp-request-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.sp-request-top strong {
+    font-size: 0.9375rem;
+}
+
+.sp-request-meta {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    margin-top: 6px;
+    color: #78909c;
+    font-size: 0.8125rem;
+}
+
+.sp-request-hours {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.dialog p.sp-request-note {
+    display: flex;
+    gap: 8px;
+    margin: 8px 0 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.035);
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    opacity: 1;
+}
+
+.dialog p.sp-request-note.is-reason {
+    font-style: italic;
+}
+
+.sp-request-note > i,
+.sp-request-note > svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+    opacity: 0.6;
+}
+
+.sp-empty {
+    padding: 18px;
+    border: 1px dashed #d5d9e2;
+    border-radius: 12px;
+    color: #90a4ae;
+    font-size: 0.875rem;
+    text-align: center;
+}
+
+.sp-empty.is-error {
+    color: var(--danger-color);
+}
+
+.dark-mode .sp-header {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .sp-email,
+.dark-mode .sp-card-text,
+.dark-mode .sp-request-meta {
+    color: #9eaab3;
+}
+
+.dark-mode .sp-card,
+.dark-mode .sp-request {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .sp-request.status-approved { border-left-color: #66bb6a; }
+.dark-mode .sp-request.status-pending { border-left-color: #ffa726; }
+.dark-mode .sp-request.status-rejected { border-left-color: #ef5350; }
+
+.dark-mode .sp-card.is-empty .sp-card-icon,
+.dark-mode .sp-pill {
+    background: rgba(255, 255, 255, 0.08);
+    color: #b0bec5;
+}
+
+.dark-mode .sp-pill.is-ok,
+.dark-mode .sp-pill.status-approved {
+    background: rgba(129, 199, 132, 0.16);
+    color: #a5d6a7;
+}
+
+.dark-mode .sp-pill.status-pending {
+    background: rgba(255, 183, 77, 0.16);
+    color: #ffcc80;
+}
+
+.dark-mode .sp-pill.status-rejected {
+    background: rgba(239, 154, 154, 0.16);
+    color: #ef9a9a;
+}
+
+.dark-mode .dialog p.sp-request-note {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.dark-mode .sp-empty {
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
 
 /* --- Tabs: the selected tab drops its icon and shows a bold, centred label --- */
 .tab-icon {
@@ -7279,7 +7505,10 @@ button.settings-group-label:active:not(:disabled) {
     .dialog {
         width: 100%;
         max-width: 100% !important;
-        max-height: 95vh;
+        /* The visible height (dvh), which leaves out the browser's own bars, so
+           a long sheet's title is never pushed above the top of the screen. */
+        max-height: calc(100vh - 12px);
+        max-height: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
         margin: 0;
         animation-name: sheet-enter;
     }
@@ -7867,8 +8096,11 @@ button.settings-group-label:active:not(:disabled) {
     color: var(--primary-light);
 }
 
-/* --- Settings dialogs: UI text is not selectable; e-mails, IDs and fields are. --- */
+/* --- Settings dialogs: a fixed height so switching tabs doesn't resize them.
+   UI text is not selectable; e-mails, IDs and fields are. --- */
 .settings-dialog {
+    height: 85vh;
+    height: 85dvh;
     -webkit-user-select: none;
     user-select: none;
     cursor: default;
@@ -8448,6 +8680,13 @@ body.is-admin .toolbar-menu.admin-only {
     user-select: all;
 }
 
+/* Your own card is read but never shown, like a password. */
+.reg-result-id.is-masked {
+    letter-spacing: 0.2em;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
 .reg-center {
     display: flex;
     justify-content: center;
@@ -8563,21 +8802,27 @@ body.is-admin .toolbar-menu.admin-only {
     gap: 10px;
 }
 
+/* A round lock beside the scan pill, as tall as it. */
 .scan-lock-btn,
 .scan-lock-btn:hover {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 76px;
+    width: 58px;
+    height: 58px;
     margin: 0;
     padding: 0;
     border: 0;
-    border-radius: 16px;
+    border-radius: 50%;
     background: #455a64;
     color: #fff;
-    font-size: 1.4em;
-    box-shadow: 0 4px 12px rgba(69, 90, 100, 0.3);
+    font-size: 1.2em;
+    box-shadow: 0 4px 14px rgba(69, 90, 100, 0.28);
+}
+
+.scan-lock-btn:active {
+    transform: scale(0.95);
 }
 
 .scan-lock-btn[hidden] {
@@ -9158,7 +9403,7 @@ html.scan-locked body {
     --sk-banner: linear-gradient(135deg, #2c3e50, #1a237e);
     --sk-tab-active: rgba(0, 0, 0, 0.25);
     --sk-module-head: #2c3e50;
-    --sk-scan: #5c6bc0;
+    --sk-scan: #3949ab;
     --sk-divider: rgba(255, 255, 255, 0.1);
     --sk-shadow: none;
     --sk-shadow-soft: none;
@@ -9471,12 +9716,6 @@ html:not([data-stando-nfc]) .sk-nfc {
     border-radius: 8px;
 }
 
-.sk-banner-subtitle {
-    width: 176px;
-    height: 14px;
-    margin-bottom: 6px;
-}
-
 .sk-banner-chips {
     display: flex;
     gap: 3px;
@@ -9559,20 +9798,24 @@ html:not([data-stando-nfc]) .sk-nfc {
     background: var(--sk-bone-course);
 }
 
+/* The scan pill, as on the page: 58px tall, at most 480px wide. Lecturers only. */
 .sk-scan {
     --sk-delay: 0.3s;
     display: flex;
     align-items: center;
     justify-content: center;
-    height: 76px;
-    border-radius: 16px;
+    box-sizing: border-box;
+    max-width: 480px;
+    height: 58px;
+    border-radius: 29px;
     background: var(--sk-scan);
-    box-shadow: 0 4px 12px rgba(92, 107, 192, 0.3);
+    box-shadow: 0 4px 14px rgba(57, 73, 171, 0.28);
 }
 
 /* Its top margin collapses into the courses' bottom margin, as on the real page. */
 .sk-app > .sk-scan {
-    margin: 21px 15px 25px;
+    margin: 21px auto 25px;
+    width: calc(100% - 30px);
 }
 
 .sk-scan .sk {
@@ -9733,13 +9976,6 @@ html:not([data-stando-nfc]) .sk-nfc {
         width: 86px;
         height: 24px;
         margin-bottom: 16px;
-    }
-
-    .sk-banner-subtitle {
-        width: 72%;
-        max-width: 164px;
-        height: 12px;
-        margin-bottom: 14px;
     }
 
     /* The student count chip is hidden on phones. */

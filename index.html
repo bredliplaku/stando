@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
     <title>Stando</title>
     <meta name="theme-color" content="#f4f4f4" />
     <!-- Apply the saved or system theme before the application loads. -->
@@ -128,7 +128,6 @@
             </div>
             <div class="sk-banner">
                 <span class="sk sk-on-primary sk-banner-title"></span>
-                <span class="sk sk-on-primary sk-banner-subtitle"></span>
                 <span class="sk-banner-chips sk-staff">
                     <span class="sk sk-on-primary"></span>
                 </span>
@@ -144,7 +143,7 @@
                 <span class="sk-course"><span class="sk"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
             </div>
-            <span class="sk-scan sk-nfc"><span class="sk sk-on-primary"></span></span>
+            <span class="sk-scan sk-nfc sk-staff"><span class="sk sk-on-primary"></span></span>
             <div class="sk-module">
                 <div class="sk-module-header"><span class="sk sk-on-primary"></span></div>
                 <div class="sk-module-body">
@@ -213,7 +212,6 @@
         </div>
         <div class="app-header">
             <h1>Stando</h1>
-            <h2>Attendance, one tap away.</h2>
             <div class="app-info">
                 <span class="info-item"><i class="fa-solid fa-folder-tree"></i> <span id="database-status">Not
                         loaded</span></span>
@@ -339,7 +337,8 @@
 
         <div class="scan-buttons">
             <button id="scan-button" class="big-scan-button scan-button">
-                <i class="fa-solid fa-wifi"></i><b>&nbsp;&nbsp; START SCANNING</b>
+                <span class="scan-btn-icon" aria-hidden="true"><i class="fa-solid fa-wifi fa-rotate-90"></i></span><span
+                    class="scan-btn-label">Start Scanning</span>
             </button>
             <!-- Shown while scanning and unlocked; see the scan lock in scripts.js. -->
             <button type="button" id="scan-lock-btn" class="scan-lock-btn" title="Lock" aria-label="Lock Stando"
