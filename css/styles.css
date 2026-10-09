@@ -943,40 +943,6 @@
             font-size: 1.0em;
         }
 
-        .app-info {
-            display: flex;
-            justify-content: left;
-            flex-wrap: wrap;
-            margin-top: 15px;
-            margin-bottom: 5px;
-            gap: 3px;
-        }
-
-        .info-item {
-            background-color: rgba(255, 255, 255, 0.1);
-            padding: 7px 15px;
-            border-radius: 4px;
-            font-size: 0.9em;
-            vertical-align: middle;
-            line-height: 30px;
-            white-space: nowrap;
-            transition: background-color 0.2s ease, border-radius 0.2s ease;
-        }
-
-        /* Rounded outer ends per visual row, tagged by updateButtonRows(). */
-        .info-item.first-in-row {
-            border-radius: 10px 4px 4px 10px;
-        }
-
-        .info-item.last-in-row {
-            border-radius: 4px 10px 10px 4px;
-        }
-
-        .info-item.only-in-row,
-        .info-item.middle-in-row {
-            border-radius: 10px;
-        }
-
         .tabs {
             display: none;
             /* Hidden by default */
@@ -2286,10 +2252,6 @@
         /* Add this rule to hide the date column when sorting by date */
         body.is-admin .logs-table.sorting-by-date .date-column {
             display: none !important;
-        }
-
-        body:not(.is-admin) .app-info {
-            display: none;
         }
 
         /* Center the UID and Date column titles */
@@ -3711,10 +3673,6 @@
             /* Dark blue-grey header */
         }
 
-        .dark-mode .info-item {
-            background-color: rgba(255, 255, 255, 0.08);
-        }
-
         /* Make timestamp tags a muted blue instead of grey */
         .dark-mode .time-tag {
             background-color: #202c68e5;
@@ -4255,17 +4213,6 @@
                 margin-bottom: 10px;
             }
 
-            .app-info {
-                gap: 5px;
-            }
-
-            .info-item {
-                padding: 6px 10px;
-                font-size: 0.8em;
-                line-height: normal;
-                height: auto;
-            }
-
             /* Better Table View */
 
             .database-table th,
@@ -4421,20 +4368,6 @@
 
         /* --- Mobile Breakpoint 500px (QoL Improvement) --- */
         @media (max-width: 500px) {
-
-            /* Chips keep their text on one line; a chip too long for the row ends in "…". */
-            .info-item {
-                flex-shrink: 1;
-                min-width: 0;
-                overflow: hidden;
-                text-overflow: ellipsis;
-            }
-
-            /* App info should wrap properly */
-            .app-info {
-                flex-wrap: wrap;
-                gap: 4px;
-            }
 
             /* Mobile day separator - left align */
             .day-separator-content {
@@ -4697,17 +4630,27 @@
     line-height: 1.4;
     text-align: left;
     pointer-events: auto;
-    cursor: pointer;
+    /* Picked up and swiped away by hand: no text selection, no native drag. */
+    cursor: grab;
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
-    animation: toast-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-    transition: opacity 0.2s ease, transform 0.2s ease;
+    -webkit-user-drag: none;
+    /* "backwards", not "both": a finished entry must not hold the position a swipe sets. */
+    animation: toast-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.in-page-notification.is-dragging {
+    cursor: grabbing;
+    transition: none;
+}
+
+/* Let go too early: it springs back with a little overshoot. */
+.in-page-notification.is-settling {
+    transition: transform 0.55s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
 }
 
 .in-page-notification.removing {
-    opacity: 0;
-    transform: translateY(-10px) scale(0.98);
     pointer-events: none;
 }
 
@@ -4767,6 +4710,7 @@
     box-shadow: none;
     color: #90a4ae;
     font-size: 0.875rem;
+    cursor: pointer;
     transform: none;
     filter: none;
 }
@@ -9787,19 +9731,6 @@ html:not([data-stando-nfc]) .sk-nfc {
     border-radius: 8px;
 }
 
-.sk-banner-chips {
-    display: flex;
-    gap: 3px;
-    margin-top: 13px;
-}
-
-/* One chip: the student count. */
-.sk-banner-chips .sk {
-    width: 190px;
-    height: 44px;
-    border-radius: 10px;
-}
-
 .sk-banner-tabs {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -10047,11 +9978,6 @@ html:not([data-stando-nfc]) .sk-nfc {
         width: 86px;
         height: 24px;
         margin-bottom: 16px;
-    }
-
-    /* The student count chip is hidden on phones. */
-    .sk-banner-chips {
-        display: none !important;
     }
 
     .sk-banner-tabs {

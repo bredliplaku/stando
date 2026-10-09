@@ -95,7 +95,7 @@ let tabs, tabContents, importExcelBtn, excelInput, filterInput, sortSelect,
     dbFilterInput, importBtn, importInput, exportBtn, clearBtn, addLogBtn,
     addEntryBtn, exportExcelBtn, clearDbBtn, logsTbody, databaseTbody,
     emptyLogs, emptyDatabase, filteredCount, dbEntryCount,
-    databaseStatus, notificationArea, successSound, errorSound,
+    notificationArea, successSound, errorSound,
     syncBtn, syncStatus, syncText, loginBtn, logoutBtn, loginContainer,
     userContainer, userName, userAvatar, scanHistoryModule;
 
@@ -4176,7 +4176,6 @@ function init() {
     emptyDatabase = document.getElementById('empty-database');
     filteredCount = document.getElementById('filtered-count');
     dbEntryCount = document.getElementById('db-entry-count');
-    databaseStatus = document.getElementById('database-status');
     notificationArea = document.getElementById('in-page-notification-area');
     successSound = document.getElementById('success-sound');
     errorSound = document.getElementById('error-sound');
@@ -4234,14 +4233,6 @@ function init() {
     setupScanLock();
     setupIdleSignOut();
 
-    // Round the header chips per visual row (the scan chips and the sign-in chips)
-    document.querySelectorAll('.app-info').forEach(appInfoEl => {
-        requestAnimationFrame(() => updateButtonRows(appInfoEl));
-        if (!appInfoEl._rowObserver) {
-            appInfoEl._rowObserver = new ResizeObserver(() => updateButtonRows(appInfoEl));
-            appInfoEl._rowObserver.observe(appInfoEl);
-        }
-    });
     setupRowMenus();
     setupRefreshButtons();
 
@@ -4357,6 +4348,10 @@ async function initGoogleApi() {
     try {
         await gisLoaded();
 
+        // Coming back from Google is a new sign-in, not a session reopened after
+        // a break; noted before the session swallows the code in the address.
+        const oauthReturn = /[?#&](code|access_token)=/.test(window.location.href);
+
         // Restores a stored session or consumes an OAuth redirect
         const { data: { session } } = await supabaseClient.auth.getSession();
 
@@ -4370,7 +4365,7 @@ async function initGoogleApi() {
         }
 
         if (session) {
-            onSuccessfulAuth(true);
+            onSuccessfulAuth(!(oauthReturn || originalHash !== null));
         } else {
             // Not signed in: show One Tap (hashed nonce to Google, raw to Supabase)
             oneTapRawNonce = crypto.randomUUID();
@@ -4529,7 +4524,6 @@ async function onSuccessfulAuth(isRestore = false) {
             databaseCache = bootData.database;
             databaseCacheTime = Date.now();
             window.buildUIDToPrimaryUidMap();
-            updateDatabaseStatus();
         }
 
         // 6. Process Course Info
@@ -8300,6 +8294,8 @@ function handleSignoutClick() {
     // Clear kiosk + Supabase sessions and reload to ensure a clean state
     localStorage.removeItem(KIOSK_MODE_KEY);
     localStorage.removeItem('last_active_course');
+    // The next sign-in starts its own inactivity clock; an old one would end it at once.
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
 
     // Stop One Tap from silently signing the user straight back in
     if (typeof google !== 'undefined' && google.accounts?.id) {
@@ -8779,6 +8775,7 @@ function setupAuthStateTracking() {
     // React only if the session is lost for good (supabase-js auto-refreshes)
     supabaseClient.auth.onAuthStateChange((event) => {
         if (event === 'SIGNED_OUT' && isSignedIn) {
+            try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch { /* Cleared at the next sign-out. */ }
             isSignedIn = false;
             isAdmin = false;
             isGlobalAdmin = false;
@@ -12205,14 +12202,6 @@ function renderStaffInSettings(staffList, filterText = '') {
     });
 }
 
-/**
- * Update database status indicator.
- */
-function updateDatabaseStatus() {
-    const count = studentEntries().length;
-    databaseStatus.textContent = count > 0 ? `${count} registered students` : 'Not loaded';
-}
-
 function updatePageTitle() {
     let titlePrefix = '';
 
@@ -12237,7 +12226,6 @@ async function updateUI() {
     await databaseLoadPromise;
     updateLogsList();
     updateDatabaseList();
-    updateDatabaseStatus();
     updatePageTitle();
     updateRegisterCardButton();
 
@@ -13280,16 +13268,7 @@ function updateYear() {
 
 function removeNotifications(type) {
     const notificationArea = document.getElementById('in-page-notification-area');
-    const notificationsToRemove = notificationArea.querySelectorAll(`[data-notification-type="${type}"]`);
-
-    notificationsToRemove.forEach(notification => {
-        notification.classList.add('removing');
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    });
+    notificationArea.querySelectorAll(`[data-notification-type="${type}"]`).forEach(element => leaveNotification(element));
 }
 
 function showNotification(type, title, message, duration = 5000) {
@@ -13335,31 +13314,12 @@ function showNotification(type, title, message, duration = 5000) {
         }
     }
 
-    // Safely remove notifications
-    const safeRemove = (element) => {
-        try {
-            if (element && element.parentNode) {
-                element.parentNode.removeChild(element);
-            }
-        } catch (e) {
-        }
-    };
-
-    // Clear existing notifications of the same type
-    const existingNotifications = notificationArea.querySelectorAll(`.in-page-notification-${type}`);
-    existingNotifications.forEach(notification => {
-        notification.classList.add('removing');
-        setTimeout(() => safeRemove(notification), 300);
-    });
-
-    const dismiss = (element) => {
-        element.classList.add('removing');
-        setTimeout(() => safeRemove(element), 300);
-    };
+    // A new notification replaces one of the same kind.
+    notificationArea.querySelectorAll(`.in-page-notification-${type}`).forEach(element => leaveNotification(element));
 
     // At most three at a time; the oldest (lowest) makes room.
     const shown = notificationArea.querySelectorAll('.in-page-notification:not(.removing)');
-    if (shown.length >= 3) dismiss(shown[shown.length - 1]);
+    if (shown.length >= 3) leaveNotification(shown[shown.length - 1]);
 
     // Create the new notification
     const notification = document.createElement('div');
@@ -13382,19 +13342,102 @@ function showNotification(type, title, message, duration = 5000) {
     // Newest at the top, like a phone's notifications.
     notificationArea.prepend(notification);
 
-    // A tap anywhere on it, or a swipe up, dismisses it.
-    notification.addEventListener('click', () => dismiss(notification));
-    let touchStartY = null;
-    notification.addEventListener('touchstart', (event) => { touchStartY = event.touches[0].clientY; }, { passive: true });
-    notification.addEventListener('touchend', (event) => {
-        if (touchStartY !== null && event.changedTouches[0].clientY - touchStartY < -24) dismiss(notification);
-        touchStartY = null;
+    // Errors stay until dismissed; everything else leaves on its own, but not
+    // while the pointer rests on it or a finger holds it.
+    const startTimer = (ms) => {
+        if (type === 'error') return;
+        clearTimeout(notification._autoTimer);
+        notification._autoTimer = setTimeout(() => leaveNotification(notification), ms);
+    };
+    startTimer(duration || 5000);
+    notification.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') clearTimeout(notification._autoTimer);
+    });
+    notification.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'mouse' && !notification.classList.contains('is-dragging')) startTimer(2500);
     });
 
-    // Errors stay until dismissed; everything else leaves on its own.
-    if (type !== 'error') {
-        setTimeout(() => dismiss(notification), duration || 5000);
-    }
+    notification.querySelector('.notification-close').addEventListener('click', () => leaveNotification(notification));
+    makeNotificationSwipeable(notification, () => startTimer(3000));
+}
+
+// A notification leaves the way it is going, fading as it moves; then the space
+// it held closes, so the ones below glide up instead of jumping.
+function leaveNotification(element, { x = 0, y = -12, rotate = 0 } = {}) {
+    if (!element || element.classList.contains('removing')) return;
+    element.classList.add('removing');
+    element.classList.remove('is-dragging', 'is-settling');
+    clearTimeout(element._autoTimer);
+    element.style.animation = 'none';
+    element.style.transition = 'transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease-out';
+    element.style.transform = `translate(${x}px, ${y}px) rotate(${rotate}deg)`;
+    element.style.opacity = '0';
+    setTimeout(() => {
+        element.style.height = `${element.offsetHeight}px`;
+        void element.offsetHeight;
+        element.style.transition = 'height 0.2s ease, padding 0.2s ease, margin 0.2s ease, border-width 0.2s ease';
+        element.style.height = '0px';
+        element.style.paddingTop = '0px';
+        element.style.paddingBottom = '0px';
+        element.style.borderWidth = '0px';
+        element.style.marginBottom = '-8px'; // Takes back the gap above the next one
+    }, 200);
+    setTimeout(() => element.remove(), 450);
+}
+
+// Swipe a notification away sideways (either way) or up, with a finger or by
+// dragging with the mouse. Let go before it is far enough and it springs back.
+function makeNotificationSwipeable(element, onSettle) {
+    let drag = null;
+    element.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0 || event.target.closest('.notification-close') || element.classList.contains('removing')) return;
+        drag = { id: event.pointerId, x: event.clientX, y: event.clientY, t: performance.now(), dx: 0, dy: 0, axis: null };
+        element.setPointerCapture(event.pointerId);
+        element.style.animation = 'none';
+        element.classList.remove('is-settling');
+        element.classList.add('is-dragging');
+        clearTimeout(element._autoTimer);
+    });
+
+    element.addEventListener('pointermove', (event) => {
+        if (!drag || event.pointerId !== drag.id) return;
+        drag.dx = event.clientX - drag.x;
+        drag.dy = event.clientY - drag.y;
+        if (!drag.axis && Math.hypot(drag.dx, drag.dy) > 6) {
+            drag.axis = Math.abs(drag.dx) >= Math.abs(drag.dy) ? 'x' : 'y';
+        }
+        if (drag.axis === 'x') {
+            element.style.transform = `translateX(${drag.dx}px) rotate(${drag.dx / 30}deg)`;
+            element.style.opacity = String(Math.max(0.15, 1 - Math.abs(drag.dx) / element.offsetWidth));
+        } else if (drag.axis === 'y') {
+            // Up follows the pointer; down resists, as there is nowhere to go.
+            element.style.transform = `translateY(${drag.dy < 0 ? drag.dy : drag.dy / 5}px)`;
+            element.style.opacity = String(Math.max(0.15, 1 + Math.min(0, drag.dy) / (element.offsetHeight * 1.5)));
+        }
+    });
+
+    const end = (event) => {
+        if (!drag || event.pointerId !== drag.id) return;
+        const { dx, dy, axis } = drag;
+        const ms = Math.max(1, performance.now() - drag.t);
+        drag = null;
+        element.classList.remove('is-dragging');
+        // Far enough, or flicked fast enough, and it goes.
+        if (axis === 'x' && (Math.abs(dx) > element.offsetWidth * 0.35 || Math.abs(dx) / ms > 0.6)) {
+            const side = Math.sign(dx);
+            leaveNotification(element, { x: side * (element.offsetWidth + 60), y: 0, rotate: side * 12 });
+        } else if (axis === 'y' && (dy < -element.offsetHeight * 0.5 || dy / ms < -0.6)) {
+            leaveNotification(element, { x: 0, y: -(element.offsetHeight + 40) });
+        } else {
+            element.classList.add('is-settling');
+            element.style.transform = '';
+            element.style.opacity = '';
+            setTimeout(() => element.classList.remove('is-settling'), 600);
+            onSettle();
+        }
+    };
+    element.addEventListener('pointerup', end);
+    element.addEventListener('pointercancel', end);
 }
 
 // --- PAGINATION HELPER FUNCTIONS ---
