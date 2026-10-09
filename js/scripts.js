@@ -3346,6 +3346,15 @@ function showMainContent() {
     const loadingIndicator = document.getElementById('app-loading');
     const mainContainer = document.getElementById('main-container');
 
+    isInitializing = false;
+    criticalErrorsOnly = false;
+
+    // Lay the page out for the signed-in or signed-out view before it shows, so the
+    // crossfade never passes through the default markup (top bar, header banner,
+    // Scan History) on its way to the sign-in card.
+    updateAuthUI();
+    updateUI();
+
     // Crossfade: the page fades in underneath while the skeleton fades out.
     if (mainContainer) mainContainer.classList.remove('content-hidden');
     if (loadingIndicator) loadingIndicator.classList.add('is-done');
@@ -3357,15 +3366,8 @@ function showMainContent() {
         }
         // Re-enable scrolling
         document.body.classList.remove('is-loading');
-
-        // --- Ensure auth UI state (hiding modules) is applied correctly ---
-        updateAuthUI();
-        updateUI();
-
     }, 400);
 
-    isInitializing = false;
-    criticalErrorsOnly = false;
     processPendingNotifications();
 }
 
