@@ -397,7 +397,7 @@ function showStaffEditorDialog(staffData = null) {
             } else {
                 if (activeNfcSession.controller) activeNfcSession.controller.abort();
                 scanBtn.innerHTML = '<i class="fa-solid fa-xmark"></i>';
-                const controller = startNfcForInputDialog(uidInput, statusContainer, scanBtn);
+                const controller = startNfcForInputDialog(uidInput, statusContainer, scanBtn, 'STAFF ID CARD');
                 activeNfcSession = { controller, button: scanBtn };
             }
         });
@@ -1196,6 +1196,13 @@ function renderScanButton() {
     const scanBtn = document.getElementById('scan-button');
     if (!scanBtn) return;
     scanBtn.classList.toggle('is-scanning', isScanning);
+    // Waiting for a card on the sign-in page: show how to hold it.
+    const art = document.querySelector('.scan-wait-art');
+    if (art) {
+        const waiting = !isSignedIn && isScanning;
+        if (waiting && !art.firstElementChild) art.innerHTML = cardTapAnimationHtml();
+        art.hidden = !waiting;
+    }
     const html = scanButtonHtml();
     if (scanBtn._shownHtml !== html) {
         scanBtn._shownHtml = html;
@@ -2369,7 +2376,10 @@ function showDeviceNameDialog({ title, icon, intro, name = '', confirmText, onSa
     document.body.appendChild(dialogBackdrop);
 
     const input = dialog.querySelector('#device-name-input');
-    setTimeout(() => input.focus(), 100);
+    setTimeout(() => {
+        input.focus();
+        input.select();
+    }, 100);
     const close = () => dialogBackdrop.remove();
     dialog.querySelector('.device-name-cancel').onclick = close;
 
@@ -2400,11 +2410,28 @@ function showDeviceNameDialog({ title, icon, intro, name = '', confirmText, onSa
     });
 }
 
+// A starting name for this device: the phone's model where the browser tells it,
+// otherwise the kind of device. It is selected, so typing replaces it.
+async function suggestedDeviceName() {
+    try {
+        const { model } = await navigator.userAgentData?.getHighEntropyValues?.(['model']) || {};
+        if (model) return model;
+    } catch { /* Fall back to the kind of device. */ }
+    const ua = navigator.userAgent;
+    return /iPhone/.test(ua) ? 'iPhone'
+        : /iPad/.test(ua) ? 'iPad'
+            : /Android/.test(ua) ? 'Android phone'
+                : /Windows/.test(ua) ? 'Windows PC'
+                    : /Macintosh/.test(ua) ? 'Mac'
+                        : /Linux|CrOS/.test(ua) ? 'Computer' : '';
+}
+
 function bindTrustedDevicesSection(dialog) {
-    dialog.querySelector('#register-this-device-btn').onclick = () => showDeviceNameDialog({
+    dialog.querySelector('#register-this-device-btn').onclick = async () => showDeviceNameDialog({
         title: 'Trust This Device',
         icon: 'fa-laptop-medical',
         intro: 'Give this device a friendly name (e.g., "A-131 Tablet").',
+        name: await suggestedDeviceName(),
         confirmText: 'Trust',
         onSave: async (deviceName) => {
             await callWebApp('registerDevice_Admin', { deviceName, deviceId: getDeviceFingerprint() }, 'POST');
@@ -4657,9 +4684,10 @@ function normalizeGooglePhotoUrl(url) {
     return url.replace(/=s\d+(-c)?$/, '') + '=s96-c';
 }
 
-// An EPOKA Student ID held against the back of a phone, lowered from above at a
-// slight tilt, as a hand does. Without motion it shows the card in place.
-function cardTapAnimationHtml() {
+// An EPOKA ID card held against the back of a phone, lowered from above at a
+// slight tilt, as a hand does. Without motion it shows the card in place. The
+// frame is cropped to the drawing, so the size set in CSS is all illustration.
+function cardTapAnimationHtml({ label = 'STUDENT ID CARD' } = {}) {
     // Field labels on the card end where their white boxes begin, as printed.
     const fields = [12, 11, 8, 12, 13].map((width, row) => {
         const y = 17 + row * 5.2;
@@ -4667,7 +4695,7 @@ function cardTapAnimationHtml() {
                     <rect class="tap-card-field" x="49" y="${y}" width="36" height="3.6" rx="0.6"/>`;
     }).join('');
     return `
-        <svg class="card-tap" viewBox="0 0 200 150" aria-hidden="true" focusable="false">
+        <svg class="card-tap" viewBox="30 0 140 150" aria-hidden="true" focusable="false">
             <g class="tap-phone">
                 <rect class="tap-phone-body" x="60" y="6" width="80" height="138" rx="14"/>
                 <rect class="tap-phone-camera" x="69" y="16" width="24" height="40" rx="8"/>
@@ -4684,7 +4712,7 @@ function cardTapAnimationHtml() {
                     <path class="tap-card-skyline" d="M3 54v-5h3v-3h4v5h3v-7h5v7h4v-3h6v3h5v-5h3v5h7v-4h4v4h6v-2h5v2h8v-3h4v3h6v-5h3v5h4"/>
                     <path class="tap-card-mark" d="M6 5h6v4.2c0 1.9-1.4 3.1-3 3.7-1.6-.6-3-1.8-3-3.7z"/>
                     <text class="tap-card-text" x="14" y="11" font-size="5" textLength="38" lengthAdjust="spacingAndGlyphs"><tspan font-weight="800">EPOKA</tspan> UNIVERSITY</text>
-                    <text class="tap-card-text" x="85" y="10.4" font-size="2.9" font-weight="700" text-anchor="end" textLength="23" lengthAdjust="spacingAndGlyphs">STUDENT ID CARD</text>
+                    <text class="tap-card-text" x="85" y="10.4" font-size="2.9" font-weight="700" text-anchor="end" textLength="${(label.length * 1.55).toFixed(1)}" lengthAdjust="spacingAndGlyphs">${escapeHtml(label)}</text>
                     <rect class="tap-card-photo" x="6" y="17" width="18" height="24" rx="0.8"/>
                     ${fields}
                     <text class="tap-card-text tap-card-site" x="85" y="47" font-size="2.6" text-anchor="end" textLength="13" lengthAdjust="spacingAndGlyphs">epoka.edu.al</text>
@@ -8012,7 +8040,7 @@ function localDateString(date = new Date()) {
 * @param {HTMLElement} statusContainer The div where status messages will be shown.
 * @returns {AbortController | null} The controller to stop the scan, or null if not supported.
 */
-function startNfcForInputDialog(inputElement, statusContainer, scanButton) {
+function startNfcForInputDialog(inputElement, statusContainer, scanButton, cardLabel = 'STUDENT ID CARD') {
     if (!nfcSupported) {
         if (/Android|webOS|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
             statusContainer.innerHTML = `<p style="text-align:center; font-size: 0.9em; opacity: 0.8;">NFC scanning requires Chrome on Android.</p>`;
@@ -8021,7 +8049,9 @@ function startNfcForInputDialog(inputElement, statusContainer, scanButton) {
     }
 
     statusContainer.style.minHeight = '48px';
-    statusContainer.innerHTML = `<div class="sync-status syncing" style="justify-content: center; padding: 15px 0; font-size: 1em;"><i class="fa-solid fa-wifi"></i> <span>Ready to Scan...</span></div>`;
+    statusContainer.innerHTML = `<div class="nfc-input-wait">${cardTapAnimationHtml({ label: cardLabel })}<div class="sync-status syncing" style="justify-content: center; padding: 4px 0 12px; font-size: 1em;"><i class="fa-solid fa-wifi"></i> <span>Ready to Scan...</span></div></div>`;
+    // It sits below the fields; bring it into view so the hint is seen.
+    requestAnimationFrame(() => statusContainer.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 
     // 1. Abort any existing controller before creating a new one
     if (window.activeNfcController) {
@@ -8437,8 +8467,9 @@ function setupIdleSignOut() {
     ['pointerdown', 'keydown', 'wheel', 'touchstart', 'scroll'].forEach(type => {
         document.addEventListener(type, (event) => {
             if (!isSignedIn) return;
-            // The countdown's own buttons decide for themselves.
-            if (idleCountdown && event.target?.closest?.('[data-idle]')) return;
+            // A click on the countdown's own buttons decides for itself; keys (Escape,
+            // Enter) always count as being there, as Escape closes the countdown.
+            if (idleCountdown && event.type === 'pointerdown' && event.target?.closest?.('[data-idle]')) return;
             noteActivity(!!idleCountdown);
             if (idleCountdown) hideIdleCountdown();
         }, { capture: true, passive: true });
@@ -8635,10 +8666,12 @@ function updateAuthUI() {
                 (loginContainer || document.getElementById('main-container'))?.appendChild(notSignedInMsg);
             }
             notSignedInMsg.classList.toggle('is-known', !!signedOutCard.name);
-            notSignedInMsg.innerHTML = signedOutCard.name
-                ? '<p class="card-greeting"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Hello, <strong></strong></span></p>'
-                : `<p><i class="fa-solid fa-id-card" aria-hidden="true"></i> This card isn't registered yet.</p>
-                   <p>Sign in, then choose <strong>Register Card ID</strong>.</p>`;
+            notSignedInMsg.innerHTML = signedOutCard.checking
+                ? '<p><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Checking card…</p>'
+                : signedOutCard.name
+                    ? '<p class="card-greeting"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Hello, <strong></strong></span></p>'
+                    : `<p><i class="fa-solid fa-id-card" aria-hidden="true"></i> This card isn't registered yet.</p>
+                       <p>Sign in, then choose <strong>Register Card ID</strong>.</p>`;
             if (signedOutCard.name) notSignedInMsg.querySelector('strong').textContent = signedOutCard.name;
         } else if (notSignedInMsgElement) {
             notSignedInMsgElement.remove();
@@ -12340,8 +12373,7 @@ async function handleNfcReading({ serialNumber }) {
     if (!isSignedIn) {
         if (nfcLoginInProgress) return;
         nfcLoginInProgress = true;
-        const notSignedInMsg = document.getElementById('not-signed-in-message');
-        if (notSignedInMsg) notSignedInMsg.innerHTML = `<div style="text-align:center;"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking credentials...</div>`;
+        showSignedOutCard({ checking: true });
 
         try {
             const myDeviceId = getDeviceFingerprint();
@@ -12365,6 +12397,7 @@ async function handleNfcReading({ serialNumber }) {
                 if (otpError) throw otpError;
 
                 localStorage.setItem(KIOSK_MODE_KEY, '1');
+                signedOutCard = null;
                 // The account keeps the Google name and photo from its last Google
                 // sign-in; the staff name comes first, and without any the avatar
                 // draws initials.
@@ -13422,6 +13455,7 @@ function makeNotificationSwipeable(element, onSettle) {
         const ms = Math.max(1, performance.now() - drag.t);
         drag = null;
         element.classList.remove('is-dragging');
+        if (element.classList.contains('removing')) return;
         // Far enough, or flicked fast enough, and it goes.
         if (axis === 'x' && (Math.abs(dx) > element.offsetWidth * 0.35 || Math.abs(dx) / ms > 0.6)) {
             const side = Math.sign(dx);

@@ -4575,8 +4575,9 @@
     text-wrap: pretty;
 }
 
+/* Hints under fields sit in a narrow column, so they stay left-aligned too. */
 @media (min-width: 600px) {
-    .dialog-content > p,
+    .dialog-content > p:not(.form-hint),
     .dialog-disclaimer,
     .website-download .website-download-copy p,
     .collapsible-content p {
@@ -8357,11 +8358,28 @@ body.is-admin .toolbar-menu.admin-only {
    against the back of a phone at a slight tilt. The resting state shows the
    card in place, which is what reduced motion sees.
    ========================================================================= */
+.scan-wait-art[hidden] {
+    display: none;
+}
+
+/* On the sign-in page while it waits for a card. */
+.scan-wait-art .card-tap {
+    height: 120px;
+    margin: 4px auto 14px;
+}
+
+/* In the staff and student editors while "Scan UID" waits. */
+.nfc-input-wait .card-tap {
+    height: 120px;
+    margin: 8px auto 4px;
+}
+
+/* Sized by height, so it keeps its proportions everywhere; the width follows. */
 .card-tap {
     display: block;
-    width: 100%;
-    max-width: 240px;
-    height: auto;
+    width: auto;
+    height: 170px;
+    max-width: 100%;
     margin: 6px auto 12px;
     overflow: visible;
 }
@@ -8764,7 +8782,7 @@ body.is-admin .toolbar-menu.admin-only {
 
 @media (max-width: 560px) {
     .reg-dialog .card-tap {
-        max-width: 190px;
+        height: 140px;
     }
 }
 
@@ -9051,8 +9069,9 @@ html.scan-locked body {
     to { opacity: 0; transform: translateY(-12px); }
 }
 
+/* Grows with the screen's height, within limits, on phones and computers alike. */
 .scan-lock .card-tap {
-    max-width: 260px;
+    height: clamp(150px, 26vh, 210px);
     margin: 10px auto 2px;
 }
 
@@ -9353,7 +9372,7 @@ html.scan-locked body {
 /* Short phones: a smaller illustration keeps everything on one screen. */
 @media (max-height: 640px) {
     .scan-lock .card-tap {
-        max-width: 190px;
+        height: 130px;
     }
 
     .scan-lock-clock {
