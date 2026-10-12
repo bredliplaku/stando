@@ -21,9 +21,14 @@ while scanning or while attendance on the device waits to sync.
 
 | User | What you can do |
 |---|---|
-| Students | View your attendance, register your card and request an excused absence with a supporting document. |
+| Students | View your attendance, register your card (choosing your programme) and request an excused absence with a supporting document. |
 | Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, and trust devices (renaming or removing only their own). |
-| Administrators | Everything above, plus the student list, card approvals, staff, courses and every trusted device. |
+| Administrators | Everything above, plus the student list, card approvals, staff, courses, programmes and every trusted device. |
+
+The banner at the top shows the course on screen: its code above its name, such
+as **CE 121 / Civil Engineering Drawing**, and the browser tab reads
+"CE 121 Civil Engineering Drawing Attendance". Administrators set a course's
+name in **Settings → Courses**; until then the banner shows the code alone.
 
 ### Taking attendance
 
@@ -61,6 +66,8 @@ valid once for 48 hours, with a **Copy** button to send it in a message. The
 student types or pastes it. The server turns the code back into the card, so the
 Card ID never appears on either screen. This needs
 [supabase/migrations/card_codes.sql](supabase/migrations/card_codes.sql).
+Before submitting, students choose their programme; an administrator can change
+it when approving the card.
 
 On the sign-in page, a student's card is greeted with their name, as a check
 that it works; a staff card signs in. The greeting needs the current
@@ -71,7 +78,8 @@ Reconnect and check the sync status to make sure they have been saved online.
 
 ### Student list and exports
 
-Global administrators manage the student list in the **Student List** tab.
+Global administrators manage the student list in the **Student List** tab, where
+each student has a programme and the list can be filtered by programme.
 Upload an Excel or CSV file instead of entering everyone by hand: use
 **Import → Download template** for a starting file, then review the preview:
 
@@ -86,8 +94,13 @@ Tampermonkey) fill it in on the EIS page.
 <details>
 <summary>Student import format</summary>
 
-The template uses **Name**, **Card ID** and **Email**. Imports also accept older
-**UID / Student ID** headings and an optional **Hardware UID** column.
+The template uses **Name**, **Card ID**, **Email** and **Programme**. Imports also
+accept older **UID / Student ID** headings and an optional **Hardware UID** column.
+
+Programme is optional. Use a code from **Settings → Programmes** (such as
+`BA CE`) or its full name; an unknown programme stops the import at that row.
+Instead of a column, you can choose one programme for every student in the file.
+Students the file gives no programme keep the one they have.
 
 Store card IDs as text to retain leading zeros; separate multiple IDs with
 semicolons. Leave Hardware UID empty when it is unavailable. Each student needs
@@ -123,6 +136,22 @@ access. App updates reach the page without another download.
 
 Without step 2 the page works, but emails and staff card sign-in fail there.
 Sign-ins and trusted devices are separate on each website.
+
+### Programmes
+
+Administrators keep the list of study programmes in **Settings → Programmes**.
+Each has a code (`BA CE`) and an optional full name (`Civil Engineering`),
+shown to students as they choose.
+
+Students are linked to a programme, not to its spelling, so:
+
+- **Rename** a programme to correct its code or name; every student in it
+  follows at once.
+- **Archive** a programme you no longer offer. Its students keep it, but new
+  registrations and new students cannot choose it.
+- **Delete** a programme only to remove one made by mistake. If students are in
+  it, you choose another programme and they move there first. Their cards and
+  attendance are not affected.
 
 ### Staff names and email signatures
 

@@ -89,6 +89,8 @@
             if (stored || /[?#&](code|access_token)=/.test(location.href)) {
                 const last = localStorage.getItem('stando_view');
                 view = ['student', 'lecturer', 'global'].includes(last) ? last : 'student';
+                const header = localStorage.getItem('stando_header');
+                if (header === 'titled') root.dataset.standoHeader = header;
             }
         } catch { /* Storage blocked: the sign-in skeleton. */ }
         root.dataset.standoView = view;

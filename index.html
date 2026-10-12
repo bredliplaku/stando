@@ -54,6 +54,9 @@
                 if (stored || /[?#&](code|access_token)=/.test(location.href)) {
                     const last = localStorage.getItem('stando_view');
                     view = ['student', 'lecturer', 'global'].includes(last) ? last : 'student';
+                    // The header banner as it was: a course's code above its name, or one line.
+                    const header = localStorage.getItem('stando_header');
+                    if (header === 'titled') root.dataset.standoHeader = header;
                 }
             } catch { }
             root.dataset.standoView = view;
@@ -128,7 +131,12 @@
                 </span>
             </div>
             <div class="sk-banner">
-                <span class="sk sk-on-primary sk-banner-title"></span>
+                <span class="sk-banner-head">
+                    <span class="sk-banner-lines">
+                        <span class="sk sk-on-primary sk-banner-code"></span>
+                        <span class="sk sk-on-primary sk-banner-title"></span>
+                    </span>
+                </span>
                 <span class="sk-banner-tabs sk-global">
                     <span class="sk-tab is-active"><span class="sk sk-on-primary"></span></span>
                     <span class="sk-tab"><span class="sk sk-on-primary"></span></span>
@@ -208,8 +216,14 @@
                 </div>
             </div>
         </div>
+        <!-- updateAppHeader() shows the course on screen here: its code above its name. -->
         <div class="app-header">
-            <h1>Stando</h1>
+            <div class="app-header-title">
+                <div class="app-header-text">
+                    <p class="app-header-code" hidden></p>
+                    <h1 class="app-header-name">Stando</h1>
+                </div>
+            </div>
             <div class="tabs" role="tablist" style="display: none;">
                 <div class="tab active" data-tab="scanner-tab" role="tab" tabindex="0" aria-selected="true"><i
                         class="fa-solid fa-list-check tab-icon" aria-hidden="true"></i><span class="tab-label"
@@ -280,6 +294,7 @@
                             <thead>
                                 <tr>
                                     <th>Student</th>
+                                    <th class="programme-column">Programme</th>
                                     <th>Course</th>
                                     <th>Date</th>
                                     <th>Hours</th>
@@ -305,6 +320,7 @@
                             <thead>
                                 <tr>
                                     <th>Name</th>
+                                    <th class="programme-column">Programme</th>
                                     <th class="uid-column">UID</th>
                                     <th>Email</th>
                                     <th>Timestamp</th>
@@ -468,13 +484,17 @@
                             <input type="search" id="db-filter-input" class="filter-input"
                                 placeholder="Search students..." aria-label="Search students">
                         </div>
+                        <select id="db-programme-filter" class="sort-dropdown programme-filter"
+                            aria-label="Filter students by programme">
+                            <option value="">All programmes</option>
+                        </select>
                         <select id="db-sort-select" class="sort-dropdown" aria-label="Sort students">
                             <option value="name-asc"> Name (A-Z)</option>
                             <option value="name-desc"> Name (Z-A)</option>
+                            <option value="programme-asc" class="programme-option"> Programme (A-Z)</option>
+                            <option value="programme-desc" class="programme-option"> Programme (Z-A)</option>
                             <option value="id-asc"> Card ID (Asc)</option>
                             <option value="id-desc"> Card ID (Desc)</option>
-                            <option value="uid-asc"> UID (A-Z)</option>
-                            <option value="uid-desc"> UID (Z-A)</option>
                             <option value="email-asc"> Email (A-Z)</option>
                             <option value="email-desc"> Email (Z-A)</option>
                         </select>
@@ -531,12 +551,12 @@
                                         <i class="fa-solid fa-id-card"></i> Card ID <i
                                             class="sort-icon fa-solid fa-sort"></i>
                                     </th>
-                                    <th class="sortable uid-column" data-sort="uid">
-                                        <i class="fa-solid fa-wifi"></i> Hardware UID <i
-                                            class="sort-icon fa-solid fa-sort"></i>
-                                    </th>
                                     <th class="sortable email-column" data-sort="email">
                                         <i class="fa-solid fa-envelope"></i> Email <i
+                                            class="sort-icon fa-solid fa-sort"></i>
+                                    </th>
+                                    <th class="sortable programme-column" data-sort="programme">
+                                        <i class="fa-solid fa-graduation-cap"></i> Programme <i
                                             class="sort-icon fa-solid fa-sort"></i>
                                     </th>
                                     <th class="admin-only actions-header" style="display: none;">Actions</th>

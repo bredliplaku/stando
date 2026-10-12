@@ -176,6 +176,40 @@ function getSignatureForAdmin(adminEmail: string, adminName: string): string {
   return name ? `<p>Best,<br>${escapeHtml(name)}</p>` : `<p>Best,</p>`;
 }
 
+// A course as people write it: "CE 121" without the archive or EIS suffix of its
+// key, and its name ("Civil Engineering Drawing") when one is set. Same rules as
+// cleanCourseCode() in js/data-utils.js.
+async function getCourseLabel(courseName: string): Promise<{ code: string; title: string; label: string }> {
+  const { data } = await service.from("courses").select("name,title,eis_id").eq("name", courseName);
+  const course = data?.[0];
+  let code = String(courseName ?? "").trim().replace(/_archived(?:_\d+)?$/i, "");
+  const eis = String(course?.eis_id ?? "").trim();
+  const suffix = eis && [`_EIS_${eis}`, `_${eis}`].find((part) => code.toLowerCase().endsWith(part.toLowerCase()));
+  if (suffix) code = code.slice(0, -suffix.length);
+  else {
+    code = code.replace(/_EIS_\d+$/i, "");
+    if (code.split("_").length >= 3) code = code.replace(/_\d{4,7}$/, "");
+  }
+  code = code.replace(/_/g, " ");
+  const title = String(course?.title ?? "").trim();
+  return { code, title, label: title ? `${code} · ${title}` : code };
+}
+
+function courseValueHtml(course: { code: string; title: string }, session: string): string {
+  return `<strong>${escapeHtml(course.code)}</strong>${course.title ? ` ${escapeHtml(course.title)}` : ""}${sessionBadgeHtml(session)}`;
+}
+
+// "BA CE · Bachelor in Civil Engineering", or "" when the student has no programme.
+async function getStudentProgramme(email: string): Promise<string> {
+  const { data: students } = await service.from("students").select("programme_id").ilike("email", email);
+  const id = students?.find((row) => row.programme_id != null)?.programme_id;
+  if (id == null) return "";
+  const { data: programmes } = await service.from("programmes").select("code,name").eq("id", id);
+  const programme = programmes?.[0];
+  if (!programme) return "";
+  return programme.name ? `${programme.code} · ${programme.name}` : String(programme.code);
+}
+
 async function getAdminEmailsForCourse(courseName: string): Promise<string[]> {
   const { data } = await service.from("courses").select("admin_emails").eq("name", courseName);
   if (data && data.length > 0 && data[0].admin_emails) {
@@ -303,7 +337,10 @@ Deno.serve(async (req) => {
       const globalAdmins = await getAllGlobalAdminEmails();
       const notifyAdmins = courseAdmins.length > 0 ? courseAdmins : globalAdmins;
 
-      const formattedCourseName = String(reqRow.course || "").replace(/_/g, " ");
+      const course = await getCourseLabel(reqRow.course);
+      const programme = await getStudentProgramme(reqRow.student_email || "");
+      const programmeRow = programme
+        ? `<tr><td style="${labelStyle}">Programme</td><td style="${valueStyle}">${escapeHtml(programme)}</td></tr>` : "";
       const attachmentUrl = resolveAttachmentUrl(reqRow.attachment_url || "");
       const reviewUrl = APP_URL + "#" + encodeURIComponent(reqRow.course);
       const descriptionHtml = (reqRow.description && reqRow.description.trim())
@@ -315,7 +352,8 @@ Deno.serve(async (req) => {
           <p style="margin:0 0 16px;color:#333;">Greetings,<br><br><span style="color:#555;">I am writing to submit a formal permission request. Please find the details of my request and the supporting documentation provided below for your review.</span></p>
           <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #e5e5e5;border-radius:6px;margin-bottom:20px;background:#fafafa;cursor:default;">
             <tr><td style="${labelStyle}">Student</td><td style="${valueStyle}"><strong>${escapeHtml(reqRow.student_name)}</strong><br><span style="font-size:12px;color:#888;">${escapeHtml(reqRow.student_email)}</span></td></tr>
-            <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}"><strong>${escapeHtml(formattedCourseName)}</strong>${sessionBadgeHtml(reqRow.session || "")}</td></tr>
+            ${programmeRow}
+            <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}">${courseValueHtml(course, reqRow.session || "")}</td></tr>
             <tr><td style="${labelStyle}">Date</td><td style="${valueStyle}">${formatDateForEmail(reqRow.absence_date)}</td></tr>
             <tr><td style="${labelStyle}">Hours</td><td style="${valueStyle}"><table cellpadding="0" cellspacing="0" border="0"><tr>${buildHourPillsHtml(reqRow.hours, null)}</tr></table></td></tr>
             <tr><td style="${labelStyle}">Reason</td><td style="${valueStyle}">${escapeHtml(reqRow.reason_type)}</td></tr>
@@ -331,7 +369,7 @@ Deno.serve(async (req) => {
         to: await formatAdminEmailsForCC(notifyAdmins),
         cc: [mailbox(reqRow.student_name, reqRow.student_email)],
         replyTo: mailbox(reqRow.student_name, reqRow.student_email),
-        subject: `Permission Request for ${formattedCourseName}`,
+        subject: `Permission Request for ${course.label}`,
         html: bodyHtml,
       });
       return json({ result: "success" });
@@ -345,8 +383,8 @@ Deno.serve(async (req) => {
       if (!reqRow) throw new Error("Request not found.");
       if (!isGlobalAdmin && !adminCourses.includes(reqRow.course)) return json({ result: "error", message: "Not authorized for this course." }, 403);
 
-      const formattedCourseName = String(reqRow.course || "").replace(/_/g, " ");
-      const subject = `Permission Request for ${formattedCourseName}`;
+      const course = await getCourseLabel(reqRow.course);
+      const subject = `Permission Request for ${course.label}`;
       const firstName = reqRow.student_name ? reqRow.student_name.split(" ")[0] : "Student";
       const signatureHtml = getSignatureForAdmin(callerEmail, callerName);
       const courseAdmins = await getAdminEmailsForCourse(reqRow.course);
@@ -383,9 +421,9 @@ Deno.serve(async (req) => {
         bodyHtml = `
           <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:600px;">
             <p style="margin:0 0 16px;">Dear ${escapeHtml(firstName)},</p>
-            <p style="margin:0 0 20px;">Your permission request for <strong>${escapeHtml(formattedCourseName)}</strong> has been <strong style="color:${statusColor};">${statusText}</strong>.</p>
+            <p style="margin:0 0 20px;">Your permission request for <strong>${escapeHtml(course.label)}</strong> has been <strong style="color:${statusColor};">${statusText}</strong>.</p>
             <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #e5e5e5;border-radius:6px;margin-bottom:20px;background:#fafafa;cursor:default;">
-              <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}"><strong>${escapeHtml(formattedCourseName)}</strong>${sessionBadgeHtml(reqRow.session || "")}</td></tr>
+              <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}">${courseValueHtml(course, reqRow.session || "")}</td></tr>
               ${dateRow}
               <tr><td style="${labelStyle}">Hours</td><td style="${valueStyle}"><table cellpadding="0" cellspacing="0" border="0"><tr>${buildHourPillsHtml(originalHours, approvedHours)}</tr></table>${partialNote}</td></tr>
               ${reasonRow}
@@ -406,9 +444,9 @@ Deno.serve(async (req) => {
         bodyHtml = `
           <div style="font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:14px;color:#333;line-height:1.6;max-width:600px;">
             <p style="margin:0 0 16px;">Dear ${escapeHtml(firstName)},</p>
-            <p style="margin:0 0 20px;">Your permission request for <strong>${escapeHtml(formattedCourseName)}</strong> has <span style="color:#c0392b;font-weight:600;">not been approved</span>.</p>
+            <p style="margin:0 0 20px;">Your permission request for <strong>${escapeHtml(course.label)}</strong> has <span style="color:#c0392b;font-weight:600;">not been approved</span>.</p>
             <table cellpadding="0" cellspacing="0" border="0" style="width:100%;border:1px solid #e5e5e5;border-radius:6px;margin-bottom:20px;background:#fafafa;cursor:default;">
-              <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}"><strong>${escapeHtml(formattedCourseName)}</strong>${sessionBadgeHtml(reqRow.session || "")}</td></tr>
+              <tr><td style="${labelStyle}">Course</td><td style="${valueStyle}">${courseValueHtml(course, reqRow.session || "")}</td></tr>
               ${dateRow}
               <tr><td style="${labelStyle}">Hours</td><td style="${valueStyle}"><table cellpadding="0" cellspacing="0" border="0"><tr>${buildHourPillsHtml(reqRow.hours, "")}</tr></table></td></tr>
               ${reasonRow}

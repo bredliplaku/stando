@@ -7534,58 +7534,129 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 /* =========================================================================
-   Dialogs: one design language for every dialog
-   Light chrome, muted labels, white rounded fields, a neutral Cancel next to
-   one solid action, and tinted secondary buttons. Label and footer icons are
-   dropped (spinners stay); title icons stay, small and in the primary colour.
+   Dialogs: one design language for every dialog, as in Syllabase
+   An indigo title bar with a × to close, labels above white rounded fields,
+   and a footer of compact rounded buttons: grey Cancel, Close and Back next
+   to one coloured action. Buttons have a darker edge and a soft shadow;
+   hover draws an inner border.
    ========================================================================= */
 
 .dialog {
-    border-radius: 20px;
-    border: 1px solid rgba(0, 0, 0, 0.06);
-    box-shadow: 0 24px 48px -12px rgba(15, 23, 42, 0.28);
+    border: 0;
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
     font-size: 1rem;
 }
 
-/* Phones: bottom sheets, gently rounded at the top and square at the bottom,
-   where the browser's own toolbar meets them. */
+/* Phones: bottom sheets, rounded at the top and square at the bottom, where
+   the browser's own toolbar meets them. */
 @media (max-width: 768px) {
     .dialog {
         border-radius: 12px 12px 0 0;
-        border-bottom: 0;
         box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.18);
     }
 }
 
+/* Title bar: white on the app's indigo gradient. The bars of Settings and the
+   student profile match it. A title's icon goes; inline colours (a warning
+   title) give way to white. */
+.dialog-title,
+.settings-modal-header,
+.sp-header {
+    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    border-bottom: 0;
+    color: #fff !important;
+}
+
+.dark-mode .dialog-title,
+.dark-mode .settings-modal-header,
+.dark-mode .sp-header {
+    background: linear-gradient(135deg, #2c3e50, #1a237e);
+}
+
 .dialog-title,
 .settings-modal-header {
-    padding: 18px 22px;
+    padding: 16px 16px 16px 22px;
 }
 
 .dialog-title {
     display: flex;
     align-items: center;
-    gap: 10px;
-    font-size: 1.125rem;
+    gap: 12px;
+    min-height: 36px;
+    font-size: 1.0625rem;
     font-weight: 700;
     line-height: 1.3;
     user-select: none;
 }
 
-.dialog-title > i,
-.dialog-title > svg {
-    flex-shrink: 0;
-    font-size: 0.9em;
-    color: var(--primary-color);
+.dialog-title > i:not(.fa-spin),
+.dialog-title > svg:not(.fa-spin) {
+    display: none;
 }
 
-.dark-mode .dialog-title > i,
-.dark-mode .dialog-title > svg {
-    color: var(--primary-light);
+.settings-modal-heading h3,
+.settings-modal-sub,
+.sp-identity h3,
+.sp-header .sp-email {
+    color: #fff;
+}
+
+.settings-modal-sub,
+.sp-header .sp-email {
+    opacity: 0.8;
+}
+
+.sp-header .user-avatar.sp-avatar,
+.settings-avatar .user-avatar {
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+/* The × and the bars' own close buttons: a ghost circle on the indigo. */
+.dialog-close-x,
+.settings-modal-header .icon-only-btn,
+.sp-header .icon-only-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 34px;
+    height: 34px;
+    margin-left: auto;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    font-size: 0.9rem;
+    box-shadow: none;
+    transition: box-shadow 0.2s ease, filter 0.15s ease, transform 0.12s ease;
+}
+
+.dialog-close-x:hover:not(:disabled),
+.settings-modal-header .icon-only-btn:hover:not(:disabled),
+.sp-header .icon-only-btn:hover:not(:disabled) {
+    border-color: rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.6);
+    filter: brightness(1.08);
+}
+
+.dialog-close-x:active:not(:disabled),
+.settings-modal-header .icon-only-btn:active:not(:disabled),
+.sp-header .icon-only-btn:active:not(:disabled) {
+    transform: scale(0.94);
+}
+
+.dialog-close-x:focus-visible,
+.settings-modal-header .icon-only-btn:focus-visible,
+.sp-header .icon-only-btn:focus-visible {
+    outline-color: #fff;
 }
 
 .dialog-content {
-    padding: 20px 22px;
+    padding: 18px 22px;
 }
 
 .dialog p {
@@ -7602,18 +7673,35 @@ button.settings-group-label:active:not(:disabled) {
     border-top-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Labels: small, muted and uppercase, beside the field (above it on phones). */
+/* Labels: small, muted and uppercase, above their field. The rows of the
+   "Similar entry" comparison (.is-inline) keep the label beside the value. */
 .dialog .form-group {
-    gap: 15px;
+    margin-bottom: 12px;
+}
+
+.dialog .form-group:not(.is-inline) {
+    flex-direction: column;
+    align-items: stretch !important;
+    gap: 5px;
+}
+
+.dialog .form-group.is-inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 10px;
+}
+
+.dialog .form-group.is-readout {
+    margin-bottom: 4px;
 }
 
 .dialog .dialog-label-fixed,
 .dialog .form-group > label:not(:has(input, select, textarea)) {
-    width: 100px;
-    min-width: 100px;
+    width: auto;
+    min-width: 0;
     flex-shrink: 0;
-    margin-bottom: 0;
+    margin: 0 !important;
     color: #78909c;
     font-size: 0.75rem;
     font-weight: 700;
@@ -7621,6 +7709,11 @@ button.settings-group-label:active:not(:disabled) {
     line-height: 1.3;
     text-transform: uppercase;
     user-select: none;
+}
+
+.dialog .form-group.is-inline > .dialog-label-fixed {
+    width: 100px;
+    min-width: 100px;
 }
 
 .dialog .dialog-label-fixed > i,
@@ -7646,9 +7739,15 @@ button.settings-group-label:active:not(:disabled) {
     color: var(--text-color);
 }
 
-/* Muted help text under a field, aligned with the fields. */
+.dialog .form-group > .combo,
+.dialog .form-group.is-inline > :is(input, select, .form-control) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* Muted help text under a field. */
 .form-hint {
-    margin: -4px 0 12px 115px;
+    margin: -6px 0 12px 2px;
     color: #78909c;
     font-size: 0.8125rem;
     line-height: 1.45;
@@ -7665,22 +7764,30 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .dialog .error-message {
-    padding-left: 115px;
+    margin: -6px 0 12px;
+    padding-left: 2px;
 }
 
-/* Fields: white, a hairline border, rounded; focus is a soft primary shadow. */
+.dialog .student-list-container,
+.dialog [style*="margin-left:115px"],
+.dialog [style*="margin-left: 115px"] {
+    margin-left: 0 !important;
+}
+
+/* Fields: white and fully rounded, a hairline border and a soft shadow; focus
+   turns the border indigo. */
 .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
     box-sizing: border-box;
-    min-height: 40px;
-    padding: 9px 12px;
-    border: 1px solid #dfe3ea;
-    border-radius: 12px;
+    min-height: 42px;
+    padding: 10px 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 21px;
     background-color: var(--card-background);
     color: var(--text-color);
     font-family: inherit;
     font-size: 0.9375rem;
     line-height: 1.35;
-    box-shadow: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
     outline: none;
     transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -7688,13 +7795,14 @@ button.settings-group-label:active:not(:disabled) {
 .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
     border-color: var(--primary-color);
     background-color: var(--card-background);
-    box-shadow: 0 2px 8px rgba(57, 73, 171, 0.15);
+    box-shadow: 0 2px 8px rgba(57, 73, 171, 0.18);
 }
 
 .dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
     border-color: rgba(255, 255, 255, 0.14);
     background-color: rgba(255, 255, 255, 0.05);
     color: #f0f0f0;
+    box-shadow: none;
 }
 
 .dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
@@ -7703,10 +7811,11 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .dialog textarea {
+    border-radius: 12px !important;
     resize: vertical;
 }
 
-/* Read-only and disabled fields: a quiet grey fill, no border. */
+/* Read-only and disabled fields: a quiet grey fill, no border or shadow. */
 .dialog :is(.form-control, textarea, select, input):is(:disabled, [readonly]):where(:not([type="checkbox"], [type="radio"], [type="file"])) {
     background-color: rgba(0, 0, 0, 0.035) !important;
     border-color: transparent;
@@ -7721,227 +7830,434 @@ button.settings-group-label:active:not(:disabled) {
     color: #9eaab3;
 }
 
+/* The comparison's existing values read as plain text. */
+.dialog .form-group.is-readout > input:disabled {
+    min-height: 0;
+    padding: 4px 0 !important;
+    background: transparent !important;
+}
+
 /* Icons inside fields go, except a search magnifier. */
 .dialog .input-with-icon > :is(i, svg):not(.fa-magnifying-glass) {
     display: none;
 }
 
 .dialog .input-with-icon:not(:has(> .fa-magnifying-glass)) > input {
-    padding-left: 12px !important;
+    padding-left: 16px !important;
 }
 
 .dialog .admin-input-wrapper {
     gap: 8px;
 }
 
-/* Footer: one solid action; Cancel, Close and Back are neutral outlines. */
+/* --- Buttons in dialogs, as in Syllabase: rounded, a darker edge and a soft
+   shadow; hover draws an inner border, a press sinks in. --- */
 .dialog-actions {
     align-items: center;
-    gap: 8px;
-    padding: 14px 22px;
+    justify-content: flex-end;
+    gap: 6px;
+    padding: 12px 22px;
+    border-top: 1px solid #e0e0e0;
 }
 
-.dialog-actions button {
+.dark-mode .dialog-actions {
+    border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.dialog-actions button,
+.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary) {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     gap: 6px;
-    min-height: 38px;
-    padding: 0 18px;
-    border: 1px solid transparent;
-    border-radius: 19px;
+    min-height: 36px;
+    padding: 7px 16px;
+    border: 1.5px solid rgba(0, 0, 0, 0.18);
+    border-radius: 20px;
     background: var(--primary-color);
     color: #fff;
     font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 600;
+    font-size: 0.875rem;
+    font-weight: 500;
     line-height: 1.2;
-    box-shadow: none;
-    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, filter 0.15s ease, transform 0.12s ease;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    transition: box-shadow 0.25s cubic-bezier(.4, 0, .2, 1), filter 0.15s ease, background-color 0.25s ease, transform 0.12s ease;
 }
 
-/* Words carry the meaning; decorative icons go, a loading spinner stays. */
+.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary) {
+    min-height: 32px;
+    padding: 5px 14px;
+    font-size: 0.8125rem;
+}
+
+.dialog-content button.btn-icon:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary) {
+    width: 36px;
+    min-height: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+}
+
 .dialog-actions button > i:not(.fa-spin),
 .dialog-actions button > svg:not(.fa-spin) {
+    font-size: 0.9em;
+}
+
+:is(.dialog-actions, .dialog-content) :is(button.btn-blue, button.btn-primary) {
+    background: var(--primary-color);
+    border-color: #283593;
+    color: #fff;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-green {
+    background: #43a047;
+    border-color: #2e7d32;
+    color: #fff;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-red {
+    background: #e53935;
+    border-color: #c62828;
+    color: #fff;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-orange {
+    background: #ef6c00;
+    border-color: #bf5600;
+    color: #fff;
+}
+
+/* Cancel, Close and Back: grey. */
+:is(.dialog-actions, .dialog-content) button.btn-secondary,
+.dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):not(.btn-green, .btn-red, .btn-blue, .btn-orange) {
+    background: #e0e0e0;
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #333;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dialog-actions button:hover:not(:disabled),
+.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary):hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25), 0 2px 5px rgba(0, 0, 0, 0.2);
+    filter: brightness(1.03);
+    font-weight: 500;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-blue:hover:not(:disabled) {
+    background: var(--primary-color);
+    border-color: #283593;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-green:hover:not(:disabled) {
+    background: #388e3c;
+    border-color: #2e7d32;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-red:hover:not(:disabled) {
+    background: #d32f2f;
+    border-color: #c62828;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-orange:hover:not(:disabled) {
+    background: #e65100;
+    border-color: #bf5600;
+}
+
+:is(.dialog-actions, .dialog-content) button.btn-secondary:hover:not(:disabled) {
+    background: #e0e0e0;
+    border-color: rgba(0, 0, 0, 0.1);
+    color: #333;
+}
+
+.dialog-actions button:active:not(:disabled),
+.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary):active:not(:disabled) {
+    transform: scale(0.97);
+    box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.1);
+    filter: brightness(0.9);
+}
+
+.dialog-actions button:disabled,
+.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary):disabled {
+    opacity: 0.6;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.dark-mode :is(.dialog-actions, .dialog-content) button.btn-secondary,
+.dark-mode .dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):not(.btn-green, .btn-red, .btn-blue, .btn-orange),
+.dark-mode :is(.dialog-actions, .dialog-content) button.btn-secondary:hover:not(:disabled) {
+    background: #2a2a2d;
+    border-color: rgba(255, 255, 255, 0.14);
+    color: #e0e0e0;
+}
+
+.dark-mode .dialog-actions button:hover:not(:disabled),
+.dark-mode .dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange, .btn-secondary):hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.28), 0 2px 5px rgba(0, 0, 0, 0.3);
+    filter: brightness(1.08);
+}
+
+/* Delete in an editor's footer: a red tint at the start, solid red on hover. */
+.dialog-actions .btn-red.tint-danger {
+    background: rgba(229, 57, 53, 0.08);
+    border-color: rgba(229, 57, 53, 0.25);
+    color: #e53935;
+    box-shadow: none;
+}
+
+.dialog-actions .btn-red.tint-danger:hover:not(:disabled) {
+    background: #e53935;
+    border-color: #c62828;
+    color: #fff;
+    box-shadow: 0 2px 4px rgba(229, 57, 53, 0.25);
+    filter: none;
+}
+
+.dark-mode .dialog-actions .btn-red.tint-danger {
+    background: rgba(239, 83, 80, 0.14);
+    border-color: rgba(239, 83, 80, 0.4);
+    color: #ef9a9a;
+}
+
+.dark-mode .dialog-actions .btn-red.tint-danger:hover:not(:disabled) {
+    background: #e53935;
+    border-color: #c62828;
+    color: #fff;
+}
+
+/* --- An on/off setting (switchRowHtml): name and hint, a switch at the end. --- */
+.switch-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin: 6px 0 12px;
+    padding: 12px 16px;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+    background: var(--card-background);
+    cursor: pointer;
+    user-select: none;
+    transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.switch-row:hover {
+    border-color: rgba(57, 73, 171, 0.35);
+}
+
+.switch-row:has(.switch-input:checked) {
+    border-color: rgba(57, 73, 171, 0.35);
+    background: rgba(57, 73, 171, 0.05);
+}
+
+.switch-row-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.switch-row-title {
+    color: var(--text-color);
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.switch-row-hint {
+    color: #78909c;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+
+.switch-input {
+    flex-shrink: 0;
+    position: relative;
+    width: 42px;
+    height: 24px;
+    margin: 0;
+    border-radius: 12px;
+    background: #cfd8dc;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: background-color 0.2s ease;
+}
+
+.switch-input::before {
+    content: '';
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    transition: transform 0.2s cubic-bezier(.4, 0, .2, 1);
+}
+
+.switch-input:checked {
+    background: var(--primary-color);
+}
+
+.switch-input:checked::before {
+    transform: translateX(18px);
+}
+
+.switch-input:focus-visible {
+    outline: 3px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.dark-mode .switch-row {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.dark-mode .switch-row:hover,
+.dark-mode .switch-row:has(.switch-input:checked) {
+    border-color: rgba(121, 134, 203, 0.45);
+}
+
+.dark-mode .switch-row:has(.switch-input:checked) {
+    background: rgba(121, 134, 203, 0.12);
+}
+
+.dark-mode .switch-row-hint {
+    color: #90a4ae;
+}
+
+.dark-mode .switch-input {
+    background: rgba(255, 255, 255, 0.22);
+}
+
+.dark-mode .switch-input:checked {
+    background: var(--primary-light);
+}
+
+/* --- Programme picker (enhanceProgrammeSelect): a search box over a short list --- */
+.combo {
+    position: relative;
+    min-width: 0;
+}
+
+.combo > .combo-native {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.dialog .combo > .combo-input,
+.combo > .combo-input {
+    width: 100%;
+    padding-right: 40px !important;
+    text-overflow: ellipsis;
+}
+
+.combo:has(> .combo-native.is-invalid) > .combo-input {
+    border-color: var(--danger-color);
+}
+
+.combo-chevron {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    color: #78909c;
+    font-size: 0.75rem;
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: transform 0.2s ease;
+}
+
+.combo.is-open > .combo-chevron {
+    transform: translateY(-50%) rotate(180deg);
+}
+
+.combo-list {
+    position: fixed;
+    z-index: 5;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 6px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    touch-action: pan-y;
+    list-style: none;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+    background: var(--card-background);
+    color: var(--text-color);
+    box-shadow: 0 12px 28px -6px rgba(15, 23, 42, 0.28);
+    font-size: 0.9375rem;
+    animation: combo-in 0.14s ease-out;
+}
+
+.combo-list[hidden] {
     display: none;
 }
 
-.dialog-actions .btn-blue {
-    background: var(--primary-color);
+@keyframes combo-in {
+    from {
+        opacity: 0;
+        transform: translateY(-4px);
+    }
 }
 
-.dialog-actions .btn-green {
-    background: #43a047;
+.combo-option {
+    padding: 8px 12px;
+    border-radius: 9px;
+    cursor: pointer;
+    line-height: 1.3;
+    user-select: none;
 }
 
-.dialog-actions .btn-red {
-    background: #e53935;
+.combo-option.is-active {
+    background: rgba(57, 73, 171, 0.08);
 }
 
-.dialog-actions .btn-orange {
-    background: #fb8c00;
-}
-
-.dialog-actions button:hover:not(:disabled) {
-    border-color: transparent;
-    box-shadow: none;
-    filter: brightness(1.07);
+.combo-option.is-selected {
+    color: var(--primary-color);
     font-weight: 600;
 }
 
-.dialog-actions .btn-blue:hover:not(:disabled) {
-    background: var(--primary-color);
+.combo-empty {
+    padding: 10px 12px;
+    color: #78909c;
+    font-style: italic;
 }
 
-.dialog-actions .btn-green:hover:not(:disabled) {
-    background: #43a047;
+.dark-mode .combo-list {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: #1e1f24;
+    box-shadow: 0 12px 28px -6px rgba(0, 0, 0, 0.6);
 }
 
-.dialog-actions .btn-red:hover:not(:disabled) {
-    background: #e53935;
+.dark-mode .combo-option.is-active {
+    background: rgba(121, 134, 203, 0.18);
 }
 
-.dialog-actions .btn-orange:hover:not(:disabled) {
-    background: #fb8c00;
+.dark-mode .combo-option.is-selected {
+    color: var(--primary-light);
 }
 
-.dialog-actions button:active:not(:disabled) {
-    transform: scale(0.97);
-    box-shadow: none;
-    filter: brightness(0.96);
+.dark-mode .combo-chevron,
+.dark-mode .combo-empty {
+    color: #90a4ae;
 }
 
-.dialog-actions button:disabled {
-    opacity: 0.5;
-}
-
-.dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]),
-.dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):hover:not(:disabled) {
-    background: transparent;
-    border-color: rgba(0, 0, 0, 0.16);
-    color: #455a64;
-    filter: none;
-}
-
-.dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):hover:not(:disabled) {
-    background: rgba(0, 0, 0, 0.05);
-}
-
-.dark-mode .dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]),
-.dark-mode .dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):hover:not(:disabled) {
-    border-color: rgba(255, 255, 255, 0.18);
-    color: #cfd8dc;
-}
-
-.dark-mode .dialog-actions button:is([id*="cancel" i], [id*="close" i], [id*="back" i]):hover:not(:disabled) {
-    background: rgba(255, 255, 255, 0.07);
-}
-
-/* The course editor's Delete stays a red tint at the start of the footer. */
-.dialog-actions .btn-red.tint-danger,
-.dialog-actions .btn-red.tint-danger:hover:not(:disabled) {
-    background: rgba(229, 57, 53, 0.08);
-    border-color: rgba(229, 57, 53, 0.35);
-    color: #c62828;
-    filter: none;
-}
-
-.dialog-actions .btn-red.tint-danger:hover:not(:disabled) {
-    background: rgba(229, 57, 53, 0.16);
-}
-
-.dark-mode .dialog-actions .btn-red.tint-danger,
-.dark-mode .dialog-actions .btn-red.tint-danger:hover:not(:disabled) {
-    background: rgba(239, 83, 80, 0.14);
-    border-color: rgba(239, 83, 80, 0.4);
-    color: #ef9a9a;
-}
-
-/* Secondary buttons inside a dialog: tinted outlines by meaning. */
-.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange) {
-    border: 1px solid;
-    box-shadow: none;
-    font-family: inherit;
-    font-weight: 500;
-}
-
-.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange):hover:not(:disabled),
-.dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange):active:not(:disabled) {
-    box-shadow: none;
-    filter: none;
-    font-weight: 500;
-}
-
-.dialog-content button.btn-blue {
-    background: rgba(57, 73, 171, 0.08);
-    border-color: rgba(57, 73, 171, 0.35);
-    color: var(--primary-color);
-}
-
-.dialog-content button.btn-blue:hover:not(:disabled) {
-    background: rgba(57, 73, 171, 0.16);
-    border-color: rgba(57, 73, 171, 0.45);
-}
-
-.dialog-content button.btn-green {
-    background: rgba(67, 160, 71, 0.08);
-    border-color: rgba(67, 160, 71, 0.4);
-    color: #2e7d32;
-}
-
-.dialog-content button.btn-green:hover:not(:disabled) {
-    background: rgba(67, 160, 71, 0.16);
-    border-color: rgba(67, 160, 71, 0.5);
-}
-
-.dialog-content button.btn-red {
-    background: rgba(229, 57, 53, 0.08);
-    border-color: rgba(229, 57, 53, 0.35);
-    color: #c62828;
-}
-
-.dialog-content button.btn-red:hover:not(:disabled) {
-    background: rgba(229, 57, 53, 0.16);
-    border-color: rgba(229, 57, 53, 0.45);
-}
-
-.dialog-content button.btn-orange {
-    background: rgba(251, 140, 0, 0.08);
-    border-color: rgba(251, 140, 0, 0.35);
-    color: #e65100;
-}
-
-.dialog-content button.btn-orange:hover:not(:disabled) {
-    background: rgba(251, 140, 0, 0.16);
-    border-color: rgba(251, 140, 0, 0.45);
-}
-
-.dark-mode .dialog-content button.btn-blue {
-    background: rgba(121, 134, 203, 0.14);
-    border-color: rgba(121, 134, 203, 0.4);
-    color: #c5cae9;
-}
-
-.dark-mode .dialog-content button.btn-green {
-    background: rgba(102, 187, 106, 0.14);
-    border-color: rgba(102, 187, 106, 0.4);
-    color: #a5d6a7;
-}
-
-.dark-mode .dialog-content button.btn-red {
-    background: rgba(239, 83, 80, 0.14);
-    border-color: rgba(239, 83, 80, 0.4);
-    color: #ef9a9a;
-}
-
-.dark-mode .dialog-content button.btn-orange {
-    background: rgba(255, 183, 77, 0.14);
-    border-color: rgba(255, 183, 77, 0.4);
-    color: #ffcc80;
-}
-
-.dark-mode .dialog-content button:is(.btn-green, .btn-red, .btn-blue, .btn-orange):hover:not(:disabled) {
-    filter: brightness(1.15);
+@media (prefers-reduced-motion: reduce) {
+    .combo-list,
+    .combo-chevron,
+    .switch-input,
+    .switch-input::before {
+        animation: none;
+        transition: none;
+    }
 }
 
 /* Option chips (hours, reasons): hairline boxes; the chosen one is tinted. */
@@ -10098,5 +10414,221 @@ html:not([data-stando-nfc]) .sk-nfc {
 
     .skeleton-loader-overlay {
         transition: none;
+    }
+}
+
+/* --- Header banner: "Stando", or the course on screen, its code above its name
+   (as in Syllabase). updateAppHeader() fills it. --- */
+.app-header-title {
+    min-width: 0;
+    margin-bottom: 10px;
+}
+
+.app-header-title [hidden] {
+    display: none !important;
+}
+
+.app-header .app-header-code {
+    margin: 0 0 2px;
+    font-size: 1em;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.app-header .app-header-name {
+    display: block;
+    margin: 0;
+    line-height: 1.2;
+    overflow-wrap: break-word;
+}
+
+.app-header-title.is-changing > * {
+    animation: app-header-in 0.25s ease-out;
+}
+
+@keyframes app-header-in {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+}
+
+@media (max-width: 768px) {
+    .app-header .app-header-code {
+        font-size: 0.9em;
+        margin-bottom: 1px;
+    }
+}
+
+/* The startup skeleton draws the banner as the last visit left it
+   (<html data-stando-header="titled">: a course name, with its code above). */
+.sk-banner-head {
+    display: block;
+    margin-bottom: 18px;
+}
+
+.sk-banner-head .sk-banner-title {
+    margin-bottom: 0;
+}
+
+.sk-banner-lines {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sk-banner-code {
+    display: none;
+    width: 64px;
+    height: 14px;
+    border-radius: 6px;
+}
+
+[data-stando-header="titled"] .sk-banner-code {
+    display: block;
+}
+
+[data-stando-header="titled"] .sk-banner-title {
+    width: min(300px, 60vw);
+}
+
+@media (max-width: 768px) {
+    .sk-banner-head {
+        margin-bottom: 16px;
+    }
+}
+
+/* --- Programmes --- */
+.programme-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: rgba(57, 73, 171, 0.08);
+    color: var(--primary-color);
+    font-size: 0.85em;
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.dark-mode .programme-badge {
+    background: rgba(121, 134, 203, 0.18);
+    color: var(--primary-light);
+}
+
+/* Until the database has programmes, nothing about them shows. */
+body:not(.has-programmes) .programme-column,
+body:not(.has-programmes) .programme-cell,
+body:not(.has-programmes) .programme-filter,
+body:not(.has-programmes) .programme-option {
+    display: none;
+}
+
+/* Search, programme and sort read as one row. */
+.filter-container > .sort-dropdown.programme-filter {
+    max-width: 32%;
+    border-radius: 6px;
+}
+
+/* On a phone the search takes its own line; programme and sort share the next. */
+@media (max-width: 480px) {
+    body.has-programmes .filter-container:has(> .programme-filter) {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    body.has-programmes .filter-container:has(> .programme-filter) > .filter-search {
+        flex-basis: 100%;
+    }
+
+    body.has-programmes .filter-container:has(> .programme-filter) .filter-input {
+        border-radius: 12px;
+    }
+
+    .filter-container > .sort-dropdown.programme-filter,
+    body.has-programmes .filter-container > .programme-filter ~ .sort-dropdown {
+        flex: 1 1 0;
+        max-width: none;
+    }
+
+    .filter-container > .sort-dropdown.programme-filter {
+        border-radius: 12px 6px 6px 12px;
+    }
+}
+
+.settings-row-name {
+    font-weight: 500;
+}
+
+.confirmation-dialog .confirm-field-label {
+    display: block;
+    margin-bottom: 6px;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-header-title.is-changing > * {
+        animation: none;
+    }
+}
+
+/* --- Floating date and Add to EIS: liquid glass, as Syllabase's floating toolbar.
+   Each control is glass in its own colour, blurring the logs scrolling under it;
+   the space between them lets clicks through. Light mode shows more colour so it
+   never reads washed-out; dark mode more shine. Without backdrop blur (or when
+   transparency is reduced) they stay solid. --- */
+#floating-sticky-bar {
+    --glass-mix: 84%;
+    --glass-shine: rgba(255, 255, 255, 0.16);
+    --glass-edge: rgba(255, 255, 255, 0.45);
+    --glass-shadow: rgba(26, 35, 65, 0.32);
+}
+
+.dark-mode #floating-sticky-bar {
+    --glass-mix: 72%;
+    --glass-shine: rgba(255, 255, 255, 0.28);
+    --glass-edge: rgba(255, 255, 255, 0.16);
+    --glass-shadow: rgba(0, 0, 0, 0.55);
+}
+
+#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
+    --glass-tint: var(--primary-color);
+    border: 1px solid var(--glass-edge);
+    background-color: var(--glass-tint);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -6px var(--glass-shadow);
+}
+
+@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
+        background-color: color-mix(in srgb, var(--glass-tint) var(--glass-mix), transparent);
+        background-image: linear-gradient(180deg, var(--glass-shine), rgba(255, 255, 255, 0) 60%);
+        -webkit-backdrop-filter: blur(14px) saturate(180%);
+        backdrop-filter: blur(14px) saturate(180%);
+    }
+}
+
+#floating-sticky-bar #floating-eis-btn:hover:not(:disabled) {
+    border-color: var(--glass-edge);
+    background-color: color-mix(in srgb, var(--glass-tint) var(--glass-mix), transparent);
+    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -6px var(--glass-shadow);
+    filter: brightness(1.08);
+}
+
+#floating-sticky-bar #floating-eis-btn:active:not(:disabled) {
+    transform: scale(0.97);
+    filter: brightness(0.95);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
+        background-color: var(--glass-tint) !important;
+        background-image: none !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
     }
 }

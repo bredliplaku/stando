@@ -29,6 +29,7 @@ let databaseMap = {}; // Map UIDs to {name, email} objects
 let uidToPrimaryUidMap = {};
 let currentSort = localStorage.getItem('logs_sort') || 'date-desc';
 let currentDbSort = localStorage.getItem('db_sort') || 'name-asc';
+if (currentDbSort.startsWith('uid-')) currentDbSort = 'name-asc'; // The Hardware UID column is gone.
 let soundEnabled = localStorage.getItem('sound_enabled') !== 'false';
 let isSignedIn = false; // User is signed in
 let currentUser = null; // Current user info
@@ -43,6 +44,10 @@ let criticalErrorsOnly = true;
 let signedOutCard = null; // The last card read on the sign-in page: { name }, empty when unregistered
 let courseIDMap = {}; // Object to store course information - name to ID mapping
 let courseInfoMap = {};
+// Study programmes [{ id, code, name, archived }], sorted by code; null until the
+// database has them (supabase/migrations/course_names_and_programmes.sql).
+let programmeList = null;
+let dbProgrammeFilter = ''; // Student List: '' for all, 'none', or a programme id
 let courseDictionary = {};
 let loadingTasks = new Set(['session', 'auth', 'courses', 'database']);
 let cooldownUIDs = new Set();
@@ -340,7 +345,7 @@ function showStaffEditorDialog(staffData = null) {
             <div id="staff-nfc-status" style="margin-top:10px;"></div>
         </div>
         <div class="dialog-actions">
-            <button type="button" id="cancel-staff-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button type="button" id="cancel-staff-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button type="button" id="save-staff-btn" class="btn-green"><i class="fa-solid fa-check"></i> ${btnText}</button>
         </div>`;
 
@@ -944,6 +949,7 @@ async function showAbsenceHistoryDialog() {
 
             const filtered = history.filter(req => {
                 const haystack = [req.studentName, req.studentEmail, req.course, String(req.course || '').replace(/_/g, ' '),
+                    getCourseTitle(req.course), programmeCode(studentProgrammeId(req.studentEmail)),
                     req.absenceDate, req.reasonType, req.session].map(value => String(value || '').toLowerCase());
                 const matchesText = !searchText || haystack.some(value => value.includes(searchText));
                 const matchesStatus = statusFilter === 'All' || req.status === statusFilter;
@@ -972,11 +978,11 @@ async function showAbsenceHistoryDialog() {
         <div class="request-list-item clickable-hist-row" style="border:1px solid #eee; padding:10px; margin-bottom:8px; border-radius:8px; cursor:pointer;">
             <div style="flex-grow:1;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                    <strong>${escapeHtml(req.studentName)}</strong>
+                    <span><strong>${escapeHtml(req.studentName)}</strong>${programmeById(studentProgrammeId(req.studentEmail)) ? ` ${programmeBadgeHtml(studentProgrammeId(req.studentEmail))}` : ''}</span>
                     ${statusBadge}
                 </div>
-                <div style="font-size:0.9em; color:#666; display:flex; align-items:center;">
-                    ${escapeHtml(String(req.course || '').replace(/_/g, ' '))} ${sessionBadge}
+                <div style="font-size:0.9em; color:#666; display:flex; align-items:center; flex-wrap:wrap;">
+                    ${courseCellHtml(req.course, sessionBadge ? ` ${sessionBadge}` : '')}
                     <span style="margin:0 6px;">&bull;</span> 
                     ${escapeHtml(req.absenceDate)}
                 </div>
@@ -1530,6 +1536,7 @@ function setupEventListeners() {
             tab.classList.add('active');
             tab.setAttribute('aria-selected', 'true');
             closeRowMenus();
+            updateAppHeader();
 
             // Transition the content panes
             if (oldTabContent) {
@@ -1698,6 +1705,11 @@ function setupEventListeners() {
     if (filterInput) filterInput.addEventListener('input', debounce(handleFilterChange, 300));
     if (sortSelect) sortSelect.addEventListener('change', handleSortChange);
     if (dbFilterInput) dbFilterInput.addEventListener('input', handleDbFilterChange);
+    document.getElementById('db-programme-filter')?.addEventListener('change', (event) => {
+        dbProgrammeFilter = event.target.value;
+        dbCurrentPage = 1;
+        updateDatabaseList();
+    });
     if (dbSortSelect) dbSortSelect.addEventListener('change', handleDbSortChange);
     if (importBtn) importBtn.addEventListener('click', () => importInput.click());
     if (importInput) importInput.addEventListener('change', handleImportFile);
@@ -1782,8 +1794,11 @@ function setupEventListeners() {
         const confirmModal = e.target.closest('.confirmation-dialog, [role="alertdialog"]');
         if (confirmModal) return;
 
+        // Cancel and Close are the grey footer buttons (and the header's ×); a red
+        // footer button is an action, such as Reject, and Back only steps back.
         const cancelBtn = e.target.closest(
-            'button[id*="cancel"], button[id*="close"], .dialog-actions button.btn-red, ' +
+            'button[id*="cancel"], button[id*="close"], button[data-action="cancel"], .dialog-close-x, ' +
+            '.dialog-actions button.btn-secondary:not([data-action="back"], [id*="back"]), ' +
             '#cancel-edit-c, #cancel-staff-btn, #cancel-trust-btn, #close-settings-btn, #cancel-reg-btn, ' +
             '#cancel-add-log-btn, #cancel-manual-btn, #cancel-custom-btn, #cancel-db-import-btn, ' +
             '#cancel-duplicate-btn, #cancel-request-btn, #cancel-approve-btn, #cancel-reject-btn, ' +
@@ -1808,6 +1823,8 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         // 1. Escape Key: Safe Close with Dirty Check
         if (e.key === 'Escape' || e.key === 'Esc') {
+            // An open programme list closes first; its field handles the key.
+            if (e.target?.closest?.('.combo.is-open')) return;
             const openBackdrops = document.querySelectorAll('.dialog-backdrop');
             if (openBackdrops.length > 0) {
                 const topBackdrop = openBackdrops[openBackdrops.length - 1];
@@ -1873,8 +1890,11 @@ function setupEventListeners() {
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
                 if (node.nodeType === 1) {
+                    if (node.matches('select.programme-select')) enhanceProgrammeSelect(node);
+                    node.querySelectorAll('select.programme-select:not([data-combo])').forEach(enhanceProgrammeSelect);
                     const backdrops = node.classList?.contains('dialog-backdrop') ? [node] : node.querySelectorAll?.('.dialog-backdrop');
                     if (backdrops && backdrops.length > 0) {
+                        backdrops.forEach(addDialogCloseButton);
                         backdrops.forEach(bd => window.snapshotDialogInputs(bd));
                         setTimeout(() => {
                             backdrops.forEach(bd => window.snapshotDialogInputs(bd));
@@ -2000,6 +2020,177 @@ function confirmCloseDialog(backdropOrDialog, onDismiss) {
     }
 }
 if (typeof window !== 'undefined') window.confirmCloseDialog = confirmCloseDialog;
+
+// A × at the end of a dialog's title bar, as in Syllabase. It presses the dialog's
+// own Cancel or Close, so whatever that does on closing still happens; without
+// one it closes the dialog (asking first when something was changed).
+// Confirmations and the idle warning keep their explicit buttons only.
+function addDialogCloseButton(backdrop) {
+    if (backdrop.matches('.confirmation-backdrop, .idle-backdrop')) return;
+    const title = backdrop.querySelector(':scope > .dialog > .dialog-title');
+    if (!title || title.querySelector('.dialog-close-x')) return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'dialog-close-x';
+    button.title = 'Close';
+    button.setAttribute('aria-label', 'Close');
+    button.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+    button.addEventListener('click', (event) => {
+        event.stopPropagation();
+        const dismiss = backdrop.querySelector(':scope > .dialog > .dialog-actions')?.querySelector(
+            'button[id*="cancel"]:not([hidden]), button[id*="close"]:not([hidden]), button[data-action="cancel"], button.btn-secondary:not([data-action="back"], [id*="back"])');
+        if (dismiss && !dismiss.disabled && dismiss.offsetParent !== null) dismiss.click();
+        else window.confirmCloseDialog(backdrop);
+    });
+    title.appendChild(button);
+}
+
+// Programme fields: a search box over the programme list. Typing part of a code or
+// name narrows it; arrows and Enter choose. The <select> stays underneath and holds
+// the value, so forms read it and hear its 'change' as before.
+let comboCount = 0;
+function enhanceProgrammeSelect(select) {
+    if (select.dataset.combo) return;
+    select.dataset.combo = 'on';
+    const id = select.id || `combo-${++comboCount}`;
+    const wrapper = document.createElement('div');
+    wrapper.className = 'combo';
+    select.before(wrapper);
+    wrapper.appendChild(select);
+    select.classList.add('combo-native');
+    select.tabIndex = -1;
+    select.setAttribute('aria-hidden', 'true');
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = `${id}-search`; // "search": the unsaved-changes check follows the select instead
+    input.className = 'form-control combo-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-autocomplete', 'list');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-controls', `${id}-options`);
+    input.placeholder = select.options[0]?.value === '' ? select.options[0].textContent : '';
+    const label = select.id && document.querySelector(`label[for="${CSS.escape(select.id)}"]`);
+    if (label) label.htmlFor = input.id;
+    wrapper.prepend(input);
+    wrapper.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-chevron-down combo-chevron" aria-hidden="true"></i>');
+    // Code that focuses the field (after a validation error) reaches the search box.
+    select.focus = (options) => input.focus(options);
+
+    const list = document.createElement('ul');
+    list.className = 'combo-list';
+    list.id = `${id}-options`;
+    list.setAttribute('role', 'listbox');
+    list.hidden = true;
+    let matches = [];
+    let active = -1;
+
+    const choices = () => [...select.options].filter(option => option.value);
+    const selectedLabel = () => select.value ? select.selectedOptions[0]?.textContent || '' : '';
+    const showSelected = () => { input.value = selectedLabel(); };
+    showSelected();
+
+    const place = () => {
+        const rect = input.getBoundingClientRect();
+        const below = window.innerHeight - rect.bottom - 12;
+        const above = rect.top - 12;
+        const up = below < 180 && above > below;
+        list.style.left = `${rect.left}px`;
+        list.style.width = `${rect.width}px`;
+        list.style.maxHeight = `${Math.max(120, Math.min(240, up ? above : below))}px`;
+        list.style.top = up ? '' : `${rect.bottom + 4}px`;
+        list.style.bottom = up ? `${window.innerHeight - rect.top + 4}px` : '';
+    };
+    const setActive = (index) => {
+        active = index;
+        list.querySelectorAll('[role="option"]').forEach((item, i) => item.classList.toggle('is-active', i === index));
+        const item = list.children[index];
+        if (item) {
+            input.setAttribute('aria-activedescendant', item.id);
+            item.scrollIntoView({ block: 'nearest' });
+        } else input.removeAttribute('aria-activedescendant');
+    };
+    const render = (query) => {
+        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
+        matches = choices().filter(option => words.every(word => option.textContent.toLowerCase().includes(word)));
+        list.innerHTML = matches.length
+            ? matches.map((option, i) => `<li role="option" id="${id}-option-${i}" class="combo-option${option.value === select.value ? ' is-selected' : ''}" aria-selected="${option.value === select.value}">${escapeHtml(option.textContent)}</li>`).join('')
+            : '<li class="combo-empty">No programme matches</li>';
+        setActive(matches.length ? Math.max(0, matches.findIndex(option => option.value === select.value)) : -1);
+    };
+    const open = (query = '') => {
+        if (list.hidden) {
+            (wrapper.closest('.dialog-backdrop') || document.body).appendChild(list);
+            list.hidden = false;
+            input.setAttribute('aria-expanded', 'true');
+            wrapper.classList.add('is-open');
+            window.addEventListener('scroll', place, true);
+            window.addEventListener('resize', place);
+        }
+        render(query);
+        place();
+    };
+    const close = () => {
+        if (list.hidden) return;
+        list.hidden = true;
+        input.setAttribute('aria-expanded', 'false');
+        input.removeAttribute('aria-activedescendant');
+        wrapper.classList.remove('is-open');
+        window.removeEventListener('scroll', place, true);
+        window.removeEventListener('resize', place);
+    };
+    const choose = (option) => {
+        const changed = select.value !== (option?.value || '');
+        select.value = option?.value || '';
+        showSelected();
+        close();
+        if (changed) select.dispatchEvent(new Event('change', { bubbles: true }));
+    };
+
+    input.addEventListener('focus', () => { input.select(); open(); });
+    input.addEventListener('click', () => { if (list.hidden) open(); });
+    input.addEventListener('input', () => open(input.value));
+    input.addEventListener('keydown', (event) => {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+            event.preventDefault();
+            if (list.hidden) return open();
+            if (matches.length) setActive((active + (event.key === 'ArrowDown' ? 1 : -1) + matches.length) % matches.length);
+        } else if (event.key === 'Enter' && !list.hidden) {
+            event.preventDefault();
+            event.stopPropagation();
+            if (matches[active]) choose(matches[active]);
+        } else if (event.key === 'Escape' && !list.hidden) {
+            event.preventDefault();
+            event.stopPropagation(); // Closes the list, not the dialog.
+            showSelected();
+            close();
+        } else if (event.key === 'Tab') {
+            close();
+        }
+    });
+    // Leaving the box keeps the choice; an emptied box clears it.
+    input.addEventListener('blur', () => setTimeout(() => {
+        if (document.activeElement === input) return;
+        if (!input.value.trim()) choose(null);
+        else showSelected();
+        close();
+    }, 120));
+    list.addEventListener('pointerdown', (event) => event.preventDefault()); // Keeps focus in the box.
+    list.addEventListener('click', (event) => {
+        const item = event.target.closest('[role="option"]');
+        if (item) choose(matches[[...list.children].indexOf(item)]);
+    });
+    wrapper.querySelector('.combo-chevron').addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+        if (list.hidden) input.focus(); else close();
+    });
+    // The list lives outside the dialog's scroll area; it leaves with the field.
+    wrapper.closest('.dialog-backdrop')?.addEventListener('dialogclose', () => list.remove(), { once: true });
+    // Code that sets the select directly (selectedIndex, value) shows here too.
+    select.addEventListener('change', showSelected);
+}
 
 // --- People: title-aware ordering and avatars ---
 
@@ -2369,7 +2560,7 @@ function showDeviceNameDialog({ title, icon, intro, name = '', confirmText, onSa
             </div>
         </div>
         <div class="dialog-actions">
-            <button type="button" class="btn-red device-name-cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancel</button>
+            <button type="button" class="btn-secondary device-name-cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancel</button>
             <button type="button" class="btn-green device-name-save"><i class="fa-solid fa-check" aria-hidden="true"></i> ${escapeHtml(confirmText)}</button>
         </div>`;
     dialogBackdrop.appendChild(dialog);
@@ -2487,6 +2678,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
 
     <div class="settings-tabs-container" role="tablist">
         <button type="button" class="settings-tab-btn active" data-target="sect-courses" role="tab" aria-selected="true"><i class="fa-solid fa-book-open tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Courses">Courses</span></button>
+        ${programmeList ? '<button type="button" class="settings-tab-btn" data-target="sect-programmes" role="tab" aria-selected="false"><i class="fa-solid fa-graduation-cap tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Programmes">Programmes</span></button>' : ''}
         <button type="button" class="settings-tab-btn" data-target="sect-staff" role="tab" aria-selected="false"><i class="fa-solid fa-user-tie tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Staff">Staff</span></button>
         <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
     </div>
@@ -2510,6 +2702,20 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
             </div>
             <div class="settings-scroll" id="settings-courses-container"></div>
         </div>
+
+        ${programmeList ? `
+        <div id="sect-programmes" class="settings-section" style="display:none; flex-direction:column; height:100%;">
+            <div class="settings-controls-bar">
+                <div class="input-with-icon search">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input type="search" id="programme-search-input" class="settings-search-input" placeholder="Search programmes..." aria-label="Search programmes">
+                </div>
+                <button type="button" id="add-programme-btn" class="btn-green btn-sm" title="New programme" aria-label="New programme">
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i><span class="btn-text">New Programme</span>
+                </button>
+            </div>
+            <div class="settings-scroll" id="settings-programmes-container"></div>
+        </div>` : ''}
 
         <div id="sect-staff" class="settings-section" style="display:none; flex-direction:column; height:100%;">
             <div class="settings-controls-bar">
@@ -2565,6 +2771,13 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     bindSettingsSortSelect(dialog.querySelector('#settings-course-sort'),
         () => renderCoursesInSettings(courseInfoMap, searchInput ? searchInput.value : ''));
 
+    const programmeSearchInput = dialog.querySelector('#programme-search-input');
+    if (programmeSearchInput) {
+        programmeSearchInput.addEventListener('input', () => renderProgrammesInSettings(programmeSearchInput.value));
+        dialog.querySelector('#add-programme-btn').onclick = () => showProgrammeEditorDialog(null);
+        renderProgrammesInSettings();
+    }
+
     let loadedStaffList = [];
     const staffSearchInput = document.getElementById('staff-search-input');
     if (staffSearchInput) {
@@ -2576,15 +2789,20 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     // 3. Load Data
     const loadSettingsData = async () => {
         try {
-            const [courseInfo, globalData] = await Promise.all([
+            const [courseInfo, globalData, programmes] = await Promise.all([
                 callWebApp('getCourseInfo', {}, 'POST'),
-                callWebApp('getGlobalSettingsData', {}, 'POST')
+                callWebApp('getGlobalSettingsData', {}, 'POST'),
+                callWebApp('getProgrammes')
             ]);
 
             const loader = document.getElementById('settings-loader');
             if (loader) loader.style.display = 'none';
 
             courseInfoMap = courseInfo;
+            if (programmes) {
+                setProgrammeList(programmes);
+                renderProgrammesInSettings(programmeSearchInput?.value || '');
+            }
             loadedStaffList = globalData.staff || [];
             // Course rows show lecturers by name where the staff list knows them.
             settingsStaffNames = new Map(loadedStaffList
@@ -2763,10 +2981,18 @@ function showCourseEditorDialog(courseName, courseData = null) {
     <div class="dialog-content">
         
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-heading"></i> Course Code</label>
+            <label class="dialog-label-fixed" for="edit-c-name"><i class="fa-solid fa-heading"></i> Course Code <span class="required">*</span></label>
             <div class="input-with-icon" style="flex-grow:1;">
                 <i class="fa-solid fa-font"></i>
                 <input id="edit-c-name" class="form-control" value="${escapeHtml(displayCourseName)}" ${disabledAttr} placeholder="e.g. CE 101">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="dialog-label-fixed" for="edit-c-title"><i class="fa-solid fa-book"></i> Course Name <span class="required">*</span></label>
+            <div class="input-with-icon" style="flex-grow:1;">
+                <i class="fa-solid fa-book"></i>
+                <input id="edit-c-title" class="form-control" value="${escapeHtml(val(data.title))}" ${disabledAttr} ${readOnlyStyle} maxlength="150">
             </div>
         </div>
 
@@ -2830,20 +3056,13 @@ function showCourseEditorDialog(courseName, courseData = null) {
             </div>
         </div>
 
-        ${(!isNew && isGlobalAdmin) ? `
-        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">
-        <div class="form-group" style="align-items:center;">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-box-archive"></i> Archive</label>
-            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; flex-grow:1;">
-                <input type="checkbox" id="edit-c-archived" ${data.archived ? 'checked' : ''} style="width:16px;height:16px;cursor:pointer;accent-color:var(--warning-color);">
-                <span style="font-size:0.9em; opacity:0.7;">Archive this course (hide from active list)</span>
-            </label>
-        </div>` : ''}
+        ${(!isNew && isGlobalAdmin) ? switchRowHtml('edit-c-archived', data.archived, 'Archived',
+            'Hidden from the course list. Its attendance and requests stay.') : ''}
 
     </div>
     <div class="dialog-actions">
         ${(!isNew && isGlobalAdmin) ? '<button type="button" id="delete-course-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>' : ''}
-        <button id="cancel-edit-c" class="btn-blue"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-edit-c" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="save-edit-c" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Save</button>
     </div>`;
 
@@ -3015,14 +3234,23 @@ function showCourseEditorDialog(courseName, courseData = null) {
             : (data.archived || false);
         const eisInput = document.getElementById('edit-c-eis');
         const eisVal = eisInput.value.trim();
+        const titleInput = document.getElementById('edit-c-title');
+        const courseTitle = titleInput.value.replace(/\s+/g, ' ').trim();
         clearInputError(nameInput);
         clearInputError(eisInput);
+        clearInputError(titleInput);
         let systemName;
         try {
             systemName = StandoData.resolveCourseName({ code: rawName, eisId: eisVal,
                 originalName: courseName, originalData: data, archived: isArchived, courses: courseInfoMap });
         } catch (error) {
             showInputError(error.message.startsWith('EIS ID') ? eisInput : nameInput, error.message);
+            return;
+        }
+        // Like the code, the name is required; only administrators can set it.
+        if (isGlobalAdmin && !courseTitle) {
+            showInputError(titleInput, 'Enter the course name, such as Civil Engineering Drawing.');
+            titleInput.focus();
             return;
         }
 
@@ -3040,6 +3268,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
         const payload = {
             originalName: courseName,
             courseName: systemName, // SEND UNDERSCORES
+            courseTitle,
             defaultHours: data.defaultHours || '2',
             startDate: document.getElementById('edit-c-start').value,
             endDate: document.getElementById('edit-c-end').value,
@@ -3117,6 +3346,164 @@ async function refreshCoursePicker(savedMessage) {
     } catch (refreshError) {
         showNotification('warning', 'Refresh Needed', `${savedMessage} Reload the page to refresh the course list.`);
     }
+}
+
+// --- Settings → Programmes ---
+// Students point at a programme by id: renaming one renames it for all of them,
+// archiving takes it out of the choices but keeps it on its students, and
+// deleting one moves its students to another programme first.
+
+function programmeStudentCounts() {
+    const counts = new Map();
+    studentEntries().forEach(([, student]) => {
+        const id = Number(student.programmeId);
+        if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    });
+    return counts;
+}
+
+function renderProgrammesInSettings(filterText = '') {
+    const container = document.getElementById('settings-programmes-container');
+    if (!container) return;
+    closeRowMenus();
+    const query = filterText.trim().toLowerCase();
+    const counts = programmeStudentCounts();
+    const shown = (programmeList || []).filter(p => !query || p.code.toLowerCase().includes(query) || p.name.toLowerCase().includes(query));
+    const row = p => {
+        const count = counts.get(p.id) || 0;
+        return `
+            <div class="settings-row${p.archived ? ' is-archived' : ''}">
+                <div class="settings-row-main">
+                    <span class="settings-row-title"><strong>${escapeHtml(p.code)}</strong>${p.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
+                    ${p.name ? `<span class="settings-row-people" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>` : ''}
+                </div>
+                <div class="settings-row-meta"><span class="settings-row-sub">${count} ${count === 1 ? 'student' : 'students'}</span></div>
+                <div class="card-actions">
+                    ${rowEditButtonHtml(`Edit ${p.code}`, 'edit-programme-btn', `data-programme-id="${p.id}"`)}
+                </div>
+            </div>`;
+    };
+    const group = (label, list) => `
+        <div class="settings-courses-group">
+            <div class="settings-group-label">${label} <span class="settings-group-count">${list.length}</span></div>
+            ${list.length ? `<div class="settings-list">${list.map(row).join('')}</div>` : '<div class="settings-empty">No active programmes.</div>'}
+        </div>`;
+    const archived = shown.filter(p => p.archived);
+    container.innerHTML = shown.length
+        ? group('Programmes', shown.filter(p => !p.archived)) + (archived.length ? group('Archived programmes', archived) : '')
+        : `<div class="settings-empty">No programmes${query ? ` matching "${escapeHtml(filterText.trim())}"` : ''}.</div>`;
+    container.querySelectorAll('.edit-programme-btn').forEach(btn => {
+        btn.onclick = () => showProgrammeEditorDialog(programmeById(btn.dataset.programmeId));
+    });
+}
+
+function showProgrammeEditorDialog(programme) {
+    const isNew = !programme;
+    const count = isNew ? 0 : (programmeStudentCounts().get(programme.id) || 0);
+    const students = `${count} ${count === 1 ? 'student' : 'students'}`;
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dialog-backdrop';
+    backdrop.style.zIndex = '10010';
+    backdrop.innerHTML = `
+        <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="programme-editor-title">
+            <h3 class="dialog-title" id="programme-editor-title"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> ${isNew ? 'New Programme' : 'Edit Programme'}</h3>
+            <div class="dialog-content">
+                <div class="form-group">
+                    <label class="dialog-label-fixed" for="programme-code">Code <span class="required">*</span></label>
+                    <input type="text" id="programme-code" class="form-control" maxlength="30" placeholder="e.g. BA CE" value="${escapeHtml(programme?.code || '')}" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label class="dialog-label-fixed" for="programme-name">Full Name</label>
+                    <input type="text" id="programme-name" class="form-control" maxlength="150" placeholder="e.g. Civil Engineering" value="${escapeHtml(programme?.name || '')}" autocomplete="off">
+                </div>
+                <p class="form-hint">${isNew ? 'Students choose it when they register their card.' : `A change shows at once for its ${students}.`}</p>
+                ${isNew ? '' : switchRowHtml('programme-archived', programme.archived, 'Archived',
+                    'No longer offered when students register or are added. Its students keep it.')}
+            </div>
+            <div class="dialog-actions">
+                ${isNew ? '' : '<button type="button" id="delete-programme-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>'}
+                <button type="button" id="cancel-programme-btn" class="btn-secondary"><i class="fa-solid fa-xmark" aria-hidden="true"></i> Cancel</button>
+                <button type="button" id="save-programme-btn" class="btn-green"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
+            </div>
+        </div>`;
+    document.body.appendChild(backdrop);
+    const dialog = backdrop.querySelector('.dialog');
+    const codeInput = dialog.querySelector('#programme-code');
+    const close = () => backdrop.remove();
+    dialog.querySelector('#cancel-programme-btn').onclick = close;
+    if (!isTouchDevice()) codeInput.focus();
+
+    const refresh = async (message) => {
+        try {
+            await reloadProgrammes();
+        } catch (error) {
+            showNotification('warning', 'Refresh Needed', 'Saved. Reload the page to see the change.');
+            return;
+        }
+        renderProgrammesInSettings(document.getElementById('programme-search-input')?.value || '');
+        showNotification('success', 'Saved', message);
+    };
+
+    dialog.querySelector('#save-programme-btn').onclick = async (event) => {
+        const button = event.currentTarget;
+        const code = codeInput.value.replace(/\s+/g, ' ').trim();
+        clearInputError(codeInput);
+        const taken = (programmeList || []).find(p => p.id !== programme?.id && p.code.toLowerCase() === code.toLowerCase());
+        if (!code || taken) {
+            showInputError(codeInput, code ? `There is already a programme called ${taken.code}.` : 'Enter the programme code.');
+            codeInput.focus();
+            return;
+        }
+        button.disabled = true;
+        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+        try {
+            await callWebApp('saveProgramme_Admin', {
+                id: programme?.id, code,
+                name: dialog.querySelector('#programme-name').value.replace(/\s+/g, ' ').trim(),
+                archived: isNew ? undefined : dialog.querySelector('#programme-archived').checked
+            });
+            close();
+            await refresh(`${code} ${isNew ? 'added' : 'saved'}.`);
+        } catch (error) {
+            showNotification('error', 'Save Failed', error.message);
+            button.disabled = false;
+            button.innerHTML = '<i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save';
+        }
+    };
+
+    if (isNew) return;
+    // Students never lose their programme: those in it move to another one first.
+    dialog.querySelector('#delete-programme-btn').onclick = () => {
+        const others = (programmeList || []).filter(p => p.id !== programme.id && !p.archived);
+        if (count && !others.length) {
+            showNotification('warning', 'Add Another Programme', `${programme.code} has ${students}. Add a programme for them to move to first.`);
+            return;
+        }
+        showConfirmationDialog({
+            title: `<i class="fa-solid fa-trash" style="color:var(--danger-color);"></i> Delete ${escapeHtml(programme.code)}?`,
+            message: count
+                ? `Its <strong>${students}</strong> move to the programme you choose. Their cards and attendance stay as they are.<br><br>
+                   <label class="confirm-field-label" for="programme-move-to">Move them to</label>
+                   <select id="programme-move-to" class="form-control programme-select"><option value="">Choose a programme</option>${others.map(p =>
+                    `<option value="${p.id}">${escapeHtml(programmeOptionLabel(p))}</option>`).join('')}</select>`
+                : `No students are in ${escapeHtml(programme.code)}. To keep it for the record but stop offering it, archive it instead.`,
+            confirmText: '<i class="fa-solid fa-trash"></i> Delete',
+            cancelText: '<i class="fa-solid fa-xmark"></i> Cancel',
+            isDestructive: true,
+            onConfirm: async () => {
+                const moveTo = count ? Number(document.getElementById('programme-move-to').value) || null : null;
+                if (count && !moveTo) throw new Error(`Choose the programme its ${students} move to.`);
+                await callWebApp('deleteProgramme_Admin', { id: programme.id, moveTo });
+                close();
+                if (count) {
+                    invalidateDatabaseCache();
+                    await fetchDatabaseFromSheet().catch(error => console.warn('Could not reload the student list:', error));
+                    window.buildUIDToPrimaryUidMap();
+                }
+                await refresh(count ? `${programme.code} deleted. Its students are in ${programmeCode(moveTo)} now.` : `${programme.code} deleted.`);
+            }
+        });
+    };
 }
 
 // --- 3. Lecturer Settings: their courses and trusted devices ---
@@ -3232,6 +3619,9 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
 // (its Card ID hidden, like a password), and their absence requests.
 async function showStudentProfileDialog() {
     const cardCount = ownStudentCardCount();
+    const email = String(currentUser.email || '').toLowerCase();
+    const programme = programmeById(Object.values(databaseMap)
+        .find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === email)?.programmeId);
 
     openDialogMode();
     const backdrop = document.createElement('div');
@@ -3249,6 +3639,7 @@ async function showStudentProfileDialog() {
             <div class="sp-identity">
                 <h3 id="sp-name">${escapeHtml(currentUserDisplayName())}</h3>
                 <span class="sp-email">${escapeHtml(currentUser.email)}</span>
+                ${programme ? `<span class="sp-email sp-programme"><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i> ${escapeHtml(programmeOptionLabel(programme))}</span>` : ''}
             </div>
             <button type="button" class="btn-icon icon-only-btn" data-action="close" title="Close" aria-label="Close profile"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         </div>
@@ -3285,7 +3676,7 @@ async function showStudentProfileDialog() {
         </div>
         <div class="dialog-actions">
             <button type="button" class="btn-orange" data-action="request"><i class="fa-solid fa-hand-point-up" aria-hidden="true"></i> Request for Permission</button>
-            <button type="button" class="btn-blue" data-action="close">Close</button>
+            <button type="button" class="btn-secondary" data-action="close">Close</button>
         </div>`;
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
@@ -3326,7 +3717,7 @@ async function showStudentProfileDialog() {
             return `
                 <article class="sp-request status-${escapeHtml(status.toLowerCase())}">
                     <div class="sp-request-top">
-                        <strong>${escapeHtml(getCleanCourseCode(req.course, courseInfoMap[req.course]?.eisId))}</strong>
+                        ${courseCellHtml(req.course)}
                         <span class="sp-pill status-${escapeHtml(status.toLowerCase())}">${escapeHtml(status)}</span>
                     </div>
                     <div class="sp-request-meta">
@@ -3537,7 +3928,7 @@ function exportLogs() {
  * Export database to Excel file.
  */
 function exportDatabaseToExcel() {
-    const rows = StandoData.studentExportRows(databaseMap);
+    const rows = StandoData.studentExportRows(databaseMap, programmeCode);
     if (rows.length === 1) return showNotification('warning', 'Export Failed', 'There are no students to export.');
     writeStudentWorkbook(rows, 'students.xlsx');
     showNotification('success', 'Export Complete', `${rows.length - 1} students exported. This file can be imported again.`);
@@ -3545,7 +3936,7 @@ function exportDatabaseToExcel() {
 
 function writeStudentWorkbook(rows, filename) {
     const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    worksheet['!cols'] = [{ wch: 30 }, { wch: 24 }, { wch: 38 }, { wch: 28 }];
+    worksheet['!cols'] = [{ wch: 30 }, { wch: 24 }, { wch: 38 }, { wch: 14 }, { wch: 28 }];
     worksheet['!autofilter'] = { ref: worksheet['!ref'] };
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Students');
@@ -3562,19 +3953,19 @@ function showStudentImportGuide() {
             <p>Choose an Excel or CSV file. You can select a sheet and assign its columns before importing.</p>
             <div class="table-container">
                 <table class="database-table">
-                    <thead><tr><th>Name</th><th>Card ID</th><th>Email</th></tr></thead>
-                    <tbody><tr><td>Example Student</td><td>001234</td><td>student@example.edu</td></tr></tbody>
+                    <thead><tr><th>Name</th><th>Card ID</th><th>Email</th>${programmeList ? '<th>Programme</th>' : ''}</tr></thead>
+                    <tbody><tr><td>Example Student</td><td>001234</td><td>student@example.edu</td>${programmeList ? '<td>BA CE</td>' : ''}</tr></tbody>
                 </table>
             </div>
-            <p>Keep Card IDs as text to preserve leading zeros. Use the template if you need a starting file.</p>
+            <p>Keep Card IDs as text to preserve leading zeros.${programmeList ? ' Programme is optional: use a code from Settings → Programmes, or choose one programme for the whole file in the next step.' : ''} Use the template if you need a starting file.</p>
             <button type="button" id="student-template-btn" class="btn-blue btn-sm"><i class="fa-solid fa-download"></i> Download Template</button>
         </div>
         <div class="dialog-actions">
-            <button type="button" id="cancel-student-guide" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button type="button" id="cancel-student-guide" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button type="button" id="choose-student-file" class="btn-green"><i class="fa-solid fa-folder-open"></i> Choose File</button>
         </div></div>`;
     document.body.appendChild(backdrop);
-    backdrop.querySelector('#student-template-btn').onclick = () => writeStudentWorkbook([StandoData.studentColumns.slice(0, 3)], 'student_import_template.xlsx');
+    backdrop.querySelector('#student-template-btn').onclick = () => writeStudentWorkbook([StandoData.studentColumns.slice(0, programmeList ? 4 : 3)], 'student_import_template.xlsx');
     backdrop.querySelector('#cancel-student-guide').onclick = () => backdrop.remove();
     backdrop.querySelector('#choose-student-file').onclick = () => {
         backdrop.remove();
@@ -3837,7 +4228,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
     dialog.setAttribute('class', 'dialog');
     dialog.setAttribute('role', 'dialog');
 
-    const formattedCourseName = currentCourse.replace(/_/g, ' ');
+    const formattedCourseName = getCourseLabel(currentCourse);
 
     dialog.innerHTML = `
         <h3 class="dialog-title"><i class="fa-solid fa-list-check"></i> Add to EIS</h3>
@@ -3908,7 +4299,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
             </div>
         </div>
         <div class="dialog-actions">
-            <button id="cancel-export-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button id="cancel-export-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button id="confirm-eis-export-btn" class="btn-green"><i class="fa-solid fa-wand-magic-sparkles"></i> Add to EIS</button>
         </div>`;
 
@@ -4555,6 +4946,8 @@ async function onSuccessfulAuth(isRestore = false) {
             window.buildUIDToPrimaryUidMap();
         }
 
+        setProgrammeList(bootData.programmes);
+
         // 6. Process Course Info
         if (bootData.courseInfo) {
             courseInfoMap = bootData.courseInfo;
@@ -4809,6 +5202,9 @@ function showRegisterUIDDialog() {
     let typedCardId = '';
     let manualReason = '';
     let currentStep = '';
+    // A student updating their card starts from the programme they have.
+    const ownEntry = Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === String(currentUser.email || '').toLowerCase());
+    let programmeId = programmeById(ownEntry?.programmeId) ? ownEntry.programmeId : null;
 
     const stopReader = () => {
         if (nfcController) nfcController.abort();
@@ -4831,6 +5227,7 @@ function showRegisterUIDDialog() {
             <button type="button" class="reg-link" data-action="manual">Ask a friend to scan it instead</button>
         </div>`;
     const accountHtml = () => `<p class="reg-account">Sending as <strong>${escapeHtml(currentUser.name)}</strong><br>${escapeHtml(currentUser.email)}</p>`;
+    const programmeHtml = () => programmeFieldHtml('reg-programme', programmeId, { placeholder: 'Choose your programme' });
     const progressHtml = (step) => `
         <div class="reg-progress"><span class="is-active"></span><span class="${step === 2 ? 'is-active' : ''}"></span><em>Step ${step} of 2</em></div>`;
 
@@ -4891,13 +5288,15 @@ function showRegisterUIDDialog() {
 
         callWebApp(code ? 'submitCardCode' : 'submitRegistration', code ? {
             code,
-            name: currentUser.name
+            name: currentUser.name,
+            programmeId
         } : {
             action: 'submitRegistration',
             name: currentUser.name,
             email: currentUser.email,
             uid: card.cardId,
-            hardwareUid: card.hardwareUid
+            hardwareUid: card.hardwareUid,
+            programmeId
         }, 'POST')
             .then(data => {
                 if (data && data.result === 'success') {
@@ -4926,18 +5325,19 @@ function showRegisterUIDDialog() {
                 <p class="reg-hint">No beep? Slide the card slowly around the back, towards the camera.</p>
                 ${statusHtml}
                 <div class="reg-friend"><span>Helping a friend with an iPhone?</span><button type="button" class="reg-link" data-action="friend">Scan a friend's card</button></div>`;
-            actions.innerHTML = `<button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>`;
+            actions.innerHTML = `<button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>`;
             readCard(card => { ownCard = card; show('review'); });
         },
         // Your own card: read, but shown hidden, like a password.
         review() {
             content.innerHTML = `
                 <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">Card scanned</span><span class="reg-result-id is-masked" aria-label="Card ID hidden">••••••••</span></div>
-                <p class="reg-instruction">Submit it to send it for approval.</p>
+                <p class="reg-instruction">${!programmeHtml() ? 'Submit it' : programmeId ? 'Check your programme, then submit' : 'Choose your programme, then submit'} to send it for approval.</p>
+                ${programmeHtml()}
                 ${accountHtml()}
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="rescan">Scan again</button></div>`;
             actions.innerHTML = `
-                <button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>
+                <button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>
                 <button type="button" id="submit-register-btn" class="btn-green" data-action="submit">Submit</button>`;
         },
         // Android with NFC: read a classmate's card so they can type its code.
@@ -4948,8 +5348,8 @@ function showRegisterUIDDialog() {
                 ${statusHtml}
                 <p class="reg-hint">Nothing is sent or saved to your account.</p>`;
             actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
-                <button type="button" id="reg-close-btn" class="btn-red" data-action="cancel">Close</button>`;
+                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
+                <button type="button" id="reg-close-btn" class="btn-secondary" data-action="cancel">Close</button>`;
             readCard(card => { friendCard = card; show('friendResult'); });
         },
         // The card travels as a code: the server keeps the Card ID it stands for,
@@ -4966,7 +5366,7 @@ function showRegisterUIDDialog() {
                 <p class="reg-hint">It works once, for the next 48 hours.</p>
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="friend">Scan another card</button></div>`;
             actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
+                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
                 <button type="button" id="reg-done-btn" class="btn-blue" data-action="cancel">Done</button>`;
             const shown = content.querySelector('.reg-result-id');
             const card = friendCard;
@@ -5010,8 +5410,8 @@ function showRegisterUIDDialog() {
                 </ol>`;
             actions.innerHTML = `
                 ${nfcSupported
-                    ? '<button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>'
-                    : '<button type="button" id="cancel-register-btn" class="btn-red" data-action="cancel">Cancel</button>'}
+                    ? '<button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>'
+                    : '<button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>'}
                 <button type="button" id="reg-next-btn" class="btn-blue" data-action="next">Next</button>`;
         },
         manualEntry() {
@@ -5025,9 +5425,10 @@ function showRegisterUIDDialog() {
                     </div>
                 </div>
                 <p class="form-hint" id="register-card-id-hint">Type the code from your friend's screen. Your Student ID No. is not the code.</p>
+                ${programmeHtml()}
                 ${accountHtml()}`;
             actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-red" data-action="back">Back</button>
+                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
                 <button type="button" id="submit-register-btn" class="btn-green" data-action="submit" ${typedCardId.trim() ? '' : 'disabled'}>Submit</button>`;
             const input = content.querySelector('#register-card-id');
             input.addEventListener('input', () => {
@@ -5107,6 +5508,11 @@ function showRegisterUIDDialog() {
                 show('manualHelp');
                 break;
             case 'submit': {
+                const programmeSelect = content.querySelector('#reg-programme');
+                if (!readProgrammeField(programmeSelect).ok) {
+                    programmeSelect.focus();
+                    break;
+                }
                 if (currentStep === 'review') {
                     submit(ownCard, button);
                     break;
@@ -5122,6 +5528,13 @@ function showRegisterUIDDialog() {
                 break;
             }
         }
+    });
+
+    // The programme chosen stays when moving between steps.
+    dialog.addEventListener('change', (event) => {
+        if (event.target.id !== 'reg-programme') return;
+        programmeId = Number(event.target.value) || null;
+        clearInputError(event.target);
     });
 
     // One reader at a time: this dialog's scan replaces the attendance scan.
@@ -5168,6 +5581,8 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
                 <input type="email" id="register-email" class="form-control" placeholder="student@epoka.edu.al" autocomplete="off">
             </div>
 
+            ${programmeFieldHtml('register-programme', '', { required: isGlobalAdmin })}
+
             <div class="form-group">
                 <label class="dialog-label-fixed" for="register-prefill-hw-uid"><i class="fa-solid fa-wifi"></i> UID</label>
                 <input type="text" id="register-prefill-hw-uid" class="form-control" value="${escapeHtml(initHw)}" placeholder="04:a2:3f:8a">
@@ -5180,7 +5595,7 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
 
         </div>
         <div class="dialog-actions">
-            <button id="cancel-register-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button id="cancel-register-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button id="submit-register-btn" class="btn-green"><i class="fa-solid fa-check"></i> ${actionText}</button>
         </div>
     `;
@@ -5232,6 +5647,9 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
             showInputError(emailInput, 'A valid email is required.');
             isValid = false;
         }
+        // Administrators add the student at once; a lecturer's request can leave it to them.
+        const programme = readProgrammeField(dialog.querySelector('#register-programme'), isGlobalAdmin);
+        if (!programme.ok) isValid = false;
         if (!uid && !hardwareUid) {
             showInputError(prefillIdInput, 'UID or ID is required.');
             isValid = false;
@@ -5247,6 +5665,7 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
                 email: email,
                 uid: uid,
                 hardwareUid: hardwareUid,
+                programmeId: programme.id,
                 sentBy: {
                     name: currentUser?.name || 'Admin',
                     email: currentUser?.email || ''
@@ -5311,6 +5730,7 @@ function findDuplicateInDatabase(entry) {
             uid: (studentData.uids || []).join(', '),
             hardwareUid: (studentData.hardware_uids || []).join(', '),
             email: studentData.email || '',
+            programmeId: studentData.programmeId ?? null,
             rowIndex: parseInt(dbKey)
         };
 
@@ -5320,6 +5740,50 @@ function findDuplicateInDatabase(entry) {
         if (existingName === newName) return { type: 'name', duplicate: duplicateData };
     }
     return null;
+}
+
+// The duplicate dialogs' Programme rows: the existing student's, and the new entry's
+// as a choice with Replace when it differs.
+function existingProgrammeRowHtml(id) {
+    if (!programmeList) return '';
+    return `
+            <div class="form-group is-inline is-readout">
+                <label class="dialog-label-fixed"><i class="fa-solid fa-graduation-cap"></i> Programme</label>
+                <input class="form-control" value="${escapeHtml(programmeCode(id) || '—')}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
+            </div>`;
+}
+
+function newProgrammeRowHtml(id) {
+    if (!programmeList) return '';
+    return `
+        <div class="form-group is-inline">
+            <label class="dialog-label-fixed" for="dup-programme"><i class="fa-solid fa-graduation-cap"></i> Programme</label>
+            <select id="dup-programme" class="form-control programme-select">${programmeOptionsHtml(id)}</select>
+            <div class="field-action dup-programme-action" style="display:flex; align-items:center; gap:6px; white-space:nowrap; min-width:90px; justify-content:flex-end; margin:0;"></div>
+        </div>`;
+}
+
+// Shows "(Matches)" or a Replace box for the chosen programme, ticked when the
+// administrator picks another one or the existing student has none. Returns a
+// reader for { id, replace }.
+function bindProgrammeRow(dialog, existingId, onChange) {
+    const select = dialog.querySelector('#dup-programme');
+    if (!select) return () => ({ id: null, replace: false });
+    const action = dialog.querySelector('.dup-programme-action');
+    const existing = Number(existingId) || null;
+    const render = (chosenByHand) => {
+        const chosen = Number(select.value) || null;
+        if (!chosen || chosen === existing) {
+            action.innerHTML = chosen ? '<span style="opacity: 0.6; font-size: 0.85em; white-space: nowrap; text-align: right;">(Matches)</span>' : '';
+        } else {
+            action.innerHTML = `<input type="checkbox" id="replace-programme-check" style="cursor:pointer; margin:0;" ${chosenByHand || !existing ? 'checked' : ''}><label for="replace-programme-check" style="margin:0; cursor:pointer; font-weight:600; font-size:0.9em;">Replace</label>`;
+            action.querySelector('input').addEventListener('change', onChange);
+        }
+        onChange();
+    };
+    select.addEventListener('change', () => render(true));
+    render(false);
+    return () => ({ id: Number(select.value) || null, replace: !!action.querySelector('#replace-programme-check')?.checked });
 }
 
 /**
@@ -5405,19 +5869,19 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
         <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
             <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">Existing Data</div>
             
-            <div class="form-group" style="margin-bottom: 8px;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-quote-left"></i> Name</label>
                 <input class="form-control" value="${escapeHtml(existing.name)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
+            </div>${existingProgrammeRowHtml(existing.programmeId)}
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-id-card"></i> Card ID(s)</label>
                 <input class="form-control" value="${escapeHtml(existingIdsDisplay)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
-            <div class="form-group" style="margin-bottom: 8px;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-wifi"></i> UID(s)</label>
                 <input class="form-control" value="${escapeHtml(existingHwDisplay)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-at"></i> Email</label>
                 <input class="form-control" value="${escapeHtml(existing.email || 'N/A')}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
@@ -5427,31 +5891,32 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
         
         <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">New Entry</div>
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-quote-left"></i> Name</label>
             <input class="form-control" value="${escapeHtml(newData.name)}" disabled style="flex: 1;">
             ${nameActionHTML}
         </div>
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-at"></i> Email</label>
             <input class="form-control" value="${escapeHtml(newData.email)}" disabled style="flex: 1;">
             ${emailActionHTML}
         </div>
+        ${newProgrammeRowHtml(newData.programmeId || existing.programmeId)}
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-id-card"></i> Card ID</label>
             <input class="form-control" value="${escapeHtml(newStudentId)}" disabled style="flex: 1;">
             ${uidActionHTML}
         </div>
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-wifi"></i> UID</label>
             <input class="form-control" value="${escapeHtml(newHardwareUid)}" disabled style="flex: 1;">
             <span style="min-width: 120px;"></span>
         </div>
     </div>
     <div class="dialog-actions">
-        <button id="cancel-duplicate-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-duplicate-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="add-anyway-btn" class="btn-orange"><i class="fa-solid fa-user-plus"></i> Add as Separate</button>
         <button id="apply-btn" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Apply Changes</button>
     </div>`;
@@ -5466,17 +5931,19 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
     const addAnywayBtn = document.getElementById('add-anyway-btn');
     const applyBtn = document.getElementById('apply-btn');
     const actionControls = dialog.querySelectorAll('[data-field="name"], [data-field="email"], #uid-action-select');
+    let readProgramme = () => ({ id: null, replace: false });
 
     const updateButtonStates = () => {
         const isAnyActionSelected = Array.from(actionControls).some(control =>
             (control.type === 'checkbox' && control.checked) ||
             (control.tagName === 'SELECT' && control.value !== 'none')
-        );
+        ) || readProgramme().replace;
         addAnywayBtn.disabled = isAnyActionSelected;
         applyBtn.disabled = !isAnyActionSelected;
     };
 
     actionControls.forEach(control => control.addEventListener('change', updateButtonStates));
+    readProgramme = bindProgrammeRow(dialog, existing.programmeId, updateButtonStates);
     updateButtonStates();
     document.getElementById('cancel-duplicate-btn').addEventListener('click', closeDialog);
 
@@ -5505,7 +5972,8 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
 
     addAnywayBtn.addEventListener('click', () => runAction(addAnywayBtn, async () => {
         await callWebApp('addEntryToDatabase_Admin', {
-            name: newData.name, email: newData.email, uid: studentId, hardwareUid: hwUid
+            name: newData.name, email: newData.email, uid: studentId, hardwareUid: hwUid,
+            programmeId: readProgramme().id || newData.programmeId
         });
         showNotification('success', 'Entry Added', `Added ${newData.name} as a separate entry.`);
     }));
@@ -5521,6 +5989,8 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
 
         if (nameCheck && nameCheck.checked) update.name = newData.name;
         if (emailCheck && emailCheck.checked) update.email = newData.email;
+        const programme = readProgramme();
+        if (programme.replace) update.programmeId = programme.id;
         if (uidSelect && uidSelect.value === 'merge') {
             const uids = [...(existingEntryData.uids || [])];
             const hardwareUids = [...(existingEntryData.hardware_uids || [])];
@@ -5564,6 +6034,7 @@ function showApproveDialog(registration) {
             uid: (studentData.uids || []).join(', '),
             hardwareUid: (studentData.hardware_uids || (studentData.uids ? studentData.uids.map(convertExternalIdToUid).filter(Boolean) : [])).join(', '),
             email: studentData.email || '',
+            programmeId: studentData.programmeId ?? null,
             // The student's id: approveRegistration updates students where id = rowIndex.
             rowIndex: parseInt(dbKey, 10)
         };
@@ -5628,6 +6099,8 @@ function showFinalApprovalDialog(registration) {
             <input type="email" id="approve-email" class="form-control" value="${escapeHtml(registration.email)}">
         </div>
 
+        ${programmeFieldHtml('approve-programme', registration.programmeId)}
+
         <div class="form-group">
             <label class="dialog-label-fixed" for="approve-id"><i class="fa-solid fa-id-card"></i> Card ID</label>
             <input type="text" id="approve-id" class="form-control" value="${escapeHtml(decId)}" disabled>
@@ -5640,7 +6113,7 @@ function showFinalApprovalDialog(registration) {
         
     </div> 
     <div class="dialog-actions">
-        <button id="cancel-approve-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-approve-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="confirm-approve-btn" class="btn-green"><i class="fa-solid fa-check"></i> Approve</button>
     </div>`;
 
@@ -5661,6 +6134,8 @@ function showFinalApprovalDialog(registration) {
         let isValid = true;
         if (finalName === '') { showInputError(nameInput, 'Name is required.'); isValid = false; }
         if (!isValidEmail(finalEmail)) { showInputError(emailInput, 'A valid email is required.'); isValid = false; }
+        const programme = readProgrammeField(dialog.querySelector('#approve-programme'));
+        if (!programme.ok) isValid = false;
         if (!isValid) return;
 
         const idleLabel = confirmBtn.innerHTML;
@@ -5673,6 +6148,7 @@ function showFinalApprovalDialog(registration) {
             hardwareUid: hexUid,
             hardware_uid: hexUid,
             email: finalEmail,
+            programmeId: programme.id,
             rowNumber: registration.rowNumber
         };
         callWebApp('approveRegistration', finalData, 'POST').then(result => {
@@ -5765,19 +6241,19 @@ function showDuplicateWarningDialog(newData, duplicates) {
         <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
             <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">Existing Data</div>
             
-            <div class="form-group" style="margin-bottom: 8px;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-quote-left"></i> Name</label>
                 <input class="form-control" value="${escapeHtml(existing.name)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
-            </div>
-            <div class="form-group" style="margin-bottom: 8px;">
+            </div>${existingProgrammeRowHtml(existing.programmeId)}
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-id-card"></i> Card ID(s)</label>
                 <input class="form-control" value="${escapeHtml(existingIdsDisplay)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
-            <div class="form-group" style="margin-bottom: 8px;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-wifi"></i> UID(s)</label>
                 <input class="form-control" value="${escapeHtml(existingHwDisplay)}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
-            <div class="form-group" style="margin-bottom: 0;">
+            <div class="form-group is-inline is-readout">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-at"></i> Email</label>
                 <input class="form-control" value="${escapeHtml(existing.email || 'N/A')}" disabled style="background: transparent; border: none; padding: 5px; height: auto;">
             </div>
@@ -5787,24 +6263,25 @@ function showDuplicateWarningDialog(newData, duplicates) {
         
         <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">New Application</div>
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-quote-left"></i> Name</label>
             <input class="form-control" value="${escapeHtml(newData.name)}" disabled style="flex: 1;">
             ${nameActionHTML}
         </div>
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-at"></i> Email</label>
             <input class="form-control" value="${escapeHtml(newData.email)}" disabled style="flex: 1;">
             ${emailActionHTML}
         </div>
+        ${newProgrammeRowHtml(newData.programmeId || existing.programmeId)}
         
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-id-card"></i> Card ID</label>
             <input class="form-control" value="${escapeHtml(newStudentId)}" disabled style="flex: 1;">
             ${uidActionHTML}
         </div>
-        <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px;">
+        <div class="form-group is-inline">
             <label class="dialog-label-fixed"><i class="fa-solid fa-wifi"></i> UID</label>
             <input class="form-control" value="${escapeHtml(newHardwareUid)}" disabled style="flex: 1;">
             <span style="min-width: 120px;"></span>
@@ -5812,7 +6289,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
 
     </div>
     <div class="dialog-actions">
-        <button id="cancel-duplicate-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-duplicate-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="add-anyway-btn" class="btn-orange"><i class="fa-solid fa-user-plus"></i> Add as Separate</button>
         <button id="replace-btn" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Apply Changes</button>
     </div>`;
@@ -5827,6 +6304,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
     const addAnywayBtn = document.getElementById('add-anyway-btn');
     const replaceBtn = document.getElementById('replace-btn');
     const actionControls = dialog.querySelectorAll('[data-field="name"], [data-field="email"], #uid-action-select');
+    let readProgramme = () => ({ id: null, replace: false });
 
     // Function to manage button states
     const updateButtonStates = () => {
@@ -5836,7 +6314,8 @@ function showDuplicateWarningDialog(newData, duplicates) {
 
         const isAnyActionSelected = (nameCheck && nameCheck.checked) ||
             (emailCheck && emailCheck.checked) ||
-            (uidSelect && uidSelect.value !== 'none');
+            (uidSelect && uidSelect.value !== 'none') ||
+            readProgramme().replace;
 
         addAnywayBtn.disabled = isAnyActionSelected;
         replaceBtn.disabled = !isAnyActionSelected;
@@ -5844,6 +6323,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
 
     // Attach listeners and initialize states
     actionControls.forEach(control => control.addEventListener('change', updateButtonStates));
+    readProgramme = bindProgrammeRow(dialog, existing.programmeId, updateButtonStates);
     updateButtonStates(); // Set initial state
     document.getElementById('cancel-duplicate-btn').addEventListener('click', closeDialog);
 
@@ -5855,7 +6335,8 @@ function showDuplicateWarningDialog(newData, duplicates) {
         button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...`;
         const studentId = newStudentId !== '—' ? newStudentId : (newData.uid || '');
         const hwUid = newHardwareUid !== '—' ? newHardwareUid : (newData.hardwareUid || '');
-        const payload = { ...newData, approvalMode: 'add_new_separate', uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid };
+        const payload = { ...newData, approvalMode: 'add_new_separate', uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid,
+            programmeId: readProgramme().id || newData.programmeId };
         callWebApp('approveRegistration', payload, 'POST').then(result => {
             if (result && result.result === 'success') {
                 showNotification('success', 'Action Complete', `Registration for ${newData.name} has been processed.`);
@@ -5874,10 +6355,12 @@ function showDuplicateWarningDialog(newData, duplicates) {
         if (nameCheck && nameCheck.checked) updates.name = newData.name;
         if (emailCheck && emailCheck.checked) updates.email = newData.email;
         if (uidSelect && uidSelect.value !== 'none') updates.uid_action = uidSelect.value;
+        const programme = readProgramme();
+        if (programme.replace) updates.programme = true;
 
         const studentId = newStudentId !== '—' ? newStudentId : (newData.uid || '');
         const hwUid = newHardwareUid !== '—' ? newHardwareUid : (newData.hardwareUid || '');
-        const payload = { ...newData, action: 'approveRegistration', approvalMode: 'custom_replace', duplicateRowIndex: existing.rowIndex, updates: updates, uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid };
+        const payload = { ...newData, action: 'approveRegistration', approvalMode: 'custom_replace', duplicateRowIndex: existing.rowIndex, updates: updates, uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid, programmeId: programme.id };
         const idleLabel = button.innerHTML;
         button.disabled = true; button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Approving...`;
         callWebApp('approveRegistration', payload, 'POST').then(result => {
@@ -6027,6 +6510,7 @@ function renderRegistrationsTable(registrations) {
 
         row.innerHTML = `
             <td>${escapeHtml(reg.name) || 'N/A'}</td>
+            <td class="programme-cell">${programmeBadgeHtml(reg.programmeId)}</td>
             <td>${uidCellDisplay}</td>
             <td style="font-size: 0.9em;">${escapeHtml(reg.email) || 'N/A'}</td>
             <td style="font-size: 0.9em;">${escapeHtml(formattedTimestamp)}</td>
@@ -6100,10 +6584,8 @@ function renderAbsencesTable(requests) {
                 <div class="person-name">${escapeHtml(req.name)}</div>
                 <small class="person-email">${escapeHtml(req.email)}</small>
             </td>
-            <td>
-                ${escapeHtml(req.course.replace(/_/g, ' '))}
-                ${sessionBadge}
-            </td>
+            <td class="programme-cell">${programmeBadgeHtml(studentProgrammeId(req.email))}</td>
+            <td>${courseCellHtml(req.course, sessionBadge ? ` ${sessionBadge}` : '')}</td>
             <td>${escapeHtml(req.absenceDate)}</td>
             <td class="times-cell">${formatHoursAsPills(req.hours)}</td>
             <td>${escapeHtml(req.reasonType)}</td>
@@ -6177,10 +6659,10 @@ function showPermissionDetailsDialog(data, isReadOnly = false) {
     // Determine Action Buttons based on context
     let actionsHtml = '';
     if (isReadOnly) {
-        actionsHtml = `<button id="close-details-btn" class="btn-blue"><i class="fa-solid fa-xmark"></i> Close</button>`;
+        actionsHtml = `<button id="close-details-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Close</button>`;
     } else {
         actionsHtml = `
-            <button id="close-details-btn" class="btn-blue" style="margin-right:auto;"><i class="fa-solid fa-xmark"></i> Close</button>
+            <button id="close-details-btn" class="btn-secondary" style="margin-right:auto;"><i class="fa-solid fa-xmark"></i> Close</button>
             <button id="reject-req-btn" class="btn-red"><i class="fa-solid fa-ban"></i> Reject</button>
             <button id="approve-req-btn" class="btn-green"><i class="fa-solid fa-check"></i> Approve</button>
         `;
@@ -6203,11 +6685,16 @@ function showPermissionDetailsDialog(data, isReadOnly = false) {
                 </div>
             </div>
 
+            ${programmeById(studentProgrammeId(data.studentEmail)) ? `
+            <div class="form-group">
+                <label class="dialog-label-fixed"><i class="fa-solid fa-graduation-cap"></i> Programme</label>
+                <div class="form-control" style="border:none;">${escapeHtml(programmeOptionLabel(programmeById(studentProgrammeId(data.studentEmail))))}</div>
+            </div>` : ''}
+
             <div class="form-group">
                 <label class="dialog-label-fixed"><i class="fa-solid fa-book"></i> Course</label>
-                <div class="form-control" style="border:none; display:flex; align-items:center;">
-                    ${escapeHtml(data.course ? data.course.replace(/_/g, ' ') : 'N/A')}
-                    ${sessionHtml}
+                <div class="form-control" style="border:none; display:flex; align-items:center; flex-wrap:wrap;">
+                    ${data.course ? courseCellHtml(data.course, sessionHtml ? ` ${sessionHtml}` : '') : 'N/A'}
                 </div>
             </div>
 
@@ -6327,8 +6814,7 @@ function showRequestPermissionDialog() {
     const courseOptions = isEnrolledEmpty
         ? '<option value="" disabled selected>No enrolled courses available</option>'
         : '<option value="" disabled selected>Select Course...</option>' + enrolledCourses.map(courseName => {
-            const cleanName = getCleanCourseCode(courseName, courseInfoMap[courseName]?.eisId);
-            return `<option value="${escapeHtml(courseName)}">${escapeHtml(cleanName)}</option>`;
+            return `<option value="${escapeHtml(courseName)}">${escapeHtml(getCourseLabel(courseName))}</option>`;
         }).join('');
 
     const emptyCourseExplanation = isEnrolledEmpty
@@ -6447,7 +6933,7 @@ function showRequestPermissionDialog() {
 
 </div>
 <div class="dialog-actions">
-    <button id="cancel-request-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    <button id="cancel-request-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
     <button id="submit-request-btn" class="btn-green" disabled><i class="fa-solid fa-paper-plane"></i> Submit</button>
 </div>`;
 
@@ -6947,7 +7433,7 @@ function showApproveAbsenceDialog(data) {
     </div>
 </div>
 <div class="dialog-actions">
-    <button id="cancel-approve-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    <button id="cancel-approve-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
     <button id="confirm-approve-btn" class="btn-green"><i class="fa-solid fa-check"></i> Approve</button>
 </div>`;
 
@@ -7063,7 +7549,7 @@ function showRejectAbsenceDialog(data) {
     </div>
 </div>
 <div class="dialog-actions">
-    <button id="cancel-reject-btn" class="btn-blue"><i class="fa-solid fa-xmark"></i> Cancel</button>
+    <button id="cancel-reject-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
     <button id="confirm-reject-btn" class="btn-red"><i class="fa-solid fa-ban"></i> Reject</button>
 </div>`;
 
@@ -7171,7 +7657,7 @@ function showRejectDialog(registration) {
         <p style="font-size:0.85em; color:#666; text-align:right; margin-top:5px;">This message will be emailed to ${escapeHtml(registration.email)}.</p>
     </div>
     <div class="dialog-actions">
-        <button id="cancel-reject-btn" class="btn-blue"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-reject-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="confirm-reject-btn" class="btn-red"><i class="fa-solid fa-ban"></i> Reject</button>
     </div>`;
 
@@ -7276,9 +7762,12 @@ async function resolveEmailAttachmentLink(stored) {
 
 // Unwraps a supabase-js response, throwing on error
 function sbUnwrap({ data, error }) {
-    if (error) throw new Error(error.message);
+    if (error) throw Object.assign(new Error(error.message), { code: error.code });
     return data;
 }
+
+// The column or function a migration adds is missing until that migration runs.
+const SB_MISSING_COLUMN = ['42703', 'PGRST204'];
 
 async function sbSessionEmail() {
     const { data: { session } } = await supabaseClient.auth.getSession();
@@ -7294,6 +7783,7 @@ function sbMapCourseInfo(rows) {
     (rows || []).forEach(row => {
         if (!row.name) return;
         courseInfoMap[row.name] = {
+            title: String(row.title || '').trim(),
             startDate: row.start_date || '',
             endDate: row.end_date || '',
             holidayWeeks: row.holiday_weeks != null ? row.holiday_weeks.toString() : '',
@@ -7316,7 +7806,8 @@ function sbMapDatabase(rows) {
                 name: row.name || '',
                 email: row.email || '',
                 uids: Array.isArray(row.uids) ? row.uids : (row.uids ? [row.uids] : []),
-                hardware_uids: Array.isArray(row.hardware_uids) ? row.hardware_uids : (row.hardware_uids ? [row.hardware_uids] : [])
+                hardware_uids: Array.isArray(row.hardware_uids) ? row.hardware_uids : (row.hardware_uids ? [row.hardware_uids] : []),
+                programmeId: row.programme_id ?? null
             };
         }
     });
@@ -7365,9 +7856,21 @@ function sbMapDevices(rows) {
 }
 
 async function sbGetCourseInfo() {
-    const rows = sbUnwrap(await supabaseClient.from('courses')
-        .select('name,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,available_sections,archived'));
-    return sbMapCourseInfo(rows);
+    const columns = 'name,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,available_sections,archived';
+    let result = await supabaseClient.from('courses').select(columns + ',title');
+    if (SB_MISSING_COLUMN.includes(result.error?.code)) result = await supabaseClient.from('courses').select(columns);
+    return sbMapCourseInfo(sbUnwrap(result));
+}
+
+// Programmes A–Z by code; null when the database has none yet, which hides them.
+async function sbGetProgrammes() {
+    const { data, error } = await supabaseClient.from('programmes').select('id,code,name,archived').order('code');
+    if (error) {
+        console.warn('Programmes unavailable:', error.message);
+        return null;
+    }
+    return (data || []).map(row => ({ id: row.id, code: String(row.code || '').trim(), name: String(row.name || '').trim(), archived: !!row.archived }))
+        .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }));
 }
 
 // Read every page so a large roster or course is not silently truncated.
@@ -7384,8 +7887,14 @@ async function sbSelectAll(queryFactory) {
 }
 
 async function sbGetDatabase() {
-    const studentRows = await sbSelectAll(() => supabaseClient.from('students')
-        .select('id,name,email,uids,hardware_uids').order('id'));
+    const studentQuery = columns => () => supabaseClient.from('students').select(columns).order('id');
+    let studentRows;
+    try {
+        studentRows = await sbSelectAll(studentQuery('id,name,email,uids,hardware_uids,programme_id'));
+    } catch (error) {
+        if (!SB_MISSING_COLUMN.includes(error.code)) throw error;
+        studentRows = await sbSelectAll(studentQuery('id,name,email,uids,hardware_uids'));
+    }
 
     let staffRows = [];
     let staffProfiles = new Map();
@@ -7488,13 +7997,17 @@ async function callSupabase(action, payload = {}) {
 
         case 'getBootData': {
             const adminStatus = await sbGetAdminStatus();
-            const [courses, database, courseInfo] = await Promise.all([
+            const [courses, database, courseInfo, programmes] = await Promise.all([
                 sbGetAvailableCourses(adminStatus),
                 sbGetDatabase(),
-                sbGetCourseInfo()
+                sbGetCourseInfo(),
+                sbGetProgrammes()
             ]);
-            return { result: 'success', adminStatus, courses, database, courseInfo };
+            return { result: 'success', adminStatus, courses, database, courseInfo, programmes };
         }
+
+        case 'getProgrammes':
+            return sbGetProgrammes();
 
         case 'checkAdminStatus':
             return sbGetAdminStatus();
@@ -7562,16 +8075,18 @@ async function callSupabase(action, payload = {}) {
         }
 
         case 'getPendingRegistrations': {
-            const rows = sbUnwrap(await supabaseClient.from('registrations')
-                .select('id,name,uid,email,submitted_at,sent_by')
-                .order('submitted_at', { ascending: true }));
-            return (rows || []).map(row => ({
+            const query = columns => supabaseClient.from('registrations').select(columns)
+                .order('submitted_at', { ascending: true });
+            let result = await query('id,name,uid,email,submitted_at,sent_by,programme_id');
+            if (SB_MISSING_COLUMN.includes(result.error?.code)) result = await query('id,name,uid,email,submitted_at,sent_by');
+            return (sbUnwrap(result) || []).map(row => ({
                 rowNumber: row.id,
                 name: row.name || '',
                 uid: row.uid || '',
                 email: row.email || '',
                 timestamp: row.submitted_at || '',
-                sentBy: row.sent_by || ''
+                sentBy: row.sent_by || '',
+                programmeId: row.programme_id ?? null
             }));
         }
 
@@ -7663,13 +8178,19 @@ async function callSupabase(action, payload = {}) {
             const sentBy = payload.sentBy
                 ? (payload.sentBy.name || payload.sentBy.email || email)
                 : email;
-            sbUnwrap(await supabaseClient.from('registrations').insert({
+            const registration = {
                 name: payload.name || '',
                 uid: payload.uid || '',
                 email: payload.email || '',
                 submitted_at: new Date().toISOString(),
                 sent_by: sentBy
-            }));
+            };
+            let result = await supabaseClient.from('registrations')
+                .insert(payload.programmeId ? { ...registration, programme_id: payload.programmeId } : registration);
+            if (payload.programmeId && SB_MISSING_COLUMN.includes(result.error?.code)) {
+                result = await supabaseClient.from('registrations').insert(registration);
+            }
+            sbUnwrap(result);
             return { result: 'success', message: 'Registration submitted successfully' };
         }
 
@@ -7688,15 +8209,19 @@ async function callSupabase(action, payload = {}) {
 
         // The server turns the code into its card and files the registration.
         case 'submitCardCode': {
-            const { data, error } = await supabaseClient.rpc('submit_card_code_registration', {
-                p_code: normalizeCardCode(payload.code), p_name: payload.name || ''
-            });
+            const args = { p_code: normalizeCardCode(payload.code), p_name: payload.name || '' };
+            let { data, error } = await supabaseClient.rpc('submit_card_code_registration',
+                payload.programmeId ? { ...args, p_programme_id: payload.programmeId } : args);
+            // Before programmes exist, the function takes the code and name only.
+            if (error?.code === 'PGRST202' && payload.programmeId) {
+                ({ data, error } = await supabaseClient.rpc('submit_card_code_registration', args));
+            }
             if (!error) return data;
             if (error.code !== 'PGRST202') throw new Error(error.message);
             // Before the database issues codes, a typed Card ID is sent as it is.
             const card = parseTypedCardId(payload.code);
             if (!card) throw new Error("That isn't a Card ID. Check the number on your friend's screen.");
-            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid });
+            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid, programmeId: payload.programmeId });
         }
 
         case 'deleteAbsenceRequest': {
@@ -7715,6 +8240,7 @@ async function callSupabase(action, payload = {}) {
                 const hw = payload.hardware_uids || payload.hardwareUids || (payload.hardwareUid ? [payload.hardwareUid] : []);
                 studentInsert.hardware_uids = Array.isArray(hw) ? hw : [hw];
             }
+            if (payload.programmeId) studentInsert.programme_id = payload.programmeId;
             sbUnwrap(await supabaseClient.from('students').insert(studentInsert));
             return { result: 'success', message: 'Entry added directly to database' };
         }
@@ -7734,6 +8260,7 @@ async function callSupabase(action, payload = {}) {
                     ? hw
                     : hw.toString().split(',').map(u => u.trim()).filter(Boolean);
             }
+            if (payload.programmeId !== undefined) patch.programme_id = payload.programmeId || null;
             sbUnwrap(await supabaseClient.from('students').update(patch)
                 .eq('id', parseInt(payload.dbKey)));
             return { result: 'success', message: 'Student updated successfully' };
@@ -7766,6 +8293,25 @@ async function callSupabase(action, payload = {}) {
             }
             return { result: 'success' };
         }
+
+        // Students point at a programme by id, so a corrected code shows everywhere.
+        case 'saveProgramme_Admin': {
+            const row = { code: String(payload.code || '').trim(), name: String(payload.name || '').trim() || null };
+            if (payload.archived !== undefined) row.archived = !!payload.archived;
+            const { data, error } = await (payload.id
+                ? supabaseClient.from('programmes').update(row).eq('id', payload.id).select('id')
+                : supabaseClient.from('programmes').insert(row).select('id'));
+            if (error?.code === '23505') throw new Error(`There is already a programme called ${row.code}.`);
+            sbUnwrap({ data, error });
+            if (!data?.length) throw new Error('That programme no longer exists. Reopen Settings and try again.');
+            return { result: 'success', id: data[0].id };
+        }
+
+        // Its students (and pending registrations) move to payload.moveTo first.
+        case 'deleteProgramme_Admin':
+            return sbUnwrap(await supabaseClient.rpc('delete_programme', {
+                p_id: payload.id, p_move_to: payload.moveTo || null
+            }));
 
         case 'registerDevice_Admin': {
             const existing = sbUnwrap(await supabaseClient.from('trusted_devices')
@@ -7949,6 +8495,7 @@ async function callSupabase(action, payload = {}) {
                 const patch = {};
                 if (updates.name) patch.name = payload.name;
                 if (updates.email) patch.email = payload.email;
+                if (updates.programme) patch.programme_id = payload.programmeId || null;
                 if (updates.uid_action) {
                     let uids = student.uids || [];
                     let hwUids = student.hardware_uids || [];
@@ -7966,12 +8513,14 @@ async function callSupabase(action, payload = {}) {
                     sbUnwrap(await supabaseClient.from('students').update(patch).eq('id', student.id));
                 }
             } else {
-                sbUnwrap(await supabaseClient.from('students').insert({
+                const student = {
                     name: payload.name,
                     email: payload.email,
                     uids: studentId ? [studentId] : [],
                     hardware_uids: hardwareUid ? [hardwareUid] : []
-                }));
+                };
+                if (payload.programmeId) student.programme_id = payload.programmeId;
+                sbUnwrap(await supabaseClient.from('students').insert(student));
             }
 
             const regId = parseInt(payload.rowNumber);
@@ -8730,6 +9279,7 @@ async function handleCourseChange(courseName) {
     cooldownUIDs.clear();
     localStorage.setItem('last_active_course', courseName);
     renderSessionControls(courseName);
+    updatePageTitle();
     beginLogsSwap();
     try {
         await loadAndMergeCourseData(courseName);
@@ -9251,11 +9801,13 @@ function showAddEntryDialog() {
                 <input type="email" id="add-email" class="form-control" placeholder="nsurname00@epoka.edu.al">
             </div>
 
+            ${programmeFieldHtml('add-programme', dbProgrammeFilter === 'none' ? '' : dbProgrammeFilter)}
+
             <div class="form-group">
                 <label class="dialog-label-fixed" for="add-hardware-uid"><i class="fa-solid fa-wifi"></i> UID</label>
                 <div class="admin-input-wrapper" style="margin:0; width:100%;">
                     <input type="text" id="add-hardware-uid" class="form-control" placeholder="Optional legacy card UID">
-                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" style="border-radius:6px;"><i class="fa-solid fa-wifi"></i></button>' : ''}
+                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" aria-label="Scan UID"><i class="fa-solid fa-wifi"></i></button>' : ''}
                 </div>
             </div>
 
@@ -9267,7 +9819,7 @@ function showAddEntryDialog() {
             <div id="nfc-status-container" style="margin-top:10px;"></div>
         </div>
         <div class="dialog-actions">
-            <button id="cancel-add-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button id="cancel-add-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button id="confirm-add-btn" class="btn-green"><i class="fa-solid fa-plus"></i> Add Student</button>
         </div>`;
 
@@ -9340,6 +9892,8 @@ function showAddEntryDialog() {
         let isValid = true;
         if (name === '') { showInputError(nameInput, 'Name is required.'); isValid = false; }
         if (!isValidEmail(email)) { showInputError(emailInput, 'A valid email is required.'); isValid = false; }
+        const programme = readProgrammeField(dialog.querySelector('#add-programme'));
+        if (!programme.ok) isValid = false;
         if (!uid && !hardwareUid) { showInputError(idInput, 'UID or ID is required.'); isValid = false; }
         if (!isValid) return;
 
@@ -9348,6 +9902,7 @@ function showAddEntryDialog() {
             email: email,
             uid: uid,
             hardwareUid: hardwareUid,
+            programmeId: programme.id,
             sentBy: {
                 name: currentUser?.name || '',
                 email: currentUser?.email || ''
@@ -9424,18 +9979,20 @@ function editDatabaseEntry(dbKey) {
             <label class="dialog-label-fixed" for="edit-email">Email <span class="required">*</span></label>
             <input type="email" id="edit-email" class="form-control" placeholder="nsurname00@epoka.edu.al" value="${escapeHtml(entry.email || '')}">
         </div>
-        
+
+        ${programmeFieldHtml('edit-programme', entry.programmeId)}
+
         <hr style="margin: 15px 0; border:0; border-top:1px solid #eee;">
         
         <div id="uid-list-container"></div>
         
         <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
-             <button id="add-new-uid-row-btn" class="btn-blue btn-sm"><i class="fa-solid fa-plus"></i> Add UID / ID</button>
+             <button id="add-new-uid-row-btn" class="btn-blue btn-sm"><i class="fa-solid fa-plus"></i> Add ID</button>
         </div>
         <div id="nfc-status-container" style="margin-top:10px;"></div>
     </div> 
     <div class="dialog-actions">
-        <button id="cancel-request-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-request-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="submit-request-btn" class="btn-green"><i class="fa-solid fa-check"></i> Submit</button>
     </div>`;
 
@@ -9456,13 +10013,13 @@ function editDatabaseEntry(dbKey) {
         uidGroup.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
                 <span style="font-weight:600; font-size:0.85em; opacity:0.8;"><i class="fa-solid fa-id-card"></i> Card ID</span>
-                <button type="button" class="btn-red btn-sm remove-uid-btn" title="Remove" style="padding:3px 8px; border-radius:4px; font-size:0.8em; display:inline-flex; align-items:center; gap:4px; height:auto;"><i class="fa-solid fa-trash-can"></i> Remove</button>
+                <button type="button" class="btn-red btn-sm remove-uid-btn" title="Remove"><i class="fa-solid fa-trash-can"></i> Remove</button>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
                 <label class="dialog-label-fixed" style="width:90px; min-width:90px;"><i class="fa-solid fa-wifi"></i> UID</label>
                 <div style="flex-grow:1; display:flex; gap:6px;">
                     <input type="text" class="form-control hw-uid-input" value="${escapeHtml(initHw)}" placeholder="Optional legacy card UID">
-                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" style="border-radius:6px;"><i class="fa-solid fa-wifi"></i></button>' : ''}
+                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" aria-label="Scan UID"><i class="fa-solid fa-wifi"></i></button>' : ''}
                 </div>
             </div>
             <div class="form-group" style="margin-bottom:0;">
@@ -9543,6 +10100,9 @@ function editDatabaseEntry(dbKey) {
         let isValid = true;
         if (newName === '') { showInputError(nameInput, 'Name is required.'); isValid = false; }
         if (!isValidEmail(newEmail)) { showInputError(emailInput, 'A valid email is required.'); isValid = false; }
+        const programmeSelect = dialog.querySelector('#edit-programme');
+        const programme = readProgrammeField(programmeSelect);
+        if (!programme.ok) isValid = false;
 
         const finalUids = [];
         const finalHardwareUids = [];
@@ -9571,7 +10131,8 @@ function editDatabaseEntry(dbKey) {
         if (!isValid) return;
 
         // 1. Update local map
-        databaseMap[dbKey] = { name: newName, email: newEmail, uids: finalUids, hardware_uids: finalHardwareUids };
+        const programmeId = programmeSelect ? programme.id : (entry.programmeId ?? null);
+        databaseMap[dbKey] = { name: newName, email: newEmail, uids: finalUids, hardware_uids: finalHardwareUids, programmeId };
 
         // 2. UPDATE UI IMMEDIATELY
         window.buildUIDToPrimaryUidMap();
@@ -9590,6 +10151,7 @@ function editDatabaseEntry(dbKey) {
                 uids: finalUids,
                 hardwareUids: finalHardwareUids
             };
+            if (programmeSelect) updateData.programmeId = programmeId;
 
             callWebApp('updateStudentInDatabase_Admin', updateData, 'POST')
                 .then(() => {
@@ -9720,8 +10282,8 @@ function showAlertDialog(title, message) {
 function showConfirmationDialog({ title, message, confirmText = 'Confirm', cancelText = 'Cancel', onConfirm, onCancel, isDestructive = false }) {
     openDialogMode();
 
-    const confirmBtnClass = isDestructive ? 'btn-red' : 'btn-green';
-    const cancelBtnClass = 'btn-blue';
+    const confirmBtnClass = isDestructive ? 'btn-red' : 'btn-blue';
+    const cancelBtnClass = 'btn-secondary';
 
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop confirmation-backdrop');
@@ -9893,7 +10455,7 @@ function showAddLogEntryDialog() {
 
     </div>
     <div class="dialog-actions">
-        <button id="cancel-manual-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-manual-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="save-manual-log-btn" class="btn-green" disabled><i class="fa-solid fa-plus"></i> Add Entry</button>
     </div>`;
 
@@ -10150,7 +10712,7 @@ function showEditLogDialog(group) {
         <div id="timestamp-container">${timestampFields}</div>
     </div>
     <div class="dialog-actions">
-        <button id="cancel-edit-log-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button id="cancel-edit-log-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
         <button id="save-edit-log-btn" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
     </div>`;
 
@@ -10715,7 +11277,7 @@ function clearLogs() {
     };
 
     showConfirmationDialog({
-        title: `Delete logs for ${escapeHtml(currentCourse.replace(/_/g, ' '))}?`,
+        title: `Delete logs for ${escapeHtml(getCourseLabel(currentCourse))}?`,
         message: 'This will remove all logs for the current course. This action cannot be undone.',
         confirmText: 'Delete',
         isDestructive: true,
@@ -10790,16 +11352,21 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
                 <label class="dialog-label-fixed" for="import-map-email"><i class="fa-solid fa-at"></i> Email</label>
                 <select id="import-map-email" class="form-control"></select>
             </div>
+            ${programmeList ? `
+            <div class="form-group">
+                <label class="dialog-label-fixed" for="import-map-programme"><i class="fa-solid fa-graduation-cap"></i> Programme</label>
+                <select id="import-map-programme" class="form-control"></select>
+            </div>` : ''}
             <div class="form-section-title">Import Preview</div>
             <p id="import-preview-count" role="status"></p>
             <div class="table-container"><table class="database-table">
-                <thead><tr><th>Row</th><th>Name</th><th>Card ID</th><th>Email</th></tr></thead>
+                <thead><tr><th>Row</th><th>Name</th><th>Card ID</th><th>Email</th>${programmeList ? '<th>Programme</th>' : ''}</tr></thead>
                 <tbody id="import-mapping-preview"></tbody>
             </table></div>
             <p id="import-mapping-error" class="error-message" role="alert" hidden></p>
         </div>
         <div class="dialog-actions">
-            <button type="button" id="cancel-import-mapping" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button type="button" id="cancel-import-mapping" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button type="button" id="continue-import-mapping" class="btn-green"><i class="fa-solid fa-arrow-right"></i> Continue</button>
         </div></div>`;
     document.body.appendChild(backdrop);
@@ -10807,14 +11374,22 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
     const rowInput = backdrop.querySelector('#import-start-row');
     const headerCheck = backdrop.querySelector('#import-has-headers');
     const selects = { name: backdrop.querySelector('#import-map-name'), cardId: backdrop.querySelector('#import-map-card'), email: backdrop.querySelector('#import-map-email') };
+    // Programme: a column of the file, or one programme ("p:<id>") for every student.
+    const programmeSelect = backdrop.querySelector('#import-map-programme');
     const previewBody = backdrop.querySelector('#import-mapping-preview');
     const previewCount = backdrop.querySelector('#import-preview-count');
     const errorText = backdrop.querySelector('#import-mapping-error');
     const nextButton = backdrop.querySelector('#continue-import-mapping');
     let rows = [];
     const nonempty = row => row.some(value => String(value ?? '').trim());
-    const options = () => ({ startRow: Number(rowInput.value) - 1, hasHeaders: headerCheck.checked,
-        mapping: Object.fromEntries(Object.entries(selects).map(([field, select]) => [field, Number(select.value)])) });
+    const fixedProgramme = () => programmeSelect?.value.startsWith('p:') ? Number(programmeSelect.value.slice(2)) : null;
+    const options = () => {
+        const mapping = Object.fromEntries(Object.entries(selects).map(([field, select]) => [field, Number(select.value)]));
+        if (programmeSelect) mapping.programme = fixedProgramme() ? -1 : Number(programmeSelect.value);
+        return { startRow: Number(rowInput.value) - 1, hasHeaders: headerCheck.checked, mapping,
+            programmes: programmeList || undefined, programmeId: fixedProgramme() || undefined };
+    };
+    const previewProgramme = student => fixedProgramme() ? programmeCode(fixedProgramme()) : student.programme;
     const showError = error => { errorText.textContent = error.message; errorText.hidden = false; };
 
     const renderPreview = () => {
@@ -10825,7 +11400,7 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
         // Show partially mapped values too, so each selection is immediately visible.
         let preview = sourceRows.slice(0, 5).map(({ row, index }) => ({ rowNumber: index + 1,
             name: String(row[settings.mapping.name] ?? ''), uids: [String(row[settings.mapping.cardId] ?? '')],
-            email: String(row[settings.mapping.email] ?? '') }));
+            email: String(row[settings.mapping.email] ?? ''), programme: String(row[settings.mapping.programme] ?? '') }));
         errorText.hidden = true;
         nextButton.disabled = false;
         try {
@@ -10834,7 +11409,7 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
             nextButton.disabled = true;
             showError(error);
         }
-        previewBody.innerHTML = preview.map(student => `<tr><td>${student.rowNumber}</td><td>${escapeHtml(student.name) || '—'}</td><td>${escapeHtml(student.uids.join('; ')) || '—'}</td><td>${escapeHtml(student.email) || '—'}</td></tr>`).join('');
+        previewBody.innerHTML = preview.map(student => `<tr><td>${student.rowNumber}</td><td>${escapeHtml(student.name) || '—'}</td><td>${escapeHtml(student.uids.join('; ')) || '—'}</td><td>${escapeHtml(student.email) || '—'}</td>${programmeSelect ? `<td>${escapeHtml(previewProgramme(student)) || '—'}</td>` : ''}</tr>`).join('');
         previewCount.textContent = sourceRows.length ? `Showing ${preview.length} of ${sourceRows.length} rows.` : 'No data rows in this selection.';
     };
 
@@ -10856,6 +11431,16 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
             select.innerHTML = `<option value="-1">${field === 'name' ? 'Choose a column' : 'Not imported'}</option>` + columnsHtml;
             select.value = String(value >= 0 && value < width ? value : -1);
         });
+        if (programmeSelect) {
+            const fixed = fixedProgramme();
+            const value = suggest ? detected.programme : Number(programmeSelect.value);
+            programmeSelect.innerHTML = '<option value="-1">Not imported</option>' +
+                `<optgroup label="From a column">${columnsHtml}</optgroup>` +
+                `<optgroup label="The same for every student">${programmeList.filter(p => !p.archived).map(p =>
+                    `<option value="p:${p.id}">${escapeHtml(programmeOptionLabel(p))}</option>`).join('')}</optgroup>`;
+            // One programme for everyone stays chosen when the header row changes.
+            programmeSelect.value = fixed ? `p:${fixed}` : String(value >= 0 && value < width ? value : -1);
+        }
         renderPreview();
     };
 
@@ -10888,6 +11473,7 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
         populateColumns(false);
     };
     Object.values(selects).forEach(select => select.onchange = renderPreview);
+    if (programmeSelect) programmeSelect.onchange = renderPreview;
     backdrop.querySelector('#cancel-import-mapping').onclick = () => backdrop.remove();
     nextButton.onclick = () => {
         try {
@@ -10917,15 +11503,15 @@ function showDatabaseImportDialog(excelList, onBack = null) {
         <h3 class="dialog-title" id="student-import-review-title"><i class="fa-solid fa-file-import"></i> Import Students</h3>
         <div class="dialog-content">
             <p><strong>${excelList.length} students</strong>${excelList.length > 5 ? ' · Previewing first 5' : ''}</p>
-            <div class="table-container"><table class="database-table"><thead><tr><th>Name</th><th>Card ID</th><th>Email</th></tr></thead><tbody>
-                ${excelList.slice(0, 5).map(student => `<tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.uids.join('; '))}</td><td>${escapeHtml(student.email)}</td></tr>`).join('')}
+            <div class="table-container"><table class="database-table"><thead><tr><th>Name</th><th>Card ID</th><th>Email</th>${programmeList ? '<th>Programme</th>' : ''}</tr></thead><tbody>
+                ${excelList.slice(0, 5).map(student => `<tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.uids.join('; '))}</td><td>${escapeHtml(student.email)}</td>${programmeList ? `<td>${escapeHtml(programmeCode(student.programmeId)) || '—'}</td>` : ''}</tr>`).join('')}
             </tbody></table></div>
-            <p>Merge adds new students and updates matching IDs or emails. Replace All replaces the entire list.</p>
+            <p>Merge adds new students and updates matching IDs or emails. Replace All replaces the entire list.${programmeList && excelList.some(student => !student.programmeId) ? ' Students the file gives no programme keep the one they have.' : ''}</p>
             <p id="student-import-status" role="status" hidden></p>
         </div>
         <div class="dialog-actions">
-            ${onBack ? '<button type="button" id="back-db-import-btn" class="btn-blue"><i class="fa-solid fa-arrow-left"></i> Back</button>' : ''}
-            <button type="button" id="cancel-db-import-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            ${onBack ? '<button type="button" id="back-db-import-btn" class="btn-secondary"><i class="fa-solid fa-arrow-left"></i> Back</button>' : ''}
+            <button type="button" id="cancel-db-import-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button type="button" id="replace-db-btn" class="btn-orange"><i class="fa-solid fa-arrows-rotate"></i> Replace All</button>
             <button type="button" id="merge-db-btn" class="btn-green"><i class="fa-solid fa-code-merge"></i> Merge</button>
         </div>
@@ -11045,9 +11631,9 @@ function showImportDialog(importedLogs, courseName = currentCourse) {
     backdrop.className = 'dialog-backdrop';
     backdrop.innerHTML = '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="logs-import-title">' +
         '<h3 class="dialog-title" id="logs-import-title"><i class="fa-solid fa-file-import"></i> Import Logs</h3><div class="dialog-content">' +
-        '<p><strong>' + importedLogs.length + ' logs</strong> · ' + escapeHtml(getCleanCourseCode(courseName)) + '</p>' +
+        '<p><strong>' + importedLogs.length + ' logs</strong> · ' + escapeHtml(getCourseLabel(courseName)) + '</p>' +
         '<p>Merge adds new logs and keeps existing entries. Replace All replaces this course\'s logs.</p></div>' +
-        '<div class="dialog-actions"><button type="button" id="cancel-import-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>' +
+        '<div class="dialog-actions"><button type="button" id="cancel-import-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>' +
         '<button type="button" id="replace-logs-btn" class="btn-orange"><i class="fa-solid fa-arrows-rotate"></i> Replace All</button>' +
         '<button type="button" id="merge-logs-btn" class="btn-green"><i class="fa-solid fa-code-merge"></i> Merge</button></div></div>';
     document.body.appendChild(backdrop);
@@ -11532,6 +12118,15 @@ function setupStickyDateBar() {
         bar.style.animation = `${name} ${duration}ms ${easing} forwards`;
     }
 
+    // Once in, the bar drops its finished animation: a lingering opacity effect
+    // would stop the glass buttons from blurring the logs behind them.
+    if (!bar._glassReady) {
+        bar._glassReady = true;
+        bar.addEventListener('animationend', (event) => {
+            if (event.target === bar && event.animationName === 'badge-fly-in') bar.style.animation = 'none';
+        });
+    }
+
     function enter(date) {
         bar._activeDate = date;
         badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`;
@@ -11653,7 +12248,7 @@ function showAddEntryFromLog(uid) {
             <input type="text" id="add-log-student-id" class="form-control" placeholder="Auto-calculated from UID" value="${escapeHtml(initId)}" disabled style="opacity:0.75; cursor:not-allowed; background:rgba(0,0,0,0.04);">
         </div>
         </div> <div class="dialog-actions">
-            <button id="cancel-add-log-btn" class="btn-red"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button id="cancel-add-log-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
             <button id="confirm-add-log-btn" class="btn-green"><i class="fa-solid fa-check"></i> Add Student</button>
         </div>`;
 
@@ -11767,15 +12362,115 @@ function studentEntries() {
     return Object.entries(databaseMap).filter(([, data]) => data && !data.isStaff);
 }
 
+// An on/off setting in a dialog, such as Archived: its name and what it does, with
+// a switch at the end. The whole row toggles it.
+function switchRowHtml(id, checked, title, hint) {
+    return `
+        <label class="switch-row" for="${id}">
+            <span class="switch-row-text">
+                <span class="switch-row-title">${escapeHtml(title)}</span>
+                <span class="switch-row-hint">${escapeHtml(hint)}</span>
+            </span>
+            <input type="checkbox" role="switch" class="switch-input" id="${id}"${checked ? ' checked' : ''}>
+        </label>`;
+}
+
+// --- Programmes ---
+
+function setProgrammeList(list) {
+    programmeList = Array.isArray(list) ? list : null;
+    document.body.classList.toggle('has-programmes', !!programmeList);
+    if (dbProgrammeFilter && dbProgrammeFilter !== 'none' && !programmeById(dbProgrammeFilter)) dbProgrammeFilter = '';
+}
+
+function programmeById(id) {
+    return id == null || id === '' ? null : (programmeList || []).find(p => p.id === Number(id)) || null;
+}
+
+function programmeCode(id) {
+    return programmeById(id)?.code || '';
+}
+
+function programmeOptionLabel(programme) {
+    return programme.name ? `${programme.code} · ${programme.name}` : programme.code;
+}
+
+// Active programmes; an archived one stays listed while it is the current choice.
+function programmeOptionsHtml(selectedId, placeholder = 'Choose a programme') {
+    const selected = Number(selectedId) || null;
+    return `<option value="">${escapeHtml(placeholder)}</option>` + (programmeList || [])
+        .filter(p => !p.archived || p.id === selected)
+        .map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${escapeHtml(programmeOptionLabel(p))}${p.archived ? ' (archived)' : ''}</option>`)
+        .join('');
+}
+
+// A Programme field for a dialog; nothing until the database has programmes.
+function programmeFieldHtml(id, selectedId, { required = true, placeholder } = {}) {
+    if (!(programmeList || []).some(p => !p.archived || p.id === Number(selectedId))) return '';
+    return `
+        <div class="form-group">
+            <label class="dialog-label-fixed" for="${id}"><i class="fa-solid fa-graduation-cap"></i> Programme${required ? ' <span class="required">*</span>' : ''}</label>
+            <select id="${id}" class="form-control programme-select">${programmeOptionsHtml(selectedId, placeholder)}</select>
+        </div>`;
+}
+
+// { ok, id } for a Programme field; a missing field (no programmes yet) is ok with no id.
+function readProgrammeField(select, required = true) {
+    if (!select) return { ok: true, id: null };
+    clearInputError(select);
+    const id = Number(select.value) || null;
+    if (!id && required) {
+        showInputError(select, 'Choose a programme.');
+        return { ok: false, id: null };
+    }
+    return { ok: true, id };
+}
+
+function programmeBadgeHtml(id) {
+    const programme = programmeById(id);
+    return programme
+        ? `<span class="programme-badge" title="${escapeHtml(programmeOptionLabel(programme))}">${escapeHtml(programme.code)}</span>`
+        : '<span style="opacity:0.4;">—</span>';
+}
+
+// Student List filter: every programme with students, plus "No programme" when some lack one.
+function renderProgrammeFilter() {
+    const select = document.getElementById('db-programme-filter');
+    if (!select) return;
+    const counts = new Map();
+    studentEntries().forEach(([, student]) => {
+        const key = programmeById(student.programmeId) ? String(student.programmeId) : 'none';
+        counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    const options = (programmeList || []).filter(p => counts.has(String(p.id)) || String(p.id) === dbProgrammeFilter)
+        .map(p => [String(p.id), p.code, counts.get(String(p.id)) || 0]);
+    if (counts.has('none') || dbProgrammeFilter === 'none') options.push(['none', 'No programme', counts.get('none') || 0]);
+    const html = `<option value="">All programmes</option>` + options.map(([value, label, count]) =>
+        `<option value="${value}">${escapeHtml(label)} (${count})</option>`).join('');
+    if (select.dataset.options !== html) {
+        select.dataset.options = html;
+        select.innerHTML = html;
+    }
+    select.value = dbProgrammeFilter;
+}
+
+async function reloadProgrammes() {
+    setProgrammeList(await callWebApp('getProgrammes'));
+    updateDatabaseList();
+}
+
 function updateDatabaseList() {
     const students = studentEntries();
+    renderProgrammeFilter();
     const entries = students.filter(([dbKey, data]) => {
+        if (dbProgrammeFilter === 'none' ? programmeById(data.programmeId) : dbProgrammeFilter && String(data.programmeId) !== dbProgrammeFilter) return false;
         if (!dbFilter) return true;
         const searchFilter = dbFilter.toLowerCase();
         const hasIdMatch = (data.uids || []).some(id => String(id).toLowerCase().includes(searchFilter));
         const hasUidMatch = (data.hardware_uids || []).some(uid => String(uid).toLowerCase().includes(searchFilter));
         return (data.name.toLowerCase().includes(searchFilter) ||
             (data.email && data.email.toLowerCase().includes(searchFilter)) ||
+            programmeCode(data.programmeId).toLowerCase().includes(searchFilter) ||
             hasIdMatch ||
             hasUidMatch);
     });
@@ -11794,6 +12489,11 @@ function updateDatabaseList() {
         } else if (field === 'id') {
             valA = (a[1].uids && a[1].uids[0]) || '';
             valB = (b[1].uids && b[1].uids[0]) || '';
+        } else if (field === 'programme') {
+            // Students without a programme come last; within a programme, by name.
+            valA = programmeCode(a[1].programmeId) || '￿';
+            valB = programmeCode(b[1].programmeId) || '￿';
+            if (valA === valB) return String(a[1].name).localeCompare(String(b[1].name));
         } else {
             valA = (a[1].hardware_uids && a[1].hardware_uids[0]) || (a[1].uids && a[1].uids[0]) || '';
             valB = (b[1].hardware_uids && b[1].hardware_uids[0]) || (b[1].uids && b[1].uids[0]) || '';
@@ -11814,7 +12514,7 @@ function updateDatabaseList() {
     if (entries.length > ITEMS_PER_PAGE) {
         dbEntryCount.textContent = `${startIndex + 1}-${Math.min(endIndex, entries.length)} of ${entries.length}`;
     } else {
-        dbEntryCount.textContent = dbFilter ? `${entries.length} of ${totalCount}` : totalCount;
+        dbEntryCount.textContent = (dbFilter || dbProgrammeFilter) ? `${entries.length} of ${totalCount}` : totalCount;
     }
 
     // Render pagination controls
@@ -11825,9 +12525,10 @@ function updateDatabaseList() {
     if (totalCount === 0) {
         emptyDatabase.innerHTML = emptyDatabase.dataset.emptyHtml;
     } else if (entries.length === 0) {
+        const programme = dbProgrammeFilter === 'none' ? 'without a programme' : dbProgrammeFilter ? `in ${programmeCode(dbProgrammeFilter)}` : '';
         emptyDatabase.innerHTML = `<i class="fa-solid fa-magnifying-glass" style="font-size: 3em; color: #ccc; margin-bottom: 10px;" aria-hidden="true"></i>
-            <p style="font-size: 1.1em; margin-bottom: 5px;">No students match "${escapeHtml(dbFilterInput.value.trim())}".</p>
-            <p style="font-size: 0.9em; color: #999;">Search by name, card ID, UID or email.</p>`;
+            <p style="font-size: 1.1em; margin-bottom: 5px;">${dbFilter ? `No students ${escapeHtml(programme)}${programme ? ' ' : ''}match "${escapeHtml(dbFilterInput.value.trim())}".` : `No students ${escapeHtml(programme)}.`}</p>
+            <p style="font-size: 0.9em; color: #999;">Search by name, card ID, UID, email or programme.</p>`;
     }
     emptyDatabase.style.display = entries.length > 0 ? 'none' : 'block';
     closeRowMenus();
@@ -11844,17 +12545,12 @@ function updateDatabaseList() {
             ? idList.map(id => `<span class="uid-badge" style="background:#e3f2fd; color:#1565c0;">${escapeHtml(id)}</span>`).join(' ')
             : `<span style="opacity:0.4;">—</span>`;
 
-        // UID(s)
-        const hwList = data.hardware_uids || [];
-        const hwBadges = hwList.length > 0
-            ? hwList.map(uid => `<span class="uid-badge">${escapeHtml(uid)}</span>`).join(' ')
-            : `<span style="opacity:0.4;">—</span>`;
-
+        // Hardware UIDs are not listed (searching still finds them); Edit shows them.
         row.innerHTML = `
             <td class="name-cell">${escapeHtml(data.name)}</td>
             <td class="id-cell">${idBadges}</td>
-            <td class="uid-cell">${hwBadges}</td>
             <td class="email-cell">${escapeHtml(data.email || '')}</td>
+            <td class="programme-cell">${programmeBadgeHtml(data.programmeId)}</td>
             <td class="actions-cell admin-only">
                 <div class="actions-cell-content card-actions">
                     ${rowEditButtonHtml(`Edit ${data.name}`, 'edit-db-btn', `data-key="${escapeHtml(dbKey)}"`)}
@@ -11876,6 +12572,32 @@ function updateDatabaseList() {
 */
 function getCleanCourseCode(courseName, eisId) {
     return StandoData.cleanCourseCode(courseName, eisId || courseInfoMap[courseName]?.eisId);
+}
+
+// The course's full name, such as "Civil Engineering Drawing"; empty until one is set.
+function getCourseTitle(courseName) {
+    return courseInfoMap[courseName]?.title || '';
+}
+
+// "CE 121 · Civil Engineering Drawing", or the code alone.
+function getCourseLabel(courseName, separator = ' · ') {
+    const code = getCleanCourseCode(courseName);
+    const title = getCourseTitle(courseName);
+    return title ? `${code}${separator}${title}` : code;
+}
+
+// A course in a table or list: its code in bold and its name beside it. afterCode
+// (HTML, such as a section badge) follows the code.
+function courseCellHtml(courseName, afterCode = '') {
+    const title = getCourseTitle(courseName);
+    return `<span class="course-cell"><strong>${escapeHtml(getCleanCourseCode(courseName))}</strong>${afterCode}${title ? ` <span class="course-cell-name">${escapeHtml(title)}</span>` : ''}</span>`;
+}
+
+// The programme of the student with this e-mail, as far as the loaded Student List knows.
+function studentProgrammeId(email) {
+    const wanted = String(email || '').trim().toLowerCase();
+    if (!wanted) return null;
+    return Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').trim().toLowerCase() === wanted)?.programmeId ?? null;
 }
 
 /**
@@ -12007,6 +12729,7 @@ function renderCoursesInSettings(courseInfo, filterText = '', targetContainerId 
             return nameLow.includes(lowerFilter) ||
                 nameAsText.includes(lowerFilter) ||
                 nameStripped.includes(strippedFilter) ||
+                String(data.title || '').toLowerCase().includes(lowerFilter) ||
                 eisId.includes(lowerFilter);
         });
 
@@ -12073,7 +12796,7 @@ function renderCoursesInSettings(courseInfo, filterText = '', targetContainerId 
             return `
                 <div class="settings-row${data.archived ? ' is-archived' : ''}">
                     <div class="settings-row-main">
-                        <span class="settings-row-title"><strong>${escapeHtml(cleanCode)}</strong>${data.eisId ? ` <span class="settings-row-eis selectable">#${escapeHtml(String(data.eisId))}</span>` : ''}${data.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
+                        <span class="settings-row-title"><strong>${escapeHtml(cleanCode)}</strong>${data.title ? ` <span class="settings-row-name">${escapeHtml(data.title)}</span>` : ''}${data.eisId ? ` <span class="settings-row-eis selectable">#${escapeHtml(String(data.eisId))}</span>` : ''}${data.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
                         <span class="settings-row-people${lecturers.length ? '' : ' is-empty'}" title="${escapeHtml(people)}">${escapeHtml(people)}</span>
                     </div>
                     ${term ? `<div class="settings-row-meta">
@@ -12247,10 +12970,41 @@ function updatePageTitle() {
     }
 
     if (currentCourse && currentCourse !== 'Default') {
-        const titleName = getCleanCourseCode(currentCourse, courseInfoMap[currentCourse]?.eisId);
-        document.title = `${titlePrefix}${titleName} Attendance`;
+        document.title = `${titlePrefix}${getCourseLabel(currentCourse, ' ')} Attendance`;
     } else {
         document.title = `${titlePrefix}Stando`;
+    }
+    updateAppHeader();
+}
+
+// The header banner names the course on screen, as Syllabase does: its code above
+// its name. The Student List and a page without a course keep "Stando".
+function updateAppHeader() {
+    const header = document.querySelector('.app-header');
+    if (!header) return;
+    const onCourses = document.querySelector('.tab.active')?.dataset.tab !== 'database-tab';
+    const course = onCourses && currentCourse && currentCourse !== 'Default' && courseInfoMap[currentCourse] ? currentCourse : '';
+    const code = course ? getCleanCourseCode(course) : '';
+    const title = course ? getCourseTitle(course) : '';
+    const heading = title || code || 'Stando';
+    const eyebrow = title ? code : '';
+    // The startup skeleton draws the next visit's banner in the same shape.
+    if (isSignedIn && !isInitializing && onCourses) {
+        try { localStorage.setItem('stando_header', title ? 'titled' : 'plain'); } catch { /* The plain banner. */ }
+    }
+    if (header.dataset.heading === heading && header.dataset.eyebrow === eyebrow) return;
+    const changed = 'heading' in header.dataset;
+    header.dataset.heading = heading;
+    header.dataset.eyebrow = eyebrow;
+    const eyebrowElement = header.querySelector('.app-header-code');
+    eyebrowElement.textContent = eyebrow;
+    eyebrowElement.hidden = !eyebrow;
+    header.querySelector('.app-header-name').textContent = heading;
+    if (changed) {
+        const text = header.querySelector('.app-header-title');
+        text.classList.remove('is-changing');
+        void text.offsetWidth;
+        text.classList.add('is-changing');
     }
 }
 
@@ -12964,7 +13718,7 @@ function updateScanLockScreen() {
     // The course as people write it ("CE 121"), and the group, if any, beside it.
     const session = getCurrentActiveSession();
     const group = screen.querySelector('.scan-lock-course-group');
-    setText('.scan-lock-course-code', scanLockCourse() ? getCleanCourseCode(scanLockCourse()) : '');
+    setText('.scan-lock-course-code', scanLockCourse() ? getCourseLabel(scanLockCourse()) : '');
     setText('.scan-lock-course-group', session !== 'Default' ? session : '');
     group.hidden = session === 'Default';
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
@@ -13650,7 +14404,7 @@ function populateCourseButtons() {
         const code = getCleanCourseCode(course, courseInfoMap[course]?.eisId);
         const repeated = coursesToDisplay.some(other => other !== course && getCleanCourseCode(other) === code);
         const offering = repeated ? String(courseInfoMap[course]?.eisId || courseInfoMap[course]?.startDate || course) : '';
-        return { course, code, offering, guest: course === guestCourse };
+        return { course, code, title: getCourseTitle(course), offering, guest: course === guestCourse };
     });
 
     // The row stays mounted while the courses are unchanged; only the selection moves,
@@ -13659,7 +14413,7 @@ function populateCourseButtons() {
     if (courseButtonsContainer.dataset.signature !== signature || !courseButtonsContainer.children.length) {
         courseButtonsContainer.dataset.signature = signature;
         courseButtonsContainer.innerHTML = '';
-        buttons.forEach(({ course, code, offering, guest }) => {
+        buttons.forEach(({ course, code, title, offering, guest }) => {
             const button = document.createElement('div');
             button.setAttribute('class', 'course-button');
             button.setAttribute('role', 'button');
@@ -13670,7 +14424,7 @@ function populateCourseButtons() {
             if (guest) button.classList.add('btn-orange');
 
             button.innerHTML = `<i class="fa-solid fa-table-list fa-fw course-button-icon" aria-hidden="true"></i><span class="course-button-label">${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span>`;
-            button.title = course.replace(/_/g, ' ');
+            button.title = title ? `${code} · ${title}` : course.replace(/_/g, ' ');
             button.addEventListener('click', () => selectCourseButton(course));
             courseButtonsContainer.appendChild(button);
         });

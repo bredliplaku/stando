@@ -52,11 +52,19 @@
         return candidate;
     }
 
-    const studentColumns = ['Name', 'Card ID', 'Email', 'Hardware UID'];
-    function studentExportRows(database) {
+    const studentColumns = ['Name', 'Card ID', 'Email', 'Programme', 'Hardware UID'];
+    // programmeCode(id) names a student's programme in the file.
+    function studentExportRows(database, programmeCode = () => '') {
         return [studentColumns.slice(), ...Object.values(database).filter(student => !student.isStaff)
             .sort((a, b) => text(a.name).localeCompare(text(b.name)))
-            .map(student => [text(student.name), list(student.uids).join('; '), text(student.email), list(student.hardware_uids).join('; ')])];
+            .map(student => [text(student.name), list(student.uids).join('; '), text(student.email),
+                text(programmeCode(student.programmeId)), list(student.hardware_uids).join('; ')])];
+    }
+
+    // A programme cell matches a programme's code or full name, ignoring case and spacing.
+    function findProgramme(programmes, value) {
+        const wanted = key(value).replace(/\s+/g, ' ');
+        return wanted ? programmes.find(p => [p.code, p.name].some(label => key(label).replace(/\s+/g, ' ') === wanted)) : null;
     }
 
     function matchingKeys(database, student) {
@@ -89,7 +97,8 @@
         const email = column(['email', 'emailaddress', 'studentemail', 'institutionalemail']);
         const hardwareUid = column(['hardwareuid', 'hardwareuids', 'hardwareid', 'hardwareids', 'hardwareuidlegacy', 'carduid', 'carduids', 'nfcuid']);
         const legacyUid = column(['uid']);
-        return { name, cardId, email, hardwareUid, legacyUid };
+        const programme = column(['programme', 'program', 'programmecode', 'programcode', 'studyprogramme', 'studyprogram']);
+        return { name, cardId, email, hardwareUid, legacyUid, programme };
     }
 
     function getStudentImportLayout(rows, options = {}) {
@@ -100,7 +109,8 @@
         if (options.mapping) {
             const mapping = options.mapping;
             const width = rows.reduce((max, row) => Math.max(max, row.length), 0);
-            const chosen = ['name', 'cardId', 'email'].map(field => mapping[field]);
+            const fields = ['name', 'cardId', 'email', ...('programme' in mapping ? ['programme'] : [])];
+            const chosen = fields.map(field => mapping[field]);
             if (chosen.some(index => !Number.isInteger(index) || index < -1 || index >= width)) throw new Error('Choose valid columns for this sheet.');
             if (new Set(chosen.filter(index => index >= 0)).size !== chosen.filter(index => index >= 0).length) throw new Error('Assign a different column to each field.');
             if (mapping.name < 0) throw new Error('Choose the Name column.');
@@ -109,6 +119,7 @@
             // Retain recognized legacy fields only when they are not assigned elsewhere.
             columns.hardwareUid = chosen.includes(columns.hardwareUid) ? -1 : columns.hardwareUid;
             columns.legacyUid = mapping.cardId < 0 || chosen.includes(columns.legacyUid) ? -1 : columns.legacyUid;
+            columns.programme = 'programme' in mapping ? mapping.programme : chosen.includes(columns.programme) ? -1 : columns.programme;
             Object.assign(columns, { name: mapping.name, cardId: mapping.cardId, email: mapping.email });
             if (legacyCard) { columns.legacyUid = mapping.cardId; columns.cardId = -1; }
         }
@@ -130,7 +141,8 @@
             } else if (columns.cardId < 0) uids.push(uid);
             else hardware.push(uid);
         });
-        return { name: text(row[columns.name]), email: text(row[columns.email]), uids: unique(uids), hardware_uids: unique(hardware) };
+        return { name: text(row[columns.name]), email: text(row[columns.email]), uids: unique(uids), hardware_uids: unique(hardware),
+            programme: text(row[columns.programme]) };
     }
 
     function previewStudentRows(rows, options = {}, limit = 5) {
@@ -142,6 +154,9 @@
         return preview;
     }
 
+    // options.programmes ([{ id, code, name }]) resolves a Programme column; options.programmeId
+    // gives every student without one that programme. A student's programmeId stays
+    // undefined when the file says nothing, so a merge keeps the one they have.
     function parseStudentRows(rows, options = {}) {
         const columns = getStudentImportLayout(rows, options);
         const imported = {};
@@ -149,12 +164,17 @@
             const row = rows[index];
             if (!row.some(value => text(value))) continue;
             const fail = message => { throw new Error(`Row ${index + 1}: ${message}`); };
-            const student = mapStudentRow(row, columns);
+            const { programme, ...student } = mapStudentRow(row, columns);
             const { name, email, uids, hardware_uids: hardware } = student;
             if (!name) fail('Name is required.');
             if (!uids.length && !hardware.length && !email) fail('Provide a Card ID or email.');
             if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail('Email address is invalid.');
             if (uids.some(id => /^(undefined|null|nan)$/i.test(id))) fail('Card ID is invalid.');
+            if (programme && options.programmes) {
+                const found = findProgramme(options.programmes, programme);
+                if (!found) fail(`There is no programme called "${programme}". Add it in Settings → Programmes, or correct the file.`);
+                student.programmeId = found.id;
+            } else if (options.programmeId) student.programmeId = options.programmeId;
             const matches = matchingKeys(imported, student);
             if (matches.length > 1) fail('The IDs and email match different students. Correct the file before importing.');
             if (matches.length) {
@@ -162,7 +182,8 @@
                 if (email && previous.email && key(email) !== key(previous.email)) fail('The same ID is assigned to different email addresses.');
                 imported[matches[0]] = { name, email: email || previous.email,
                     uids: unique([...previous.uids, ...student.uids]),
-                    hardware_uids: unique([...previous.hardware_uids, ...student.hardware_uids]) };
+                    hardware_uids: unique([...previous.hardware_uids, ...student.hardware_uids]),
+                    programmeId: student.programmeId ?? previous.programmeId };
             } else imported[index] = student;
         }
         const students = Object.values(imported);
@@ -181,19 +202,23 @@
                 const existing = next[matches[0]];
                 next[matches[0]] = { ...existing, name: student.name, email: student.email || existing.email,
                     uids: unique([...existing.uids, ...student.uids]),
-                    hardware_uids: unique([...existing.hardware_uids, ...student.hardware_uids]) };
+                    hardware_uids: unique([...existing.hardware_uids, ...student.hardware_uids]),
+                    programmeId: student.programmeId ?? existing.programmeId ?? null };
                 updated++;
             } else {
                 let dbKey = `import_${index}`;
                 while (Object.hasOwn(next, dbKey)) dbKey += '_';
-                next[dbKey] = { ...student, uids: list(student.uids), hardware_uids: list(student.hardware_uids) };
+                // Replacing the list keeps a returning student's programme unless the file names one.
+                const previous = student.programmeId === undefined ? matchingKeys(database, student) : [];
+                next[dbKey] = { ...student, uids: list(student.uids), hardware_uids: list(student.hardware_uids),
+                    programmeId: student.programmeId ?? (previous.length === 1 ? database[previous[0]].programmeId ?? null : null) };
                 added++;
             }
         });
         return { database: next, added, updated };
     }
 
-    const api = { cleanCourseCode, resolveCourseName, studentColumns, studentExportRows,
+    const api = { cleanCourseCode, resolveCourseName, studentColumns, studentExportRows, findProgramme,
         detectStudentColumns, getStudentImportLayout, previewStudentRows, parseStudentRows, planStudentImport };
     if (typeof module === 'object' && module.exports) module.exports = api;
     else root.StandoData = api;
