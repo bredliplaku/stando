@@ -587,9 +587,6 @@
             border: 0;
             visibility: hidden;
 
-            /* Performance Optimization */
-            will-change: max-height, opacity, margin-bottom;
-
             /* Smooth Transition */
             transition:
                 max-height 0.4s cubic-bezier(0.25, 1, 0.5, 1),
@@ -1269,67 +1266,6 @@
 
         .logs-table.bulk-mode .uid-column {
             display: none !important;
-        }
-
-        /* --- Floating Bulk Actions Bar --- */
-        .bulk-actions-bar {
-            display: none;
-            position: fixed;
-            bottom: 30px;
-            left: 50%;
-            transform: translateX(-50%) translateY(150%);
-
-            background: var(--primary-color);
-            color: white;
-            border-radius: 50px;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
-            align-items: center;
-            gap: 20px;
-            z-index: 2147483647;
-            min-width: 300px;
-            max-width: 90%;
-            /* Prevent hitting edges */
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-            width: auto;
-            padding: 10px 20px;
-            /* Reduce padding slightly */
-            justify-content: space-between;
-        }
-
-        .bulk-actions-bar.visible {
-            display: flex;
-            /* Slide up into view */
-            transform: translateX(-50%) translateY(0) !important;
-        }
-
-        .bulk-actions-group {
-            display: flex;
-        }
-
-        .bulk-actions-bar .btn-icon {
-            background-color: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: none;
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            cursor: pointer;
-        }
-
-        .bulk-actions-bar .btn-icon:hover {
-            background-color: white;
-            color: var(--primary-color);
-            transform: scale(1.1);
-        }
-
-        .bulk-count-badge {
-            background: white;
-            color: var(--primary-color);
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.9em;
-            font-weight: 800;
         }
 
         /* Checkbox inside Date Separator */
@@ -4190,26 +4126,6 @@
                 color: var(--primary-100);
             }
 
-            .bulk-actions-bar {
-                width: 90%;
-                /* Fit screen better */
-                min-width: unset;
-                bottom: 20px;
-                padding: 10px 15px;
-                gap: 10px;
-                border-radius: 16px;
-                /* Less rounded on mobile saves space */
-            }
-
-            .bulk-count-badge {
-                font-size: 0.8em;
-            }
-
-            .bulk-actions-bar .btn-icon {
-                width: 36px;
-                height: 36px;
-            }
-
             .dialog-title {
                 padding: 20px 20px 15px 20px;
                 margin: 0;
@@ -5937,70 +5853,6 @@ body.signed-out #main-container {
     color: var(--danger-200);
 }
 
-/* Bulk selection bar (on the primary colour): one segmented group, tinted by meaning. */
-.bulk-actions-group {
-    gap: 2px;
-}
-
-.bulk-actions-bar .bulk-actions-group > .btn-icon {
-    border: 1px solid transparent;
-    border-radius: 8px;
-    box-shadow: none;
-    transition: border-radius 0.25s cubic-bezier(.4, 0, .2, 1), filter 0.15s ease, background-color 0.2s ease;
-}
-
-.bulk-actions-bar .bulk-actions-group > .btn-icon:first-child {
-    border-radius: 20px 8px 8px 20px;
-}
-
-.bulk-actions-bar .bulk-actions-group > .btn-icon:last-child {
-    border-radius: 8px 20px 20px 8px;
-}
-
-.bulk-actions-bar .bulk-actions-group > .btn-icon:only-child,
-.bulk-actions-bar .bulk-actions-group > .btn-icon:hover:not(:disabled) {
-    border-radius: 20px;
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-add {
-    background: color-mix(in srgb, var(--success-400) 22%, transparent);
-    border-color: color-mix(in srgb, var(--success-200) 60%, transparent);
-    color: var(--success-50);
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-remove {
-    background: color-mix(in srgb, var(--secondary-300) 20%, transparent);
-    border-color: color-mix(in srgb, var(--secondary-200) 60%, transparent);
-    color: var(--secondary-100);
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-delete {
-    background: color-mix(in srgb, var(--danger-400) 24%, transparent);
-    border-color: rgba(255, 138, 128, 0.6);
-    color: var(--danger-50);
-}
-
-.bulk-actions-bar .bulk-actions-group > .btn-icon:hover:not(:disabled) {
-    transform: none;
-    box-shadow: none;
-    filter: brightness(1.08);
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-add:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--success-400) 32%, transparent);
-    color: var(--success-50);
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-remove:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--secondary-300) 30%, transparent);
-    color: var(--secondary-100);
-}
-
-.bulk-actions-bar .bulk-actions-group > .bulk-delete:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--danger-400) 34%, transparent);
-    color: var(--danger-50);
-}
-
 /* Session rows (Theory / Lab / Practice and groups): wrapped rows keep a row gap. */
 #session-category-group,
 #session-group-container {
@@ -7500,7 +7352,7 @@ button.settings-group-label:active:not(:disabled) {
     .decision-btn,
     .logs-actions > .btn-icon,
     .database-actions > .btn-icon,
-    .bulk-actions-bar .bulk-actions-group > .btn-icon,
+    .bulk-actions-bar,
     .settings-row,
     .student-item,
     .history-filter-bar::before,
@@ -11738,6 +11590,10 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     font-weight: 700;
 }
 
+.uid-edit-row-head .remove-uid-btn[hidden] {
+    display: none;
+}
+
 /* =========================================================================
    Courses under their programmes (only when someone has two or more)
    ========================================================================= */
@@ -12326,135 +12182,6 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     right: auto;
 }
 
-/* =========================================================================
-   Course and session buttons
-   Flat and compact: a white chip with a thin edge; the chosen one tinted in
-   the app's colour. Hover only colours the edge, so nothing changes size.
-   On computers each chip is as wide as its code, in a row from the left; on
-   phones they share the row, easy to tap.
-   ========================================================================= */
-:is(#course-buttons-container, #session-controls) .course-button {
-    flex: 0 0 auto;
-    min-width: 112px;
-    min-height: 40px;
-    box-sizing: border-box;
-    padding: 0 16px;
-    border: 1px solid rgba(15, 23, 42, 0.1);
-    border-radius: 12px !important;
-    background: var(--card-background);
-    color: var(--primary-color);
-    font-size: 0.9375rem;
-    font-weight: 600;
-    font-variation-settings: inherit;
-    box-shadow: none;
-    transform: none;
-    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
-}
-
-:is(#course-buttons-container, #session-controls) .course-button:hover:not(.active, .disabled) {
-    border-color: color-mix(in srgb, var(--primary-color) 45%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 4%, var(--card-background));
-    box-shadow: none;
-    font-weight: 600;
-    font-variation-settings: inherit;
-}
-
-:is(#course-buttons-container, #session-controls) .course-button:active:not(.disabled),
-:is(#course-buttons-container, #session-controls) .course-button.selecting {
-    transform: scale(0.98);
-    box-shadow: none;
-    opacity: 1;
-}
-
-:is(#course-buttons-container, #session-controls) .course-button.active,
-:is(#course-buttons-container, #session-controls) .course-button.active:hover {
-    border-color: color-mix(in srgb, var(--primary-color) 40%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--card-background));
-    color: color-mix(in srgb, var(--primary-color) 78%, #000);
-    box-shadow: none;
-    transform: none;
-}
-
-.dark-mode :is(#course-buttons-container, #session-controls) .course-button {
-    border-color: rgba(255, 255, 255, 0.1);
-    background: var(--card-background);
-    color: color-mix(in srgb, var(--primary-color) 45%, #fff);
-}
-
-.dark-mode :is(#course-buttons-container, #session-controls) .course-button:hover:not(.active, .disabled) {
-    border-color: color-mix(in srgb, var(--primary-color) 70%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 10%, var(--card-background));
-}
-
-.dark-mode :is(#course-buttons-container, #session-controls) .course-button.active,
-.dark-mode :is(#course-buttons-container, #session-controls) .course-button.active:hover {
-    border-color: color-mix(in srgb, var(--primary-color) 75%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 32%, var(--card-background));
-    color: #fff;
-}
-
-:is(#course-buttons-container, .course-group-buttons) {
-    gap: 8px;
-}
-
-#course-buttons-container .course-button .course-button-icon {
-    font-size: 0.9em;
-}
-
-/* Sessions: Theory / Lab, then the groups, from the left. */
-#session-controls {
-    justify-content: flex-start;
-    gap: 16px;
-}
-
-#session-category-group,
-#session-group-container {
-    flex: 0 1 auto;
-    gap: 8px;
-}
-
-#session-category-group .course-button {
-    flex: 0 0 auto;
-    min-width: 112px;
-    padding: 0 16px;
-}
-
-#session-group-container .course-button {
-    flex: 0 0 44px !important;
-    width: 44px !important;
-    min-width: 44px;
-    padding: 0;
-}
-
-/* Phones: the buttons share each row, a little taller for the thumb. */
-@media (max-width: 768px) {
-    :is(#course-buttons-container, #session-controls) .course-button {
-        flex: 1 1 0;
-        min-width: 0;
-        min-height: 44px;
-        padding: 0 12px;
-        border-radius: 14px !important;
-    }
-
-    #session-controls {
-        gap: 8px;
-    }
-
-    #session-category-group,
-    #session-group-container {
-        flex: none;
-        width: 100%;
-    }
-
-    #session-category-group .course-button,
-    #session-group-container .course-button {
-        flex: 1 1 0 !important;
-        width: auto !important;
-        min-width: 0;
-        padding: 0 12px;
-    }
-}
-
 /* Course editor: its programmes as chips, above "Add a programme". */
 .programme-chips {
     display: flex;
@@ -12833,5 +12560,384 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 
     .theme-actions > button {
         flex: 1 1 0;
+    }
+}
+
+/* =========================================================================
+   Selecting attendance records
+   A bar floats at the bottom: × with the count and Select all, then the
+   actions by name (on phones a row of icons with their names under them).
+   Chosen rows are tinted, a tap anywhere on a row ticks it, and on phones a
+   row's own buttons step aside while selecting.
+   ========================================================================= */
+.bulk-actions-bar {
+    position: fixed;
+    left: 50%;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    z-index: 950;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    padding: 8px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 22px;
+    background: var(--card-background);
+    color: var(--text-color);
+    box-shadow: 0 18px 44px -14px rgba(15, 23, 42, 0.4), 0 2px 8px rgba(15, 23, 42, 0.08);
+    opacity: 0;
+    visibility: hidden;
+    transform: translate(-50%, 24px);
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, visibility 0s linear 0.25s;
+}
+
+.bulk-actions-bar.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: translate(-50%, 0);
+    transition-delay: 0s;
+}
+
+.bulk-bar-head {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 8px;
+}
+
+.bulk-actions-bar .bulk-close,
+.bulk-actions-bar .bulk-close:hover:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(15, 23, 42, 0.06);
+    color: var(--text-color);
+    box-shadow: none;
+    transform: none;
+    filter: none;
+}
+
+.bulk-actions-bar .bulk-close:hover:not(:disabled) {
+    background: rgba(15, 23, 42, 0.12);
+}
+
+.bulk-count {
+    padding: 0 4px;
+    font-size: 0.9375rem;
+    white-space: nowrap;
+}
+
+.bulk-count strong {
+    font-variant-numeric: tabular-nums;
+}
+
+.bulk-actions-bar .bulk-select-all,
+.bulk-actions-bar .bulk-select-all:hover:not(:disabled) {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
+    border-radius: 16px;
+    background: transparent;
+    color: var(--primary-color);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: none;
+    transform: none;
+    filter: none;
+}
+
+.bulk-actions-bar .bulk-select-all:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+
+.bulk-actions-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-left: 10px;
+    border-left: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+.bulk-actions-bar .bulk-action,
+.bulk-actions-bar .bulk-action:hover:not(:disabled) {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+    box-shadow: none;
+    transform: none;
+    filter: none;
+}
+
+.bulk-actions-bar .bulk-action:hover:not(:disabled) {
+    background: rgba(15, 23, 42, 0.06);
+}
+
+.bulk-actions-bar .bulk-action:active:not(:disabled) {
+    background: rgba(15, 23, 42, 0.1);
+    transform: scale(0.97);
+}
+
+.bulk-action > :is(i, svg) {
+    flex-shrink: 0;
+    color: var(--primary-color);
+}
+
+.bulk-action.is-success > :is(i, svg) {
+    color: var(--success-color);
+}
+
+.bulk-action.is-warning > :is(i, svg) {
+    color: var(--secondary-800);
+}
+
+.bulk-actions-bar .bulk-action.is-danger,
+.bulk-action.is-danger > :is(i, svg) {
+    color: var(--danger-700);
+}
+
+.bulk-actions-bar .bulk-action.is-danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--danger-600) 10%, transparent);
+}
+
+.bulk-actions-bar .bulk-action:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.bulk-actions-bar .bulk-action[hidden] {
+    display: none;
+}
+
+.dark-mode .bulk-actions-bar {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: #232326;
+    box-shadow: 0 18px 44px -14px rgba(0, 0, 0, 0.8);
+}
+
+.dark-mode .bulk-actions-bar .bulk-close,
+.dark-mode .bulk-actions-bar .bulk-action:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .bulk-actions-bar .bulk-close:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
+}
+
+.dark-mode .bulk-actions-group {
+    border-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .bulk-action.is-warning > :is(i, svg) {
+    color: var(--secondary-300);
+}
+
+.dark-mode .bulk-actions-bar .bulk-action.is-danger,
+.dark-mode .bulk-action.is-danger > :is(i, svg) {
+    color: var(--danger-200);
+}
+
+/* Room under the list for the bar. */
+body.is-selecting #scanner-tab {
+    padding-bottom: 96px;
+}
+
+/* Rows while selecting: boxes the app's colour, chosen rows tinted. */
+.logs-table :is(.bulk-checkbox, .day-separator-checkbox, .select-column-header input) {
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--primary-color);
+    cursor: pointer;
+}
+
+.logs-table.bulk-mode tbody tr:not(.day-separator) {
+    cursor: pointer;
+}
+
+.logs-table.bulk-mode tbody tr.is-selected > td {
+    background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+}
+
+.dark-mode .logs-table.bulk-mode tbody tr.is-selected > td {
+    background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+}
+
+@media (pointer: coarse) {
+    #logs-tbody tr {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+    }
+}
+
+@media (max-width: 760px) {
+    /* The bar spans the screen: the count line, then the actions as icons over names. */
+    .bulk-actions-bar {
+        left: 8px;
+        right: 8px;
+        bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        flex-direction: column;
+        align-items: stretch;
+        gap: 6px;
+        width: auto;
+        max-width: none;
+        padding: 8px;
+        border-radius: 20px;
+        transform: translateY(24px);
+    }
+
+    .bulk-actions-bar.visible {
+        transform: none;
+    }
+
+    .bulk-bar-head .bulk-select-all {
+        margin-left: auto;
+    }
+
+    .bulk-actions-group {
+        gap: 0;
+        padding: 6px 0 0;
+        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-left: 0;
+    }
+
+    .dark-mode .bulk-actions-group {
+        border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .bulk-actions-bar .bulk-action,
+    .bulk-actions-bar .bulk-action:hover:not(:disabled) {
+        flex: 1 1 0;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+        min-width: 0;
+        height: 54px;
+        padding: 0 2px;
+        font-size: 0.6875rem;
+    }
+
+    .bulk-action > :is(i, svg) {
+        font-size: 1.05rem;
+    }
+
+    .bulk-action > span {
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* "Add hour" and "Remove hour" are "Add" and "Remove" here. */
+    .bulk-action > span[data-short] {
+        font-size: 0;
+    }
+
+    .bulk-action > span[data-short]::after {
+        content: attr(data-short);
+        font-size: 0.6875rem;
+    }
+
+    body.is-selecting #scanner-tab {
+        padding-bottom: 150px;
+    }
+
+    /* Attendance rows on phones: the name has its own line (breaking only between
+       words), the session and times go under it, Edit and ⋯ at the side. */
+    #scanner-tab .logs-table tbody tr:not(.day-separator),
+    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: "name actions" "date actions" "times actions";
+        row-gap: 6px;
+    }
+
+    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
+        grid-template-areas: "name actions" "times actions";
+    }
+
+    #scanner-tab .logs-table tbody .name-cell {
+        align-self: auto;
+        overflow-wrap: break-word;
+        word-break: normal;
+    }
+
+    #scanner-tab .logs-table tbody .date-cell {
+        margin-top: -2px;
+    }
+
+    #scanner-tab .logs-table tbody .times-cell {
+        white-space: normal;
+    }
+
+    #scanner-tab .logs-table tbody .time-row {
+        flex-wrap: wrap;
+        row-gap: 4px;
+    }
+
+    #scanner-tab .logs-table tbody .pills-wrapper {
+        flex-wrap: wrap;
+        row-gap: 2px;
+    }
+
+    #scanner-tab .logs-table tbody .actions-cell {
+        align-self: center;
+    }
+
+    /* Selecting: the box on the left, no row buttons (the bar has the actions). */
+    #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator),
+    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
+        grid-template-columns: auto minmax(0, 1fr);
+        grid-template-areas: "select name" "select date" "select times";
+        column-gap: 12px;
+        padding-left: 8px;
+        border-radius: 12px;
+    }
+
+    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
+        grid-template-areas: "select name" "select times";
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody .actions-cell {
+        display: none !important;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody .select-column {
+        align-self: center;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody tr.is-selected {
+        background: color-mix(in srgb, var(--primary-color) 8%, transparent);
+    }
+
+    .dark-mode #scanner-tab .logs-table.bulk-mode tbody tr.is-selected {
+        background: color-mix(in srgb, var(--primary-color) 18%, transparent);
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody tr.is-selected > td {
+        background: transparent;
+    }
+
+    /* The bar has Select all; the list's own "select all" line is not needed. */
+    #scanner-tab .logs-table.bulk-mode thead {
+        display: none !important;
     }
 }

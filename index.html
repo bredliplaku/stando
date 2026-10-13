@@ -581,22 +581,27 @@
         </footer>
     </div>
 
-    <div id="bulk-actions-bar" class="bulk-actions-bar">
-        <div style="display:flex; align-items:center; gap:10px;">
-            <button onclick="toggleBulkMode()" class="btn-icon" style="background:#f5f5f5; color:#333;"><i
-                    class="fa-solid fa-xmark"></i></button>
-            <span class="bulk-count-badge" id="bulk-count">0</span> selected
+    <!-- Selecting attendance records: the count and Select all, then the actions. -->
+    <div id="bulk-actions-bar" class="bulk-actions-bar" role="toolbar" aria-label="Selected records">
+        <div class="bulk-bar-head">
+            <button type="button" class="bulk-close" onclick="toggleBulkMode()" title="Stop selecting"
+                aria-label="Stop selecting"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+            <span class="bulk-count" aria-live="polite"><strong id="bulk-count">0</strong> selected</span>
+            <button type="button" id="bulk-select-all" class="bulk-select-all">Select all</button>
         </div>
         <div class="bulk-actions-group">
-            <button type="button" onclick="performBulkAction('add1h')" class="btn-green btn-icon bulk-add"
-                title="Add +1 Hour" aria-label="Add one hour"><i class="fa-solid fa-plus"
-                    aria-hidden="true"></i></button>
-            <button type="button" onclick="performBulkAction('sub1h')" class="btn-orange btn-icon bulk-remove"
-                title="Remove -1 Hour" aria-label="Remove one hour"><i class="fa-solid fa-minus"
-                    aria-hidden="true"></i></button>
-            <button type="button" onclick="performBulkAction('delete')" class="btn-red btn-icon bulk-delete"
-                title="Delete Selected" aria-label="Delete selected"><i class="fa-solid fa-trash"
-                    aria-hidden="true"></i></button>
+            <button type="button" class="bulk-action" data-bulk="copy" title="Copy as a table"><i
+                    class="fa-solid fa-copy" aria-hidden="true"></i><span>Copy</span></button>
+            <button type="button" class="bulk-action is-success" data-bulk="add1h" title="Add an hour after the latest time" aria-label="Add hour"><i
+                    class="fa-solid fa-plus" aria-hidden="true"></i><span data-short="Add">Add hour</span></button>
+            <button type="button" class="bulk-action is-warning" data-bulk="sub1h" title="Delete the latest time" aria-label="Remove hour"><i
+                    class="fa-solid fa-minus" aria-hidden="true"></i><span data-short="Remove">Remove hour</span></button>
+            <button type="button" class="bulk-action" data-bulk="session" title="Move to another session"><i
+                    class="fa-solid fa-layer-group" aria-hidden="true"></i><span>Session</span></button>
+            <button type="button" class="bulk-action" data-bulk="date" title="Move to another day"><i
+                    class="fa-solid fa-calendar-day" aria-hidden="true"></i><span>Day</span></button>
+            <button type="button" class="bulk-action is-danger" data-bulk="delete" title="Delete the selected rows"><i
+                    class="fa-solid fa-trash" aria-hidden="true"></i><span>Delete</span></button>
         </div>
     </div>
 

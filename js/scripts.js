@@ -704,11 +704,13 @@ function renderSessionControls(courseName) {
     // Only show main container if at least one row is visible
     controls.style.display = (showCategories || showGroups) ? 'flex' : 'none';
 
-    // Apply row-aware rounding to session button containers
+    // Apply row-aware rounding to session button containers, and again whenever they reflow.
     requestAnimationFrame(() => {
         updateButtonRows(catGroup);
         updateButtonRows(document.getElementById('session-group-container'));
     });
+    watchButtonRows(catGroup);
+    watchButtonRows(document.getElementById('session-group-container'));
 }
 
 function selectSessionCategory(category) {
@@ -1492,7 +1494,7 @@ function setupEventListeners() {
                 newTabContent.classList.add('active');
             }
             // Show or hide the floating date bar for the tab now in view.
-            if (typeof window._stickyDateScrollHandler === 'function') window._stickyDateScrollHandler();
+            updateStickyDateBar(true);
         });
     });
 
@@ -1508,8 +1510,9 @@ function setupEventListeners() {
             const isToggleBtn = target.closest('.logs-actions button'); // The toggle button itself
             const isDialog = target.closest('.dialog-backdrop'); // Don't cancel if a dialog is open
 
-            // If clicked outside all safe zones, turn off bulk mode
-            if (!isTable && !isBulkBar && !isToggleBtn && !isDialog) {
+            // A click elsewhere leaves selecting, unless something is chosen
+            // (then only × or Escape does, so a stray tap never loses a selection).
+            if (!isTable && !isBulkBar && !isToggleBtn && !isDialog && selectedLogIds.size === 0) {
                 toggleBulkMode();
             }
         }
@@ -1586,7 +1589,7 @@ function setupEventListeners() {
 
     logsTbody.addEventListener('click', (event) => {
         const targetRow = event.target.closest('tr[data-key]');
-        if (!targetRow) return;
+        if (!targetRow || !event.target.closest('.add-time-btn, .delete-log-btn, .edit-log-btn')) return;
 
         const key = targetRow.dataset.key;
 
@@ -1642,6 +1645,7 @@ function setupEventListeners() {
             showEditLogDialog(group);
         }
     });
+    setupLogSelectionGestures();
 
     if (importExcelBtn) importExcelBtn.addEventListener('click', showStudentImportGuide);
     if (excelInput) excelInput.addEventListener('change', handleExcelFile);
@@ -4759,6 +4763,12 @@ function init() {
     notificationArea = document.getElementById('in-page-notification-area');
     successSound = document.getElementById('success-sound');
     errorSound = document.getElementById('error-sound');
+    // Sounds may start only after a tap or click; the first one prepares them.
+    const prepareSoundsOnce = () => {
+        prepareScanSounds();
+        if (soundContext?.state === 'running') document.removeEventListener('pointerdown', prepareSoundsOnce, true);
+    };
+    document.addEventListener('pointerdown', prepareSoundsOnce, true);
     syncStatus = document.getElementById('sync-status');
     syncText = document.getElementById('sync-text');
     loginBtn = document.getElementById('login-btn');
@@ -4833,37 +4843,26 @@ function init() {
 
     // This prevents the phone from sleeping and killing the sync process
     if ('wakeLock' in navigator) {
-        let wakeLock = null;
-        const requestWakeLock = async () => {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('Screen Wake Lock active');
-            } catch (err) {
-                console.warn(`Wake Lock failed: ${err.name}, ${err.message}`);
-            }
-        };
-
-        // Request immediately
-        requestWakeLock();
-
-        // Re-request if the user minimizes and returns
-        document.addEventListener('visibilitychange', async () => {
-            if (wakeLock !== null && document.visibilityState === 'visible') {
-                requestWakeLock();
-            }
+        // Asked for now, again whenever Stando is back on screen (the browser drops
+        // it when the page is hidden), and when scanning starts (keepScreenAwake).
+        keepScreenAwake();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') keepScreenAwake();
         });
 
         // AMOLED Burn-in Prevention: Subtle pixel shifting every 2 minutes
         // Shifts content by ±2 pixels - imperceptible to users but prevents static burn-in
-        // Note: Applied to main-container to avoid breaking position:fixed elements (notifications, cat)
+        // Note: Applied to main-container to avoid breaking position:fixed elements (notifications, cat).
+        // It moves by offsets, not a transform: a transform would keep the whole tall page
+        // as one GPU layer, which phones draw late (white or garbled patches while scrolling).
         const mainContainer = document.getElementById('main-container');
         if (mainContainer) {
             setInterval(() => {
                 // Only apply shift when no dialogs are open
                 if (dialogOpenCount === 0) {
-                    const shiftX = Math.floor(Math.random() * 5) - 2; // -2 to +2 pixels
-                    const shiftY = Math.floor(Math.random() * 5) - 2;
-                    mainContainer.style.transform = `translate(${shiftX}px, ${shiftY}px)`;
+                    mainContainer.style.position = 'relative';
+                    mainContainer.style.left = `${Math.floor(Math.random() * 5) - 2}px`; // -2 to +2 pixels
+                    mainContainer.style.top = `${Math.floor(Math.random() * 5) - 2}px`;
                 }
                 // The lock screen can stay up for a whole lesson.
                 const lockInner = document.querySelector('#scan-lock .scan-lock-inner');
@@ -9919,7 +9918,7 @@ function cardFieldsHtml(id, { cardId = '', uid = '', required = true, scan = nfc
             </div>
             <details class="more-settings"${open ? ' open' : ''}>
                 <summary>More settings</summary>
-                ${switchRowHtml(`${id}-use-uid`, useUid, 'Use UID', 'Type or scan the UID; the Card ID follows.')}
+                ${switchRowHtml(`${id}-use-uid`, useUid, 'Use UID', 'Enter the UID and the Card ID fills in.')}
             </details>
         </div>`;
 }
@@ -10206,10 +10205,15 @@ function editDatabaseEntry(dbKey) {
     const nfcStatusContainer = dialog.querySelector('#nfc-status-container');
     const cards = new Map(); // card box → its fields
     let cardCount = 0;
-    // "Card 1", "Card 2"… as cards are added and removed.
-    const numberCards = () => uidListContainer.querySelectorAll('.uid-edit-row-title').forEach((title, index) => {
-        title.lastChild.textContent = ` Card ${index + 1}`;
-    });
+    // One card is just "Card"; several are "Card 1", "Card 2"… as they are added and
+    // removed. The only card cannot be removed, so it has no Remove.
+    const numberCards = () => {
+        const rows = uidListContainer.querySelectorAll('.uid-edit-row');
+        rows.forEach((row, index) => {
+            row.querySelector('.uid-edit-row-title').lastChild.textContent = rows.length > 1 ? ` Card ${index + 1}` : ' Card';
+            row.querySelector('.remove-uid-btn').hidden = rows.length === 1;
+        });
+    };
 
     const createUidRow = (cardId = '', uid = '') => {
         const uidGroup = document.createElement('div');
@@ -11117,50 +11121,178 @@ function toggleDateGroup(dateStr, isChecked) {
     updateBulkUI();
 }
 
+// Every row of the list, on every page (not only the rows shown).
 function toggleSelectAll(isChecked) {
-    // Only select checkboxes inside the table BODY (ignoring the header one itself)
-    const rowCheckboxes = document.querySelectorAll('#logs-tbody .bulk-checkbox');
-
-    rowCheckboxes.forEach(cb => {
-        cb.checked = isChecked;
-
-        // The value contains the Log ID(s) for that row
-        const ids = cb.value.split(',');
-
-        ids.forEach(id => {
-            if (isChecked) selectedLogIds.add(id);
-            else selectedLogIds.delete(id);
-        });
-    });
-
-    // Also visually toggle all Date Group checkboxes to match
-    document.querySelectorAll('.day-separator-checkbox').forEach(cb => {
-        cb.checked = isChecked;
-    });
-
+    lastLogGroups.forEach(group => group.originalLogs.forEach(log => {
+        if (isChecked) selectedLogIds.add(log.id);
+        else selectedLogIds.delete(log.id);
+    }));
     updateBulkUI();
 }
 
-function updateBulkUI() {
-    const countBadge = document.getElementById('bulk-count');
-    if (countBadge) countBadge.textContent = selectedLogIds.size;
+// Every row of the attendance list on every page, as last drawn (for Select all and Copy).
+let lastLogGroups = [];
+
+function selectedLogGroups() {
+    return lastLogGroups.filter(group => group.originalLogs.some(log => selectedLogIds.has(log.id)));
 }
+
+// The bar (count, Select all, actions) and every shown row's box follow the selection.
+function updateBulkUI() {
+    const rows = selectedLogGroups().length;
+    const all = lastLogGroups.length > 0 && rows === lastLogGroups.length;
+    const countBadge = document.getElementById('bulk-count');
+    if (countBadge) countBadge.textContent = rows;
+    const bar = document.getElementById('bulk-actions-bar');
+    if (bar) {
+        bar.classList.toggle('has-selection', rows > 0);
+        bar.querySelectorAll('[data-bulk]').forEach(button => { button.disabled = rows === 0; });
+        const allButton = bar.querySelector('#bulk-select-all');
+        if (allButton) {
+            allButton.textContent = all ? 'Clear' : 'Select all';
+            allButton.dataset.all = all ? '1' : '';
+        }
+        // Session only when the course has sessions.
+        const session = bar.querySelector('[data-bulk="session"]');
+        if (session) session.hidden = !Object.keys(parseAvailableSections(courseInfoMap[currentCourse]?.availableSections || '')).length;
+    }
+    document.querySelectorAll('#logs-tbody .bulk-checkbox').forEach(box => {
+        const checked = box.value.split(',').some(id => selectedLogIds.has(id));
+        box.checked = checked;
+        box.closest('tr')?.classList.toggle('is-selected', checked);
+    });
+    document.querySelectorAll('#logs-tbody .day-separator-checkbox').forEach(dayBox => {
+        const boxes = [...document.querySelectorAll(`#logs-tbody tr[data-date="${dayBox.closest('tr').dataset.date}"] .bulk-checkbox`)];
+        const ticked = boxes.filter(box => box.checked).length;
+        dayBox.checked = boxes.length > 0 && ticked === boxes.length;
+        dayBox.indeterminate = ticked > 0 && ticked < boxes.length;
+    });
+    const header = document.querySelector('.logs-table .select-column-header input');
+    if (header) {
+        header.checked = all;
+        header.indeterminate = rows > 0 && !all;
+    }
+}
+
+// The selected rows as a table (name, Card ID, date, session, times), ready to paste
+// into Excel, Sheets or a message.
+async function copySelectedRecords() {
+    const pad = n => String(n).padStart(2, '0');
+    const rows = selectedLogGroups().map(group => {
+        const logs = group.originalLogs.filter(log => selectedLogIds.has(log.id)).sort((a, b) => a.timestamp - b.timestamp);
+        const sessions = [...new Set(logs.map(log => log.session).filter(session => session && session !== 'Default'))].join(', ');
+        const times = logs.map(log => { const time = new Date(log.timestamp); return `${pad(time.getHours())}:${pad(time.getMinutes())}`; }).join(', ');
+        return [group.name === 'Unknown' ? '' : group.name, group.uid || '', group.date, sessions, times];
+    });
+    const text = [['Name', 'Card ID', 'Date', 'Session', 'Times'], ...rows].map(cells => cells.join('\t')).join('\n');
+    try {
+        await navigator.clipboard.writeText(text);
+    } catch {
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.cssText = 'position:fixed; top:0; left:0; opacity:0;';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+    }
+    showNotification('success', 'Copied', `${rows.length} ${rows.length === 1 ? 'row' : 'rows'} copied, ready to paste into Excel or a message.`);
+}
+
+// Selecting by touch and keyboard: while selecting, a tap anywhere on a row (not on
+// its buttons) ticks it; holding a row for half a second starts selecting with that
+// row; Escape stops. The bar's buttons run the actions.
+function setupLogSelectionGestures() {
+    const tbody = document.getElementById('logs-tbody');
+    const bar = document.getElementById('bulk-actions-bar');
+    if (!tbody) return;
+
+    let press = null;
+    let pressed = false; // A hold just selected a row: the click that follows does nothing.
+    const cancelPress = () => {
+        if (press) clearTimeout(press.timer);
+        press = null;
+    };
+    tbody.addEventListener('pointerdown', (event) => {
+        if (isBulkMode || event.button > 0 || !isAdminForCourse(currentCourse)) return;
+        const row = event.target.closest('tr[data-key]');
+        if (!row || event.target.closest('input, button, a, .row-menu, .time-tag')) return;
+        cancelPress();
+        press = {
+            x: event.clientX,
+            y: event.clientY,
+            timer: setTimeout(() => {
+                press = null;
+                pressed = true;
+                setTimeout(() => { pressed = false; }, 700);
+                navigator.vibrate?.(12);
+                const group = lastLogGroups.find(item => item.key === row.dataset.key);
+                toggleBulkMode();
+                group?.originalLogs.forEach(log => selectedLogIds.add(log.id));
+                updateBulkUI();
+            }, 500)
+        };
+    });
+    tbody.addEventListener('pointermove', (event) => {
+        if (press && Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) cancelPress();
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(type => tbody.addEventListener(type, cancelPress));
+    // The click that may follow a hold comes with its pointerup; later taps count.
+    document.addEventListener('pointerup', () => { if (pressed) setTimeout(() => { pressed = false; }, 0); }, true);
+    window.addEventListener('scroll', cancelPress, { passive: true, capture: true });
+    tbody.addEventListener('contextmenu', (event) => { if (press || pressed) event.preventDefault(); });
+
+    tbody.addEventListener('click', (event) => {
+        if (pressed) {
+            pressed = false;
+            event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+        if (!isBulkMode) return;
+        const row = event.target.closest('tr[data-key]');
+        if (!row || event.target.closest('input, button, a, .row-menu')) return;
+        event.stopPropagation(); // A tapped time only selects its row here.
+        row.querySelector('.bulk-checkbox')?.click();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && isBulkMode && !document.querySelector('.dialog-backdrop')) toggleBulkMode();
+    });
+
+    bar?.querySelectorAll('[data-bulk]').forEach(button => button.addEventListener('click', () => performBulkAction(button.dataset.bulk)));
+    bar?.querySelector('#bulk-select-all')?.addEventListener('click', (event) => toggleSelectAll(!event.currentTarget.dataset.all));
+}
+
 
 // --- Bulk Operations ---
 
 async function performBulkAction(action) {
     if (selectedLogIds.size === 0) return;
+    if (action === 'copy') return copySelectedRecords();
 
     let confirmMsg = "", confirmTitle = "";
     let extraHtml = "";
+    const rowCount = selectedLogGroups().length;
+    const rowsText = `${rowCount} ${rowCount === 1 ? 'row' : 'rows'}`;
 
     // Enable inherit option for BOTH add1h AND sub1h
     const includeInherit = (action === 'add1h' || action === 'sub1h');
     const sessionHtml = renderSessionSelectorHTML('bulk', includeInherit);
 
     if (action === 'delete') {
-        confirmTitle = `Delete ${selectedLogIds.size} Entries?`;
-        confirmMsg = "Delete all logs for the selected rows? This cannot be undone.";
+        confirmTitle = `Delete ${rowsText}?`;
+        confirmMsg = "Every time in the selected rows is deleted. This cannot be undone.";
+    } else if (action === 'session') {
+        confirmTitle = `Change the session of ${rowsText}`;
+        confirmMsg = 'Every time in the selected rows moves to this session.';
+        extraHtml = `<div style="margin-top:15px; text-align:left;">${renderSessionSelectorHTML('bulk', false)}</div>`;
+    } else if (action === 'date') {
+        const first = selectedLogGroups()[0]?.originalLogs.find(log => selectedLogIds.has(log.id));
+        confirmTitle = `Move ${rowsText} to another day`;
+        confirmMsg = 'The times stay the same; only the day changes.';
+        extraHtml = `<div class="form-group" style="margin-top:15px; text-align:left;"><label class="dialog-label-fixed" for="bulk-move-date"><i class="fa-solid fa-calendar-day"></i> Day</label><input type="date" id="bulk-move-date" class="form-control" value="${first ? localDateString(new Date(first.timestamp)) : ''}" required></div>`;
     } else if (action === 'add1h') {
         confirmTitle = `Add +1 Hour?`;
         confirmMsg = `Create a new log 1 hour later for every selected student.`;
@@ -11184,16 +11316,41 @@ async function performBulkAction(action) {
     showConfirmationDialog({
         title: confirmTitle,
         message: confirmMsg + extraHtml,
-        confirmText: "Confirm",
+        confirmText: { delete: 'Delete', session: 'Change Session', date: 'Move' }[action] || "Confirm",
         isDestructive: action === 'delete' || action === 'sub1h',
         onConfirm: async () => {
             let targetSession = 'INHERIT';
             const sessionInput = document.getElementById('bulk-selected-session');
             if (sessionInput) targetSession = sessionInput.value;
+            const moveTo = document.getElementById('bulk-move-date')?.value || '';
 
             const allLogs = courseData[currentCourse].logs;
             const allSelectedIds = Array.from(selectedLogIds);
             let logsModified = false;
+
+            // --- SESSION / DAY: edit every selected time ---
+            if (action === 'session' || action === 'date') {
+                const [year, month, day] = moveTo.split('-').map(Number);
+                if (action === 'date' && !year) return;
+                let changed = 0;
+                allLogs.forEach(log => {
+                    if (!selectedLogIds.has(log.id)) return;
+                    if (action === 'session') {
+                        if ((log.session || '') === targetSession) return;
+                        log.session = targetSession;
+                    } else {
+                        const time = new Date(log.timestamp);
+                        time.setFullYear(year, month - 1, day);
+                        if (time.getTime() === log.timestamp) return;
+                        log.timestamp = time.getTime();
+                    }
+                    touchLogForEdit(log, currentUser?.email);
+                    changed++;
+                });
+                logsModified = changed > 0;
+                showNotification(changed ? 'success' : 'info', changed ? 'Updated' : 'No Change',
+                    changed ? `${changed} ${changed === 1 ? 'time' : 'times'} updated.` : 'The selected times already match.');
+            }
 
             // --- DELETE ALL ---
             if (action === 'delete') {
@@ -11291,7 +11448,7 @@ async function performBulkAction(action) {
     });
 
     // Activate toggles in dialog (Standard)
-    if (extraHtml) {
+    if (extraHtml && action !== 'date') {
         setTimeout(() => {
             const rawSections = courseInfoMap[currentCourse].availableSections || '';
             setupSessionToggleListeners('bulk', parseAvailableSections(rawSections));
@@ -11332,6 +11489,7 @@ function toggleBulkMode() {
         document.querySelectorAll('.bulk-checkbox').forEach(cb => cb.checked = false);
         document.querySelectorAll('.day-separator-checkbox').forEach(cb => cb.checked = false);
     }
+    document.body.classList.toggle('is-selecting', isBulkMode);
     updateLogsList(); // Re-render rows to show/hide columns
     updateBulkUI();
 }
@@ -11811,7 +11969,7 @@ function updateLogsList() {
                        <p style="font-size: 0.9em; color: #999;">Choose a course above to view its attendance history.</p>`;
         emptyLogs.style.display = 'block';
         tableContainer.classList.remove('reloading');
-        const _fsb = document.getElementById('floating-sticky-bar'); if (_fsb) _fsb.style.display = 'none';
+        hideStickyDateBar();
         return;
     }
 
@@ -11826,7 +11984,7 @@ function updateLogsList() {
         emptyLogs.innerHTML = `<div class="loading-spinner" style="margin: 20px auto;"></div><p style="text-align: center;">Loading logs...</p>`;
         emptyLogs.style.display = 'block';
         tableContainer.classList.remove('reloading');
-        const _fsb = document.getElementById('floating-sticky-bar'); if (_fsb) _fsb.style.display = 'none';
+        hideStickyDateBar();
         return; // Stop here and wait for the next updateUI() call
     }
 
@@ -11919,6 +12077,8 @@ function updateLogsList() {
         if (field === 'uid') return sortMultiplier * (a.uid || '').localeCompare(b.uid || '');
         return 0;
     });
+
+    lastLogGroups = result;
 
     // --- PAGINATION LOGIC ---
     const totalPages = Math.ceil(result.length / ITEMS_PER_PAGE);
@@ -12013,10 +12173,11 @@ function updateLogsList() {
             // We use the first ID as the primary key for logic
             const primaryId = group.originalLogs[0].id;
 
-            selectCell.innerHTML = `<input type="checkbox" class="bulk-checkbox" value="${logIdsInGroup}">`;
+            selectCell.innerHTML = `<input type="checkbox" class="bulk-checkbox" value="${logIdsInGroup}" aria-label="Select ${escapeHtml(group.name)}, ${group.date}">`;
             const checkbox = selectCell.querySelector('input');
 
             if (selectedLogIds.has(primaryId)) checkbox.checked = true;
+            row.classList.toggle('is-selected', checkbox.checked);
 
             // Use the new handler
             checkbox.addEventListener('click', (e) => handleLogCheckbox(e, logIdsInGroup));
@@ -12137,6 +12298,7 @@ function updateLogsList() {
     }
     endLogsSwap();
 
+    reuseDrawnIcons(logsTbody);
     setupStickyDateBar();
 }
 
@@ -12183,11 +12345,12 @@ function endLogsSwap() {
 }
 
 
+// The day whose heading has scrolled past the top floats there: the same date and
+// Add to EIS as in the list. What shows lives on the bar itself, so a redrawn list
+// or another course agrees with it: the bar swaps its date, or leaves.
 function setupStickyDateBar() {
     let bar = document.getElementById('floating-sticky-bar');
     if (!bar) {
-        // The same pills as a day's heading row in the list, in the same places,
-        // so floating they look and behave the same.
         bar = document.createElement('div');
         bar.id = 'floating-sticky-bar';
         bar.innerHTML = `
@@ -12198,92 +12361,81 @@ function setupStickyDateBar() {
                 </div>
             </div>`;
         bar.querySelector('#floating-eis-btn').onclick = () => { if (bar._activeDate) showDirectEisExportDialog(bar._activeDate); };
+        bar._activeDate = null;
         document.body.appendChild(bar);
-        window.addEventListener('resize', () => { if (bar._activeDate) alignStickyDateBar(bar); }, { passive: true });
-    }
-
-    const badge = bar.querySelector('#floating-date-badge');
-
-    if (window._stickyDateScrollHandler) {
-        window.removeEventListener('scroll', window._stickyDateScrollHandler, true);
-    }
-
-    let currentActiveDate = null;
-    let exitTimer = null;
-
-    function playAnim(name, duration, easing) {
-        bar.style.animation = 'none';
-        bar.offsetHeight;
-        bar.style.animation = `${name} ${duration}ms ${easing} forwards`;
-    }
-
-    // Once in, the bar drops its finished animation: a lingering opacity effect
-    // would stop the glass buttons from blurring the logs behind them.
-    if (!bar._glassReady) {
-        bar._glassReady = true;
+        // Once in, the bar drops its finished animation.
         bar.addEventListener('animationend', (event) => {
             if (event.target === bar && event.animationName === 'badge-fly-in') bar.style.animation = 'none';
         });
+        window.addEventListener('resize', () => { if (bar._activeDate) alignStickyDateBar(bar); }, { passive: true });
+        // One check per frame while scrolling (any scrolling container, hence capture).
+        let queued = false;
+        window.addEventListener('scroll', () => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => { queued = false; updateStickyDateBar(); });
+        }, { passive: true, capture: true });
     }
+    updateStickyDateBar(true);
+}
 
-    function enter(date) {
-        bar._activeDate = date;
-        badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`;
-        clearTimeout(exitTimer);
+// fresh: the list was just redrawn, so the bar also re-aligns.
+function updateStickyDateBar(fresh = false) {
+    const bar = document.getElementById('floating-sticky-bar');
+    if (!bar) return;
+    // Only the attendance list has day headings; other tabs never show the bar.
+    const scannerActive = document.getElementById('scanner-tab')?.classList.contains('active');
+    let activeDate = null;
+    if (scannerActive) {
+        for (const row of document.querySelectorAll('#scanner-tab tr.day-separator[data-date]')) {
+            if (row.getBoundingClientRect().bottom > 1) break;
+            activeDate = row.dataset.date;
+        }
+    }
+    const badge = bar.querySelector('#floating-date-badge');
+    const setDate = date => { badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`; };
+    const play = (name, ms, easing) => {
+        bar.style.animation = 'none';
+        void bar.offsetHeight;
+        bar.style.animation = `${name} ${ms}ms ${easing} forwards`;
+    };
+
+    if (activeDate === bar._activeDate) {
+        if (activeDate && fresh) alignStickyDateBar(bar);
+        return;
+    }
+    clearTimeout(bar._timer);
+    const shown = bar._activeDate;
+    bar._activeDate = activeDate;
+    if (!activeDate) {
+        play('badge-fly-out', 200, 'ease-in');
+        bar._timer = setTimeout(() => { if (!bar._activeDate) bar.style.display = 'none'; }, 200);
+    } else if (!shown || bar.style.display === 'none') {
+        setDate(activeDate);
+        badge.style.opacity = '1';
         bar.style.display = 'block';
         alignStickyDateBar(bar);
-        playAnim('badge-fly-in', 220, 'ease-out');
-    }
-
-    function swap(date) {
-        bar._activeDate = date;
-        // Fade out, swap text, fade back in
+        play('badge-fly-in', 220, 'ease-out');
+    } else {
+        // Another day: the date fades out, changes and fades back in.
+        if (fresh) alignStickyDateBar(bar);
         badge.style.transition = 'opacity 80ms ease';
         badge.style.opacity = '0';
-        clearTimeout(exitTimer);
-        exitTimer = setTimeout(() => {
-            badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`;
+        bar._timer = setTimeout(() => {
+            setDate(bar._activeDate || activeDate);
             badge.style.opacity = '1';
         }, 80);
     }
+}
 
-    function exit() {
-        bar._activeDate = null;
-        bar.style.animation = 'badge-fly-out 200ms ease-in forwards';
-        clearTimeout(exitTimer);
-        exitTimer = setTimeout(() => { bar.style.display = 'none'; }, 200);
-    }
-
-    function onScroll() {
-        // Only the scan history has day separators; other tabs never show the bar.
-        const scannerActive = document.getElementById('scanner-tab')?.classList.contains('active');
-        const rows = scannerActive ? document.querySelectorAll('tr.day-separator[data-date]') : [];
-        let activeDate = null;
-        for (const row of rows) {
-            if (row.getBoundingClientRect().bottom <= 1) {
-                activeDate = row.dataset.date;
-            } else {
-                break;
-            }
-        }
-
-        if (activeDate === currentActiveDate) return;
-
-        if (!activeDate) {
-            currentActiveDate = null;
-            exit();
-        } else if (currentActiveDate === null) {
-            currentActiveDate = activeDate;
-            enter(activeDate);
-        } else {
-            currentActiveDate = activeDate;
-            swap(activeDate);
-        }
-    }
-
-    window._stickyDateScrollHandler = onScroll;
-    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
-    onScroll();
+// Hidden at once, for example while a course loads or has no records.
+function hideStickyDateBar() {
+    const bar = document.getElementById('floating-sticky-bar');
+    if (!bar) return;
+    clearTimeout(bar._timer);
+    bar._activeDate = null;
+    bar.style.animation = 'none';
+    bar.style.display = 'none';
 }
 
 // Puts the floating pills exactly above a day's heading pills in the list.
@@ -12625,6 +12777,39 @@ function updateDatabaseList() {
         row.querySelector('.edit-db-btn').addEventListener('click', () => editDatabaseEntry(dbKey));
         row.querySelector('.delete-db-btn').addEventListener('click', () => deleteDatabaseEntry(dbKey));
         databaseTbody.appendChild(row);
+    });
+    reuseDrawnIcons(databaseTbody);
+}
+
+// The icon kit turns each <i class="fa-…"> into an <svg>; redrawing a list of
+// hundreds of icons kept a phone busy long enough to delay the next scan's name.
+// Icons it has already drawn are copied instead, so a redrawn list leaves it
+// nothing to do. Icons with extras (fa-fw, fa-spin, a title) are left to the kit.
+const drawnIcons = new Map(); // "fas pen" → an <svg> to copy
+const ICON_PREFIXES = { 'fa-solid': 'fas', 'fa-regular': 'far', 'fa-brands': 'fab' };
+function reuseDrawnIcons(root) {
+    if (!root) return;
+    document.querySelectorAll('svg.svg-inline--fa[data-prefix][data-icon]').forEach(svg => {
+        const key = `${svg.dataset.prefix} ${svg.dataset.icon}`;
+        if (drawnIcons.has(key) || svg.querySelector('title') || svg.hasAttribute('style')) return;
+        const template = svg.cloneNode(true);
+        template.removeAttribute('class');
+        template.removeAttribute('aria-labelledby');
+        drawnIcons.set(key, template);
+    });
+    root.querySelectorAll('i[class*="fa-"]').forEach(icon => {
+        if (icon.hasAttribute('title') || [...icon.attributes].some(a => a.name.startsWith('data-fa'))) return;
+        const classes = [...icon.classList];
+        const prefix = classes.map(name => ICON_PREFIXES[name]).find(Boolean);
+        const names = classes.filter(name => name.startsWith('fa-') && !ICON_PREFIXES[name]);
+        if (!prefix || names.length !== 1) return;
+        const template = drawnIcons.get(`${prefix} ${names[0].slice(3)}`);
+        if (!template) return;
+        const svg = template.cloneNode(true);
+        svg.setAttribute('class', ['svg-inline--fa', names[0], ...classes.filter(name => !name.startsWith('fa-'))].join(' '));
+        for (const { name, value } of icon.attributes) if (name !== 'class') svg.setAttribute(name, value);
+        svg.setAttribute('aria-hidden', icon.getAttribute('aria-hidden') || 'true');
+        icon.replaceWith(svg);
     });
 }
 
@@ -13134,8 +13319,21 @@ async function updateUI() {
 /**
  * Start NFC scanning.
  */
+// Keeps the screen on, so the phone does not sleep while cards are tapped.
+let screenWakeLock = null;
+async function keepScreenAwake() {
+    if (!('wakeLock' in navigator) || document.visibilityState !== 'visible') return;
+    if (screenWakeLock && !screenWakeLock.released) return;
+    try {
+        screenWakeLock = await navigator.wakeLock.request('screen');
+    } catch (err) {
+        console.warn(`Wake Lock failed: ${err.name}, ${err.message}`);
+    }
+}
+
 async function startScanning() {
     if (!nfcSupported || nfcReader) return;
+    keepScreenAwake();
     const controller = new AbortController();
     const reader = new NDEFReader();
     nfcAbortController = controller;
@@ -13268,18 +13466,23 @@ async function handleNfcReading({ serialNumber }) {
     // Runs if Signed In OR in Lecturer Mode
     // ============================================================
 
-    // A course lecturer's staff card locks and unlocks instead of recording attendance.
-    if (scanLockSession || locked) {
-        const owner = await scanLockCardOwner(serialNumber);
-        if (owner) {
-            toggleScanLockWithCard(owner);
-            return;
-        }
-    }
-
     const convertedUid = convertUidToExternalId(serialNumber);
     const primaryUid = lookupPrimaryUid(serialNumber);
     const finalUid = primaryUid || convertedUid || serialNumber;
+
+    // A course lecturer's staff card locks and unlocks instead of recording attendance.
+    // A student's card skips that check (unless this phone saved staff cards, which it
+    // checks locally), so it is recorded the moment it is read.
+    if (scanLockSession || locked) {
+        const entry = databaseMap[primaryUid];
+        if (!entry || entry.isStaff || getSavedUnlockCards().length) {
+            const owner = await scanLockCardOwner(serialNumber);
+            if (owner) {
+                toggleScanLockWithCard(owner);
+                return;
+            }
+        }
+    }
 
     // Security Check: Only block if we are signed in but NOT an admin
     // (If isLecturerMode is true, we bypass this because auth is offline)
@@ -13304,6 +13507,17 @@ async function handleNfcReading({ serialNumber }) {
     const isUnknown = !primaryUid;
     playSound(!isUnknown);
 
+    // The name shows at once; saving and redrawing the list wait for that frame.
+    // An unknown card shows its Card ID in place of a name.
+    const scan = isUnknown
+        ? { unknown: true, name: convertedUid || serialNumber, at: timestamp.getTime() }
+        : { unknown: false, name: databaseMap[primaryUid]?.name || convertedUid, at: timestamp.getTime() };
+    const lockedNow = isScanLockScreenShown();
+    // Locked, the name appears under the clock; unlocked on a phone, as a full-screen result.
+    if (lockedNow) showScanLockResult(scan);
+    else if (window.innerWidth <= 700) showScanAnnouncement(scan);
+
+    const course = currentCourse;
     let newLog = {
         uid: convertedUid,
         timestamp: timestamp.getTime(),
@@ -13315,23 +13529,44 @@ async function handleNfcReading({ serialNumber }) {
     // In LecturerMode, currentUser might be null, which is fine
     newLog = touchLogForEdit(newLog, currentUser?.email || 'Offline Lecturer');
 
-    if (!courseData[currentCourse]) {
-        courseData[currentCourse] = { logs: [], tombstones: new Set() };
+    if (!courseData[course]) {
+        courseData[course] = { logs: [], tombstones: new Set() };
     }
-    courseData[currentCourse].logs.unshift(newLog);
-
-    saveAndMarkChanges(currentCourse);
-    updateUI();
-
-    // An unknown card shows its Card ID in place of a name.
-    const scan = isUnknown
-        ? { unknown: true, name: convertedUid || serialNumber, at: timestamp.getTime() }
-        : { unknown: false, name: databaseMap[primaryUid]?.name || convertedUid, at: timestamp.getTime() };
-    const lockedNow = isScanLockScreenShown();
+    courseData[course].logs.unshift(newLog);
     if (scanLockSession || lockedNow) noteScanLockScan(scan);
-    // Locked, the name appears under the clock; unlocked on a phone, as a full-screen result.
-    if (lockedNow) showScanLockResult(scan);
-    else if (window.innerWidth <= 700) showScanAnnouncement(scan);
+
+    afterNextPaint(() => {
+        saveAndMarkChanges(course);
+        scheduleScanRender();
+    });
+}
+
+// Runs fn just after the next frame is drawn (at once while the page is hidden).
+function afterNextPaint(fn) {
+    if (document.hidden) setTimeout(fn, 0);
+    else requestAnimationFrame(() => setTimeout(fn, 0));
+}
+
+// During scanning the attendance list is redrawn once the cards pause, not for every
+// card: behind the lock screen after a second, otherwise after a moment.
+let scanRenderTimer = null;
+let logsListStale = false;
+function scheduleScanRender() {
+    clearTimeout(scanRenderTimer);
+    if (isScanLockScreenShown()) {
+        logsListStale = true;
+        return;
+    }
+    scanRenderTimer = setTimeout(() => {
+        scanRenderTimer = null;
+        logsListStale = false;
+        updateLogsList();
+        const hasLogs = getLogsForCurrentUser().length > 0;
+        exportBtn.disabled = !hasLogs;
+        clearBtn.disabled = !hasLogs;
+        filterInput.disabled = !hasLogs;
+        sortSelect.disabled = !hasLogs;
+    }, 600);
 }
 
 // Full-screen result of a scan: white with the name, or orange with the Card ID
@@ -13567,7 +13802,10 @@ async function scanLockCardOwner(serialNumber) {
     if (!saved && entry && !entry.isStaff) return '';
     if (navigator.onLine) {
         try {
-            const owner = await verifyScanUnlockCard(serialNumber, course);
+            const owner = await Promise.race([
+                verifyScanUnlockCard(serialNumber, course),
+                new Promise((resolve, reject) => setTimeout(() => reject(new Error('No answer within 1.5 s')), 1500))
+            ]);
             if (owner || saved) await rememberUnlockCard(serialNumber, course, owner);
             return owner;
         } catch (error) {
@@ -13784,6 +14022,7 @@ function hideScanLockScreen() {
     setScanLockInert(false);
     document.documentElement.classList.remove('scan-locked');
     screen.remove();
+    if (logsListStale) scheduleScanRender();
 }
 
 // Runs every second; text is only written when it changes, so live regions stay quiet.
@@ -13821,7 +14060,7 @@ function updateScanLockScreen() {
     screen.querySelector('.scan-lock-alert').hidden = events.length === 0;
     if (events.length) {
         const last = events[events.length - 1];
-        setText('.scan-lock-alert', `${events.length === 1 ? 'Stando was left' : `Stando was left ${events.length} times, last`} at ${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}. Cards tapped then were not recorded.`);
+        setText('.scan-lock-alert', scanLockAwayText(events));
     }
 }
 
@@ -14054,10 +14293,17 @@ function noteScanLockReturn() {
 
 function reportScanLockAbsences(events) {
     if (!events?.length) return;
+    showNotification('warning', 'Stando Was Off Screen', scanLockAwayText(events), 10000);
+}
+
+// Stando cannot read cards while it is off screen: the screen went off, or another
+// app, tab or the phone's own NFC screen came up. Those taps were not recorded.
+function scanLockAwayText(events) {
     const last = events[events.length - 1];
-    const times = events.length === 1 ? 'once' : `${events.length} times`;
-    showNotification('warning', 'Stando Was Left While Locked',
-        `Stando was left ${times}, last at ${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}. Cards tapped then were not recorded.`, 10000);
+    const when = `${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}`;
+    return events.length === 1
+        ? `Stando was off screen at ${when}, so cards tapped then weren't recorded.`
+        : `Stando was off screen ${events.length} times, last at ${when}. Cards tapped then weren't recorded.`;
 }
 
 // After sign-in (or in another tab), show the lock if this account left it locked.
@@ -14108,8 +14354,44 @@ function setupScanLock() {
  * Play sound effect (success or error).
  * @param {boolean} success - Whether to play success or error sound.
  */
+// Scan sounds through Web Audio: decoded once, they start the instant a card is read
+// (an <audio> element can lag a few hundred milliseconds on phones). The <audio>
+// elements stay the fallback. Prepared on the first tap or click on the page.
+let soundContext = null;
+const soundBuffers = {};
+function prepareScanSounds() {
+    const AudioContextType = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextType) return;
+    if (!soundContext) {
+        try {
+            soundContext = new AudioContextType({ latencyHint: 'interactive' });
+        } catch {
+            return;
+        }
+        [['success', successSound], ['error', errorSound]].forEach(([key, element]) => {
+            const src = element?.querySelector('source')?.src || element?.currentSrc || element?.src;
+            if (!src) return;
+            fetch(src)
+                .then(response => response.arrayBuffer())
+                .then(data => soundContext.decodeAudioData(data))
+                .then(buffer => { soundBuffers[key] = buffer; })
+                .catch(() => { /* The <audio> element plays instead. */ });
+        });
+    }
+    if (soundContext.state === 'suspended') soundContext.resume().catch(() => { });
+}
+
 function playSound(success) {
     if (!soundEnabled) return;
+
+    const buffer = soundBuffers[success ? 'success' : 'error'];
+    if (soundContext?.state === 'running' && buffer) {
+        const source = soundContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(soundContext.destination);
+        source.start();
+        return;
+    }
 
     const sound = success ? successSound : errorSound;
     if (!sound) return;
@@ -14401,6 +14683,15 @@ function generatePageNumbers(current, total) {
 }
 
 // Dynamically tags children of a flex container by their visual row so CSS can round outer edges
+// Keeps segmented buttons rounded at both ends of every line they wrap onto,
+// whenever their container changes size: a resize, the panel showing again,
+// a label settling or a button added.
+function watchButtonRows(container, update = updateButtonRows) {
+    if (!container || container._rowObserver || typeof ResizeObserver === 'undefined') return;
+    container._rowObserver = new ResizeObserver(() => update(container));
+    container._rowObserver.observe(container);
+}
+
 function updateButtonRows(container) {
     if (!container) return;
     const items = Array.from(container.children).filter(el => el.style.display !== 'none' && el.offsetParent !== null);
@@ -14517,10 +14808,9 @@ function populateCourseButtons() {
     // Apply row-aware rounding after buttons are in the DOM
     requestAnimationFrame(() => updateCourseButtonRows(courseButtonsContainer));
 
-    // Attach a ResizeObserver so rows re-compute on resize
+    // Rows re-compute whenever the container reflows.
     if (!courseButtonsContainer._rowObserver) {
-        courseButtonsContainer._rowObserver = new ResizeObserver(() => updateCourseButtonRows(courseButtonsContainer));
-        courseButtonsContainer._rowObserver.observe(courseButtonsContainer);
+        watchButtonRows(courseButtonsContainer, updateCourseButtonRows);
         // The selected tab changes width as its icon closes; re-tag the rows once it settles.
         courseButtonsContainer.addEventListener('transitionend', (event) => {
             if (event.propertyName !== 'width' || !event.target.classList?.contains('course-button-icon')) return;
