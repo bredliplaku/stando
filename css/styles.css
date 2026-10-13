@@ -1083,10 +1083,6 @@
             color: #f0f0f0;
         }
 
-        .dialog .form-group.uid-edit-row {
-            flex-wrap: nowrap;
-        }
-
         /* ===== Course button styles ===== */
         .course-buttons-container {
             display: flex;
@@ -2663,8 +2659,7 @@
         }
 
         .logs-table .day-separator .btn-icon,
-        .delete-time-btn.btn-icon,
-        #sync-btn.btn-icon {
+        .delete-time-btn.btn-icon {
             width: 30px;
             height: 30px;
         }
@@ -2672,9 +2667,7 @@
         /* This makes the icon inside the smaller button fit properly */
         .actions-cell .btn-icon i,
         .logs-table .day-separator .btn-icon i,
-        .delete-time-btn.btn-icon i,
-        #sync-btn.btn-icon i,
-        #sync-btn.btn-icon svg {
+        .delete-time-btn.btn-icon i {
             font-size: 0.85em;
             /* Slightly reduce the icon size */
         }
@@ -3565,30 +3558,6 @@
             align-items: center;
             gap: 10px;
             margin-bottom: 15px;
-        }
-
-        .auto-sync-enabled {
-            background-color: #4caf50 !important;
-            /* Green color for auto-sync enabled */
-        }
-
-        /* Add a subtle pulse animation when auto-sync is enabled */
-        @keyframes subtle-pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4);
-            }
-
-            70% {
-                box-shadow: 0 0 0 6px rgba(76, 175, 80, 0);
-            }
-
-            100% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
-            }
-        }
-
-        .auto-sync-enabled {
-            animation: subtle-pulse 2s infinite;
         }
 
         .course-button.disabled {
@@ -8536,16 +8505,6 @@ body.is-admin .toolbar-menu.admin-only {
         gap: 6px;
     }
 
-    .dialog .form-group.uid-edit-row {
-        flex-direction: row;
-        flex-wrap: wrap;
-        align-items: center !important;
-    }
-
-    .dialog .form-group.uid-edit-row > .dialog-label-fixed {
-        flex-basis: 100%;
-    }
-
     .dialog .dialog-label-fixed,
     .dialog .form-group > label:not(:has(input, select, textarea)) {
         width: auto;
@@ -9969,12 +9928,6 @@ html:not([data-stando-nfc]) .sk-nfc {
     background: var(--sk-bone-page);
 }
 
-.sk-status-dot {
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-}
-
 .sk-chip {
     width: 89px;
     height: 36px;
@@ -10532,16 +10485,14 @@ body:not(.has-programmes) .programme-option {
 
 /* =========================================================================
    Liquid glass
-   Clear glass, as Syllabase's floating toolbar: the content behind is blurred
-   and brightened rather than covered by colour, a light rim catches the top
-   left and bottom right edges, and a soft shadow lifts it off the page. A
-   control in a colour (Add to EIS) is glass tinted with that colour. Without
-   backdrop blur, or when transparency is reduced, it is a solid surface.
+   Glass in a control's own colour, as Syllabase's floating toolbar: the colour
+   lets the content behind show through, blurred and brightened; a light rim
+   catches the top edge and a soft shadow lifts it. The tokens also serve the
+   sticky filter of Request History. Without backdrop blur, or when
+   transparency is reduced, surfaces are solid.
    ========================================================================= */
 :root {
-    --glass-fill: rgba(255, 255, 255, 0.36);
     --glass-solid: #fff;
-    --glass-text: var(--primary-color);
     --glass-rim: rgba(255, 255, 255, 0.95);
     --glass-rim-soft: rgba(255, 255, 255, 0.2);
     --glass-sheen: rgba(255, 255, 255, 0.5);
@@ -10550,9 +10501,7 @@ body:not(.has-programmes) .programme-option {
 }
 
 .dark-mode {
-    --glass-fill: rgba(44, 44, 50, 0.48);
     --glass-solid: #2a2a30;
-    --glass-text: #c5cae9;
     --glass-rim: rgba(255, 255, 255, 0.4);
     --glass-rim-soft: rgba(255, 255, 255, 0.06);
     --glass-sheen: rgba(255, 255, 255, 0.1);
@@ -10560,112 +10509,95 @@ body:not(.has-programmes) .programme-option {
     --glass-blur: blur(12px) saturate(170%) brightness(0.9);
 }
 
-/* Positioned for its rim and sheen; Add to EIS is already placed absolutely. */
-.liquid-glass,
-#floating-sticky-bar #floating-date-badge {
+/* --- A day's pills: the date and Add to EIS. One design in the list's day
+   headings and floating at the top while that day scrolls by, so they match
+   in colour, size and every hover and press. --- */
+:is(.logs-table, #floating-sticky-bar) :is(.day-separator-date, .eis-day-btn) {
+    --pill-tint: var(--primary-color);
     position: relative;
-}
-
-.liquid-glass,
-#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
     isolation: isolate;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    height: 34px;
+    margin: 0;
+    padding: 0 16px;
     border: 0;
-    background: var(--glass-solid);
-    color: var(--glass-text);
-    box-shadow: inset 0 1px 1px var(--glass-rim), inset 0 -1px 1px var(--glass-rim-soft), var(--glass-lift);
+    border-radius: 999px;
+    background-color: var(--pill-tint);
+    background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 55%);
+    color: #fff;
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+        0 6px 16px -8px color-mix(in srgb, var(--pill-tint) 75%, transparent);
+    transform: none;
+    transition: background-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
-/* The rim: brightest at the top left, fading through the sides, catching
-   again at the bottom right. */
-.liquid-glass::before,
-#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn)::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    padding: 1px;
-    border-radius: inherit;
-    background: linear-gradient(135deg, var(--glass-rim), var(--glass-rim-soft) 38%, transparent 55%, var(--glass-rim-soft) 75%, var(--glass-rim));
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask-composite: exclude;
-    pointer-events: none;
-}
-
-/* The sheen: light pooled in the upper half, as on a curved surface. */
-.liquid-glass::after,
-#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn)::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: radial-gradient(120% 70% at 50% -10%, var(--glass-sheen), transparent 60%);
-    pointer-events: none;
+:is(.logs-table, #floating-sticky-bar) :is(.day-separator-date, .eis-day-btn) > :is(i, svg) {
+    font-size: 0.9em;
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    .liquid-glass,
-    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
-        background: var(--glass-fill);
-        -webkit-backdrop-filter: var(--glass-blur);
-        backdrop-filter: var(--glass-blur);
-    }
-
-    #floating-sticky-bar #floating-eis-btn {
-        background: color-mix(in srgb, var(--success-color) 62%, transparent);
+    :is(.logs-table, #floating-sticky-bar) :is(.day-separator-date, .eis-day-btn) {
+        background-color: color-mix(in srgb, var(--pill-tint) 82%, transparent);
+        -webkit-backdrop-filter: blur(12px) saturate(180%);
+        backdrop-filter: blur(12px) saturate(180%);
     }
 }
 
+:is(.logs-table, #floating-sticky-bar) .eis-day-btn {
+    cursor: pointer;
+}
+
+:is(.logs-table, #floating-sticky-bar) .eis-day-btn:hover:not(:disabled) {
+    background-color: var(--pill-tint);
+    border: 0;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -1px 0 rgba(0, 0, 0, 0.12),
+        0 8px 20px -8px color-mix(in srgb, var(--pill-tint) 85%, transparent);
+    filter: none;
+    transform: translateY(-1px);
+}
+
+:is(.logs-table, #floating-sticky-bar) .eis-day-btn:active:not(:disabled) {
+    transform: scale(0.97);
+    filter: brightness(0.95);
+}
+
 @media (prefers-reduced-transparency: reduce) {
-    .liquid-glass,
-    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
-        background: var(--glass-solid) !important;
+    :is(.logs-table, #floating-sticky-bar) :is(.day-separator-date, .eis-day-btn) {
+        background-color: var(--pill-tint) !important;
         -webkit-backdrop-filter: none !important;
         backdrop-filter: none !important;
     }
 }
 
-/* The floating day: the date in the app's colour on clear glass, aligned with
-   the list it labels. Add to EIS is green glass beside it on wide screens. */
+/* Floating, the pills sit exactly above the list's day heading (alignStickyDateBar). */
 #floating-sticky-bar {
     top: calc(10px + env(safe-area-inset-top, 0px));
 }
 
-#floating-sticky-bar #floating-date-badge {
-    gap: 8px;
-    padding: 8px 16px;
-    border-radius: 999px;
-    font-size: 0.875rem;
-    font-weight: 700;
-    letter-spacing: 0.01em;
+#floating-sticky-bar .floating-bar-inner {
+    max-width: none;
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
 }
 
-#floating-sticky-bar #floating-eis-btn {
-    gap: 8px;
-    height: auto;
-    padding: 8px 16px;
-    border-radius: 999px;
-    color: #fff;
-    font-weight: 600;
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+#floating-sticky-bar .day-separator-actions {
+    pointer-events: auto;
 }
 
-#floating-sticky-bar #floating-eis-btn:hover:not(:disabled) {
-    border: 0;
-    box-shadow: inset 0 1px 1px var(--glass-rim), inset 0 -1px 1px var(--glass-rim-soft), var(--glass-lift);
-    filter: brightness(1.06);
-}
-
-#floating-sticky-bar #floating-eis-btn:active:not(:disabled) {
-    transform: scale(0.97);
-    filter: brightness(0.96);
-}
-
-@media (max-width: 768px) {
+@media (max-width: 500px) {
     #floating-sticky-bar .floating-bar-inner {
-        justify-content: flex-start;
-        padding: 0 32px;
+        padding-right: 90px;
     }
 }
 
@@ -10767,7 +10699,7 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
 }
 
 /* --- The toolbar row --- */
-.list-panel .list-toolbar {
+.list-toolbar {
     display: flex;
     flex-wrap: nowrap;
     align-items: center;
@@ -10775,18 +10707,18 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
     margin: 0 0 14px;
 }
 
-.list-panel .list-toolbar .filter-search {
+.list-toolbar .filter-search {
     flex: 1 1 auto;
     min-width: 0;
 }
 
-.list-panel .list-toolbar .search > :is(i, svg) {
+.list-toolbar .search > :is(i, svg) {
     left: 15px;
     font-size: 0.875rem;
 }
 
-.list-panel .list-toolbar .filter-input,
-.dark-mode .list-panel .list-toolbar .filter-input {
+.list-toolbar .filter-input,
+.dark-mode .list-toolbar .filter-input {
     height: 42px;
     min-width: 0;
     padding: 0 16px 0 40px;
@@ -10842,8 +10774,8 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
     color: var(--primary-light);
 }
 
-.list-panel .icon-select .sort-dropdown,
-.dark-mode .list-panel .icon-select .sort-dropdown {
+.icon-select .sort-dropdown,
+.dark-mode .icon-select .sort-dropdown {
     height: 100%;
     max-width: 200px;
     margin: 0;
@@ -10861,7 +10793,7 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
     -webkit-appearance: none;
 }
 
-.list-panel .icon-select .sort-dropdown:disabled {
+.icon-select .sort-dropdown:disabled {
     cursor: default;
 }
 
@@ -10870,28 +10802,24 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
     pointer-events: none;
 }
 
-.dark-mode .list-panel .icon-select .sort-dropdown option {
-    background: #1c1c1e;
-}
-
 body:not(.has-programmes) .programme-filter-field {
     display: none;
 }
 
-body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     display: none;
 }
 
 /* Add (green) and ⋯ (quiet), as round as the fields beside them. */
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+.list-toolbar :is(.logs-actions, .database-actions) {
     flex-shrink: 0;
     flex-wrap: nowrap;
     gap: 8px;
     margin: 0;
 }
 
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
+.list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
+.list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
     height: 42px;
     min-width: 42px;
     padding: 0 18px 0 16px;
@@ -10901,9 +10829,9 @@ body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actio
     font-weight: 600;
 }
 
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn,
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn:hover:not(:disabled),
-.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn[aria-expanded="true"] {
+.list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn,
+.list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn:hover:not(:disabled),
+.list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn[aria-expanded="true"] {
     width: 42px;
     height: 42px;
     border-radius: 50%;
@@ -11092,8 +11020,8 @@ body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actio
         padding: 0;
     }
 
-    .list-panel .icon-select .sort-dropdown,
-    .dark-mode .list-panel .icon-select .sort-dropdown {
+    .icon-select .sort-dropdown,
+    .dark-mode .icon-select .sort-dropdown {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -11118,23 +11046,23 @@ body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actio
         padding: 10px 12px 14px;
     }
 
-    .list-panel .list-toolbar {
+    .list-toolbar {
         gap: 6px;
         margin-bottom: 8px;
     }
 
-    .list-panel .list-toolbar .filter-input,
-    .dark-mode .list-panel .list-toolbar .filter-input {
+    .list-toolbar .filter-input,
+    .dark-mode .list-toolbar .filter-input {
         padding-right: 12px;
         font-size: 1rem;
     }
 
-    .list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+    .list-toolbar :is(.logs-actions, .database-actions) {
         gap: 6px;
     }
 
-    .list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
-    .list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
+    .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
+    .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
         width: 42px;
         padding: 0;
     }
@@ -11464,10 +11392,6 @@ body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actio
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23b0bec5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
 
-.dark-mode .dialog select option {
-    background: #1c1c1e;
-}
-
 /* Dividers drawn with an inline light grey. */
 .dark-mode .dialog hr {
     border-top-color: rgba(255, 255, 255, 0.1) !important;
@@ -11701,4 +11625,655 @@ body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actio
     .scan-lock-stage > .card-tap {
         transition: none;
     }
+}
+
+/* =========================================================================
+   Card fields: Card ID, with the UID under More settings
+   ========================================================================= */
+.card-fields .card-uid-group[hidden] {
+    display: none;
+}
+
+.dialog .card-fields .field-with-action {
+    display: flex;
+    flex: 1 1 100%;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.dialog .card-fields .field-with-action > .form-control {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.dialog .card-fields .card-scan-btn,
+.dialog .card-fields .card-scan-btn:hover:not(:disabled) {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    padding: 0;
+    border-radius: 50%;
+}
+
+/* "More settings": a quiet disclosure; open or closed, as last left. */
+.more-settings {
+    margin: -4px 0 10px;
+}
+
+.more-settings > summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 2px;
+    color: #607d8b;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    list-style: none;
+    cursor: pointer;
+    user-select: none;
+}
+
+.more-settings > summary::-webkit-details-marker {
+    display: none;
+}
+
+.more-settings > summary::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    margin-right: 2px;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform 0.2s ease;
+}
+
+.more-settings[open] > summary::before {
+    transform: rotate(45deg) translate(-2px, -2px);
+}
+
+.more-settings > summary:hover {
+    color: var(--primary-color);
+}
+
+.dark-mode .more-settings > summary {
+    color: #90a4ae;
+}
+
+.more-settings .switch-row {
+    margin: 4px 0 0;
+}
+
+/* A student's cards, one box each, numbered. */
+.dialog .uid-edit-row {
+    margin: 0 0 12px;
+    padding: 12px 14px 4px;
+    border: 1px solid rgba(0, 0, 0, 0.07);
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.015);
+}
+
+.dark-mode .dialog .uid-edit-row {
+    border-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.uid-edit-row-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.uid-edit-row-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+/* =========================================================================
+   Courses under their programmes (only when someone has two or more)
+   ========================================================================= */
+.programme-heading-code {
+    color: var(--primary-color);
+    font-weight: 800;
+    letter-spacing: 0.02em;
+}
+
+.programme-heading-name {
+    color: #78909c;
+    font-weight: 500;
+}
+
+.dark-mode .programme-heading-code {
+    color: var(--primary-light);
+}
+
+.dark-mode .programme-heading-name {
+    color: #90a4ae;
+}
+
+#course-buttons-container.is-grouped {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.course-group-label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin: 0 6px 8px;
+    font-size: 0.8125rem;
+    line-height: 1.3;
+}
+
+.course-group-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 2px;
+}
+
+/* Settings → Courses: the active courses of each programme together. */
+.settings-programme-group + .settings-programme-group {
+    margin-top: 16px;
+}
+
+.settings-programme-label {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin: 4px 2px 8px;
+    font-size: 0.8125rem;
+}
+
+.settings-programme-label .settings-group-count {
+    margin-left: 2px;
+}
+
+.settings-row-title .programme-badge {
+    margin-right: 4px;
+    vertical-align: 1px;
+    font-size: 0.75rem;
+}
+
+/* Search lists (programmes, courses): group headings and bold codes. */
+.combo-list .combo-group {
+    position: sticky;
+    top: -6px;
+    z-index: 1;
+    padding: 10px 12px 4px;
+    background: inherit;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    list-style: none;
+    pointer-events: none;
+}
+
+.combo-list .combo-option strong {
+    font-weight: 700;
+}
+
+/* =========================================================================
+   One toolbar everywhere: Settings and Request History match the lists
+   ========================================================================= */
+.list-toolbar :is(.filter-search, .search) {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.list-toolbar .search input,
+.dark-mode .list-toolbar .search input {
+    box-sizing: border-box;
+    height: 42px;
+    min-width: 0;
+    padding: 0 16px 0 40px !important;
+    border-radius: 21px;
+    font-size: 0.9375rem;
+}
+
+.dark-mode .list-toolbar .search input {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.icon-select > select,
+.dark-mode .icon-select > select {
+    height: 100%;
+    max-width: 200px;
+    margin: 0;
+    padding: 0 36px 0 0;
+    border: 0;
+    border-radius: 0 21px 21px 0;
+    background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2378909c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    box-shadow: none;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.list-toolbar > :is(.btn-green, .btn-blue),
+.list-toolbar > :is(.btn-green, .btn-blue):hover:not(:disabled) {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 42px;
+    min-width: 42px;
+    margin: 0;
+    padding: 0 18px 0 16px;
+    border-radius: 21px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.settings-dialog .settings-controls-bar.list-toolbar {
+    gap: 8px;
+    margin: 0;
+    padding: 14px 22px;
+}
+
+.history-filter-bar.list-toolbar {
+    margin: 0 0 4px;
+    padding: 12px 0;
+}
+
+@media (max-width: 900px) {
+    .icon-select > select,
+    .dark-mode .icon-select > select {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        max-width: none;
+        padding: 0;
+        opacity: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .settings-dialog .settings-controls-bar.list-toolbar {
+        gap: 6px;
+        padding: 12px 16px;
+    }
+
+    .list-toolbar > :is(.btn-green, .btn-blue),
+    .list-toolbar > :is(.btn-green, .btn-blue):hover:not(:disabled) {
+        width: 42px;
+        padding: 0;
+    }
+
+    .list-toolbar > :is(.btn-green, .btn-blue) .btn-text {
+        display: none;
+    }
+}
+
+/* =========================================================================
+   Dropdown lists: padded, rounded options in the app's style where the
+   browser lets pages style them (Chromium's customizable select); elsewhere
+   the browser's own list opens. The fields keep their own chevrons.
+   ========================================================================= */
+@supports (appearance: base-select) {
+    /* Important: older rules turn selects' appearance off with more specific selectors. */
+    select:not([multiple], .combo-native),
+    select:not([multiple], .combo-native)::picker(select) {
+        appearance: base-select !important;
+    }
+
+    select:not([multiple], .combo-native)::picker-icon {
+        display: none;
+    }
+
+    select:not([multiple], .combo-native)::picker(select) {
+        box-sizing: border-box;
+        min-width: max(anchor-size(width), 180px);
+        max-height: min(360px, 60vh);
+        margin-block: 6px;
+        padding: 6px;
+        border: 1px solid rgba(0, 0, 0, 0.08);
+        border-radius: 16px;
+        background: var(--card-background, #fff);
+        color: var(--text-color);
+        box-shadow: 0 16px 40px -12px rgba(15, 23, 42, 0.32), 0 2px 8px rgba(15, 23, 42, 0.08);
+    }
+
+    .dark-mode select:not([multiple], .combo-native)::picker(select) {
+        border-color: rgba(255, 255, 255, 0.1);
+        background: #26262a;
+        box-shadow: 0 16px 40px -12px rgba(0, 0, 0, 0.8);
+    }
+
+    /* The chosen option's text, centred in the field as before. */
+    select:not([multiple], .combo-native) {
+        align-items: center;
+    }
+
+    select:not([multiple], .combo-native) option {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 36px;
+        padding: 7px 12px;
+        border-radius: 10px;
+        font-size: 0.9375rem;
+        line-height: 1.3;
+        cursor: pointer;
+    }
+
+    @media (pointer: coarse) {
+        select:not([multiple], .combo-native) option {
+            min-height: 44px;
+        }
+    }
+
+    select:not([multiple], .combo-native) option:hover,
+    select:not([multiple], .combo-native) option:focus-visible {
+        background: rgba(57, 73, 171, 0.08);
+        outline: none;
+    }
+
+    select:not([multiple], .combo-native) option:checked {
+        background: rgba(57, 73, 171, 0.1);
+        color: var(--primary-color);
+        font-weight: 600;
+    }
+
+    .dark-mode select:not([multiple], .combo-native) option:hover,
+    .dark-mode select:not([multiple], .combo-native) option:focus-visible {
+        background: rgba(121, 134, 203, 0.16);
+    }
+
+    .dark-mode select:not([multiple], .combo-native) option:checked {
+        background: rgba(121, 134, 203, 0.22);
+        color: #c5cae9;
+    }
+
+    select:not([multiple], .combo-native) option::checkmark {
+        order: 1;
+        margin-left: auto;
+        color: var(--primary-color);
+    }
+
+    select:not([multiple], .combo-native) option:disabled {
+        opacity: 0.45;
+        cursor: default;
+    }
+
+    select:not([multiple], .combo-native) optgroup {
+        padding-top: 4px;
+        color: #78909c;
+        font-size: 0.75rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+    }
+}
+
+/* =========================================================================
+   Tables: part of the panel they sit in. No band behind the headings and no
+   shadow; quiet small headings aligned with what is under them; hover only on
+   sortable headings, and only with a mouse.
+   ========================================================================= */
+.table-container,
+.dark-mode .table-container {
+    border: 0;
+    box-shadow: none;
+}
+
+:is(.logs-table, .database-table) th,
+.dark-mode :is(.logs-table, .database-table) th {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 0;
+    background: transparent;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.4;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+    cursor: default;
+    transition: color 0.15s ease;
+}
+
+.dark-mode :is(.logs-table, .database-table) th {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+    color: #90a4ae;
+}
+
+:is(.logs-table, .database-table) th.actions-header {
+    text-align: right;
+}
+
+:is(.logs-table, .database-table) th.sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+:is(.logs-table, .database-table) th :is(.sort-icon, svg.sort-icon) {
+    margin-left: 4px;
+    opacity: 0.35;
+    transition: opacity 0.15s ease;
+}
+
+/* The column the list is sorted by reads in the app's colour. */
+:is(.logs-table, .database-table) th.sortable:has(:is(.fa-sort-up, .fa-sort-down)) {
+    color: var(--primary-color);
+}
+
+:is(.logs-table, .database-table) th.sortable:has(:is(.fa-sort-up, .fa-sort-down)) .sort-icon {
+    opacity: 1;
+}
+
+:is(.logs-table, .database-table) th.sortable:hover,
+.dark-mode :is(.logs-table, .database-table) th.sortable:hover {
+    background: transparent;
+}
+
+@media (hover: hover) {
+    :is(.logs-table, .database-table) th.sortable:hover {
+        color: var(--primary-color);
+    }
+
+    :is(.logs-table, .database-table) th.sortable:hover .sort-icon {
+        opacity: 1;
+    }
+
+    .dark-mode :is(.logs-table, .database-table) th.sortable:hover {
+        color: var(--primary-light);
+    }
+}
+
+:is(.logs-table, .database-table) td,
+.dark-mode :is(.logs-table, .database-table) td {
+    padding: 12px 14px;
+    border-top: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 0;
+    vertical-align: middle;
+}
+
+.dark-mode :is(.logs-table, .database-table) td {
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+:is(.logs-table, .database-table) tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+:is(.logs-table, .database-table) tr:hover td,
+.dark-mode :is(.logs-table, .database-table) tr:hover td {
+    background-color: transparent;
+}
+
+@media (hover: hover) {
+    :is(.logs-table, .database-table) tbody tr:not(.day-separator):hover td {
+        background-color: rgba(57, 73, 171, 0.03);
+    }
+
+    .dark-mode :is(.logs-table, .database-table) tbody tr:not(.day-separator):hover td {
+        background-color: rgba(255, 255, 255, 0.03);
+    }
+}
+
+/* Content decides alignment and wrapping: dates, times, hours, IDs and badges
+   stay on one line; names and courses may wrap; actions sit at the right. */
+:is(.logs-table, .database-table) :is(.date-col, .date-cell, .times-cell, .id-cell, .programme-cell, .actions-cell, .reason-col) {
+    white-space: nowrap;
+}
+
+:is(.logs-table, .database-table) :is(.date-col, .date-cell, .id-cell) {
+    font-variant-numeric: tabular-nums;
+}
+
+:is(.logs-table, .database-table) .actions-cell {
+    width: 1%;
+    text-align: right;
+}
+
+.collapsible-module .database-table .person-cell .person-name {
+    font-weight: 600;
+}
+
+.collapsible-module .database-table .person-cell .person-email {
+    display: block;
+    color: #78909c;
+    font-size: 0.8125rem;
+}
+
+.collapsible-module .database-table .course-col {
+    min-width: 12rem;
+}
+
+.collapsible-module .database-table .date-col {
+    color: #546e7a;
+    font-size: 0.875rem;
+}
+
+.dark-mode .collapsible-module .database-table :is(.date-col, .person-email) {
+    color: #b0bec5;
+}
+
+/* A heading starts where its values start (Card IDs are left-aligned badges). */
+.database-table thead .uid-column {
+    text-align: left;
+}
+
+.collapsible-module .table-container {
+    min-height: 0;
+}
+
+.collapsible-module .database-table .cell-note {
+    display: block;
+    margin-top: 2px;
+    color: #90a4ae;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+/* Request panels on phones: each request is a short card instead of a wide
+   row: who, then the course (or card), then a line of details; actions at the
+   top right. */
+@media (max-width: 760px) {
+    .collapsible-module .database-table,
+    .collapsible-module .database-table tbody {
+        display: block;
+        min-width: 0;
+        width: 100%;
+    }
+
+    .collapsible-module .database-table thead {
+        display: none;
+    }
+
+    .collapsible-module .database-table tbody tr {
+        position: relative;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 12px;
+        padding: 12px 52px 12px 4px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .collapsible-module .database-table tbody tr:has(.decision-pair) {
+        padding-right: 84px;
+    }
+
+    .dark-mode .collapsible-module .database-table tbody tr {
+        border-bottom-color: rgba(255, 255, 255, 0.07);
+    }
+
+    .collapsible-module .database-table tbody tr:last-child {
+        border-bottom: 0;
+    }
+
+    .collapsible-module .database-table tbody td,
+    .dark-mode .collapsible-module .database-table tbody td {
+        display: block;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+    }
+
+    .collapsible-module .database-table tbody :is(.person-cell, .course-col) {
+        flex: 1 1 100%;
+        min-width: 0;
+        white-space: normal;
+    }
+
+    /* Programme, date, hours and reason share one line under the course. */
+    .collapsible-module .database-table tbody td:not(.person-cell, .course-col) {
+        order: 2;
+    }
+
+    .collapsible-module .database-table tbody .person-email {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .collapsible-module .database-table tbody .programme-cell:has(.cell-empty) {
+        display: none;
+    }
+
+    .collapsible-module .database-table tbody .actions-cell {
+        position: absolute;
+        top: 12px;
+        right: 4px;
+        width: auto;
+    }
+
+    .collapsible-module .database-table tbody :is(.date-col, .reason-col) {
+        color: #78909c;
+        font-size: 0.8125rem;
+    }
+
+    .collapsible-module .database-table tbody .date-col .cell-note {
+        display: inline;
+        margin: 0 0 0 4px;
+    }
+}
+
+/* The floating Add to EIS keeps its place beside the date (old absolute placement off). */
+#floating-sticky-bar #floating-eis-btn {
+    position: relative;
+    right: auto;
+    border-radius: 999px;
 }

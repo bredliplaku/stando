@@ -73,8 +73,11 @@ On the sign-in page, a student's card is greeted with their name, as a check
 that it works; a staff card signs in. The greeting needs the current
 `kiosk-login` function (see [Deploy the functions](#deploy-the-functions)).
 
-If the connection drops, pending attendance changes stay on that device.
-Reconnect and check the sync status to make sure they have been saved online.
+Changes and scans upload by themselves a couple of seconds after they are made;
+the status at the top says **Saving…**, then **Saved**. The refresh button on
+the Attendance and Students panels syncs everything at once. If the connection
+drops, changes stay on that device (**Saved offline**) and upload when it is
+back.
 
 ### Student list and exports
 
@@ -86,6 +89,12 @@ preview:
 
 - **Merge** adds new students and updates those with a matching card ID or email.
 - **Replace All** replaces the entire student list.
+
+A card is known by its **Card ID**, the number a scan shows. Its **UID** (the
+chip's own number, such as `b5:01:fa:ce`) is optional: under **More settings**,
+turn on **Use UID** to type or scan it, and the Card ID then follows it. Cards
+saved with a UID open with it on; turning it off and saving removes the UID and
+keeps the Card ID. The same applies to staff cards and card approvals.
 
 Lecturers can export attendance for backup or later import. For courses using
 EIS, **Add to EIS** copies a day's attendance; the
@@ -154,6 +163,13 @@ Students are linked to a programme, not to its spelling, so:
 - **Delete** a programme only to remove one made by mistake. If students are in
   it, you choose another programme and they move there first. Their cards and
   attendance are not affected.
+
+Courses can belong to a programme too: choose it in the course's settings.
+Wherever someone's courses span two or more programmes, Stando groups them by
+programme: the course buttons, **Settings → Courses** (with a Programme filter)
+and the course list of an absence request. Someone whose courses are all in one
+programme sees no grouping. This needs
+[supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql).
 
 ### Staff names and email signatures
 

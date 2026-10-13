@@ -120,7 +120,6 @@
         <div class="sk-app">
             <div class="sk-topbar">
                 <span class="sk-topbar-group sk-staff">
-                    <span class="sk sk-status-dot"></span>
                     <span class="sk sk-chip sk-chip-status"></span>
                 </span>
                 <span class="sk-topbar-group sk-topbar-end">
@@ -178,10 +177,8 @@
         </audio>
 
         <div class="sync-auth-container">
+            <!-- Changes upload by themselves; the chip says when they are saved. -->
             <div class="sync-container">
-                <button id="sync-btn" class="btn-blue btn-icon admin-only" style="display: none;">
-                    <i class="fa-solid fa-rotate"></i>
-                </button>
                 <div id="sync-status" class="sync-status offline" aria-live="polite">
                     <i class="fa-solid fa-circle"></i> <span id="sync-text">Offline</span>
                 </div>
@@ -294,7 +291,7 @@
                                     <th>Date</th>
                                     <th>Hours</th>
                                     <th>Reason</th>
-                                    <th class="actions-header">Actions</th>
+                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                             </thead>
                             <tbody id="absences-tbody"></tbody>
@@ -314,13 +311,11 @@
                         <table class="database-table">
                             <thead>
                                 <tr>
-                                    <th>Name</th>
+                                    <th>Student</th>
                                     <th class="programme-column">Programme</th>
                                     <th class="uid-column">Card ID</th>
-                                    <th>Email</th>
-                                    <th>Timestamp</th>
-                                    <th>Sent By</th>
-                                    <th class="actions-header">Actions</th>
+                                    <th>Sent</th>
+                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                             </thead>
                             <tbody id="registrations-tbody"></tbody>
