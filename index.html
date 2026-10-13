@@ -151,18 +151,13 @@
             </div>
             <span class="sk-scan sk-nfc sk-staff"><span class="sk sk-on-primary"></span></span>
             <div class="sk-module">
-                <div class="sk-module-header"><span class="sk sk-on-primary"></span></div>
+                <div class="sk-module-header"><span class="sk sk-module-title"></span><span class="sk sk-text sk-module-count"></span></div>
                 <div class="sk-module-body">
-                    <div class="sk-filter"><span class="sk sk-field"></span><span class="sk sk-field sk-select"></span></div>
-                    <div class="sk-count">
-                        <span class="sk sk-text"></span>
-                        <span class="sk-tools sk-staff">
-                            <span class="sk sk-tool"></span>
-                            <span class="sk sk-tool"></span>
-                            <span class="sk sk-tool"></span>
-                            <span class="sk sk-tool"></span>
-                            <span class="sk sk-tool sk-tool-more"></span>
-                        </span>
+                    <div class="sk-filter">
+                        <span class="sk sk-field"></span>
+                        <span class="sk sk-round sk-sort"></span>
+                        <span class="sk sk-round sk-add sk-staff"></span>
+                        <span class="sk sk-round sk-staff"></span>
                     </div>
                     <span class="sk sk-day"></span>
                     <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
@@ -321,7 +316,7 @@
                                 <tr>
                                     <th>Name</th>
                                     <th class="programme-column">Programme</th>
-                                    <th class="uid-column">UID</th>
+                                    <th class="uid-column">Card ID</th>
                                     <th>Email</th>
                                     <th>Timestamp</th>
                                     <th>Sent By</th>
@@ -359,57 +354,54 @@
 
         <!-- Scanner & History Tab -->
         <div id="scanner-tab" class="tab-content active">
-            <div class="module" id="scan-history-module">
-                <div class="module-header">
-                    <span class="module-title"><i class="fa-solid fa-clock-rotate-left"></i> Scan History</span>
-
+            <!-- One header line (title, count, refresh) and one toolbar line (search,
+                 sort, add, ⋯) above the list; the pages are below it. -->
+            <div class="module list-panel" id="scan-history-module">
+                <div class="module-header list-panel-head">
+                    <div class="list-panel-heading">
+                        <h2 class="module-title">Attendance</h2>
+                        <p class="list-panel-count logs-count" id="filtered-count" aria-live="polite">0 records</p>
+                    </div>
                     <div class="module-header-actions">
-                        <button id="scanner-refresh-btn" class="btn-icon refresh-btn" title="Refresh Logs">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                        </button>
+                        <button type="button" id="scanner-refresh-btn" class="btn-icon refresh-btn" title="Refresh"
+                            aria-label="Refresh attendance"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i></button>
                     </div>
                 </div>
                 <div class="module-content">
-                    <div class="filter-container">
+                    <div class="filter-container list-toolbar logs-header">
                         <div class="search filter-search">
                             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                             <input type="search" id="filter-input" class="filter-input"
-                                placeholder="Search name, card, date or session..." aria-label="Search attendance logs">
+                                placeholder="Search" title="Search by name, card, date, time or group"
+                                aria-label="Search attendance by name, card, date, time or group">
                         </div>
-                        <select id="sort-select" class="sort-dropdown" aria-label="Sort attendance logs">
-                            <option value="date-desc"> Date (Newest)</option>
-                            <option value="date-asc"> Date (Oldest)</option>
-                            <option value="name-asc"> Name (A-Z)</option>
-                            <option value="name-desc"> Name (Z-A)</option>
-                        </select>
-                    </div>
-
-                    <div class="logs-header">
-                        <div class="logs-count" aria-live="polite"><span id="filtered-count">0</span> logs found
-                        </div>
+                        <!-- On phones the select shows as an icon; tapping it opens the native list. -->
+                        <label class="icon-select" title="Sort">
+                            <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                            <select id="sort-select" class="sort-dropdown" aria-label="Sort attendance">
+                                <option value="date-desc">Newest first</option>
+                                <option value="date-asc">Oldest first</option>
+                                <option value="name-asc">Name (A–Z)</option>
+                                <option value="name-desc">Name (Z–A)</option>
+                            </select>
+                        </label>
                         <div class="logs-actions">
-                            <button type="button" onclick="toggleBulkMode()" class="btn-icon admin-only"
-                                style="display: none;" title="Select logs" aria-label="Select logs"><i
-                                    class="fa-solid fa-list-check" aria-hidden="true"></i><span
-                                    class="action-label">Select</span></button>
-                            <button type="button" id="import-btn" class="btn-blue btn-icon admin-only"
-                                style="display: none;" title="Import logs" aria-label="Import logs"><i
-                                    class="fa-solid fa-file-import" aria-hidden="true"></i><span
-                                    class="action-label">Import</span></button>
-                            <button type="button" id="export-btn" class="btn-blue btn-icon admin-only"
-                                style="display: none;" disabled title="Export logs" aria-label="Export logs"><i
-                                    class="fa-solid fa-file-export" aria-hidden="true"></i><span
-                                    class="action-label">Export</span></button>
                             <button type="button" id="add-log-btn" class="btn-green btn-icon admin-only"
-                                style="display: none;" title="Add log" aria-label="Add log"><i class="fa-solid fa-plus"
+                                style="display: none;" title="Add a record" aria-label="Add a record"><i class="fa-solid fa-plus"
                                     aria-hidden="true"></i><span class="action-label">Add</span></button>
                             <div class="row-menu toolbar-menu admin-only">
                                 <button type="button" class="row-menu-btn" aria-haspopup="menu" aria-expanded="false"
-                                    aria-label="More log actions" title="More actions"><i class="fa-solid fa-ellipsis"
+                                    aria-label="More attendance actions" title="More actions"><i class="fa-solid fa-ellipsis"
                                         aria-hidden="true"></i></button>
                                 <div class="row-menu-list" role="menu" hidden>
+                                    <button type="button" role="menuitem" id="select-logs-btn" onclick="toggleBulkMode()"><i
+                                            class="fa-solid fa-list-check" aria-hidden="true"></i>Select records</button>
+                                    <button type="button" role="menuitem" id="import-btn"><i
+                                            class="fa-solid fa-file-import" aria-hidden="true"></i>Import</button>
+                                    <button type="button" role="menuitem" id="export-btn" disabled><i
+                                            class="fa-solid fa-file-export" aria-hidden="true"></i>Export</button>
                                     <button type="button" role="menuitem" id="clear-btn" class="is-danger" disabled><i
-                                            class="fa-solid fa-trash" aria-hidden="true"></i>Delete all logs</button>
+                                            class="fa-solid fa-trash" aria-hidden="true"></i>Delete all records</button>
                                 </div>
                             </div>
                         </div>
@@ -419,33 +411,19 @@
                     <input type="file" id="import-input" accept=".json,application/json" style="display: none;">
                     <input type="file" id="excel-input" accept=".xlsx,.xls,.csv" style="display: none;">
 
-                    <!-- Pagination Controls for Logs -->
-                    <div id="logs-pagination" class="pagination-controls" style="display: none;">
-                        <button id="logs-prev-page" class="btn-icon pagination-btn" title="Previous Page">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
-                        <div id="logs-page-numbers" class="page-numbers"></div>
-                        <button id="logs-next-page" class="btn-icon pagination-btn" title="Next Page">
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                    </div>
-
                     <!-- Table container for horizontal scrolling -->
                     <div class="table-container">
                         <table class="logs-table">
                             <thead>
                                 <tr>
                                     <th class="sortable name-column" data-sort="name">
-                                        <i class="fa-solid fa-user"></i> Name <i class="sort-icon fa-solid fa-sort"></i>
+                                        Name <i class="sort-icon fa-solid fa-sort"></i>
                                     </th>
                                     <th class="sortable date-column" data-sort="date">
-                                        <i class="fa-regular fa-calendar-days"></i> Date <i
-                                            class="sort-icon fa-solid fa-sort-down"></i>
+                                        Date <i class="sort-icon fa-solid fa-sort-down"></i>
                                     </th>
-                                    <th>
-                                        <i class="fa-regular fa-clock"></i> Time
-                                    </th>
-                                    <th class="admin-only actions-header">Actions</th>
+                                    <th class="times-column">Time</th>
+                                    <th class="admin-only actions-header"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                             </thead>
                             <tbody id="logs-tbody">
@@ -461,6 +439,14 @@
                             the
                             history.</p>
                     </div>
+
+                    <div id="logs-pagination" class="pagination-controls" style="display: none;">
+                        <button type="button" id="logs-prev-page" class="btn-icon pagination-btn" title="Previous page"
+                            aria-label="Previous page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                        <div id="logs-page-numbers" class="page-numbers"></div>
+                        <button type="button" id="logs-next-page" class="btn-icon pagination-btn" title="Next page"
+                            aria-label="Next page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -468,58 +454,59 @@
         <!-- Database Tab -->
         <div id="database-tab" class="tab-content">
 
-            <div class="module" style="margin-top:20px">
-                <div class="module-header">
-                    <span class="module-title"><i class="fa-solid fa-list-ol"></i> UID Database</span>
+            <div class="module list-panel" id="students-module">
+                <div class="module-header list-panel-head">
+                    <div class="list-panel-heading">
+                        <h2 class="module-title">Students</h2>
+                        <p class="list-panel-count entry-count" id="db-entry-count" aria-live="polite">0 students</p>
+                    </div>
                     <div class="module-header-actions">
-                        <button id="database-refresh-btn" class="btn-icon refresh-btn" title="Refresh Database">
-                            <i class="fa-solid fa-arrows-rotate"></i>
-                        </button>
+                        <button type="button" id="database-refresh-btn" class="btn-icon refresh-btn" title="Refresh"
+                            aria-label="Refresh students"><i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i></button>
                     </div>
                 </div>
                 <div class="module-content">
-                    <div class="filter-container">
+                    <div class="filter-container list-toolbar database-controls">
                         <div class="search filter-search">
                             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                             <input type="search" id="db-filter-input" class="filter-input"
-                                placeholder="Search students..." aria-label="Search students">
+                                placeholder="Search" title="Search by name, Card ID, UID, email or programme"
+                                aria-label="Search students by name, Card ID, UID, email or programme">
                         </div>
-                        <select id="db-programme-filter" class="sort-dropdown programme-filter"
-                            aria-label="Filter students by programme">
-                            <option value="">All programmes</option>
-                        </select>
-                        <select id="db-sort-select" class="sort-dropdown" aria-label="Sort students">
-                            <option value="name-asc"> Name (A-Z)</option>
-                            <option value="name-desc"> Name (Z-A)</option>
-                            <option value="programme-asc" class="programme-option"> Programme (A-Z)</option>
-                            <option value="programme-desc" class="programme-option"> Programme (Z-A)</option>
-                            <option value="id-asc"> Card ID (Asc)</option>
-                            <option value="id-desc"> Card ID (Desc)</option>
-                            <option value="email-asc"> Email (A-Z)</option>
-                            <option value="email-desc"> Email (Z-A)</option>
-                        </select>
-                    </div>
-
-                    <div class="database-controls">
-                        <div class="entry-count"><span id="db-entry-count">0</span> registered students</div>
+                        <label class="icon-select programme-filter-field" title="Programme">
+                            <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                            <select id="db-programme-filter" class="sort-dropdown programme-filter"
+                                aria-label="Filter students by programme">
+                                <option value="">All programmes</option>
+                            </select>
+                        </label>
+                        <label class="icon-select" title="Sort">
+                            <i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i>
+                            <select id="db-sort-select" class="sort-dropdown" aria-label="Sort students">
+                                <option value="name-asc">Name (A–Z)</option>
+                                <option value="name-desc">Name (Z–A)</option>
+                                <option value="programme-asc" class="programme-option">Programme (A–Z)</option>
+                                <option value="programme-desc" class="programme-option">Programme (Z–A)</option>
+                                <option value="id-asc">Card ID (low–high)</option>
+                                <option value="id-desc">Card ID (high–low)</option>
+                                <option value="email-asc">Email (A–Z)</option>
+                                <option value="email-desc">Email (Z–A)</option>
+                            </select>
+                        </label>
                         <div class="database-actions">
-                            <button type="button" id="import-excel-btn" class="btn-blue btn-icon admin-only"
-                                style="display: none;" title="Import students" aria-label="Import students"><i
-                                    class="fa-solid fa-file-import" aria-hidden="true"></i><span
-                                    class="action-label">Import</span></button>
-                            <button type="button" id="export-excel-btn" class="btn-blue btn-icon admin-only"
-                                style="display: none;" title="Export students" aria-label="Export students"><i
-                                    class="fa-solid fa-file-export" aria-hidden="true"></i><span
-                                    class="action-label">Export</span></button>
                             <button type="button" id="add-entry-btn" class="btn-green btn-icon admin-only"
-                                style="display: none;" title="Add student" aria-label="Add student"><i
+                                style="display: none;" title="Add a student" aria-label="Add a student"><i
                                     class="fa-solid fa-plus" aria-hidden="true"></i><span
                                     class="action-label">Add</span></button>
                             <div class="row-menu toolbar-menu admin-only">
                                 <button type="button" class="row-menu-btn" aria-haspopup="menu" aria-expanded="false"
-                                    aria-label="More student list actions" title="More actions"><i
+                                    aria-label="More student actions" title="More actions"><i
                                         class="fa-solid fa-ellipsis" aria-hidden="true"></i></button>
                                 <div class="row-menu-list" role="menu" hidden>
+                                    <button type="button" role="menuitem" id="import-excel-btn"><i
+                                            class="fa-solid fa-file-import" aria-hidden="true"></i>Import</button>
+                                    <button type="button" role="menuitem" id="export-excel-btn"><i
+                                            class="fa-solid fa-file-export" aria-hidden="true"></i>Export</button>
                                     <button type="button" role="menuitem" id="clear-db-btn" class="is-danger"><i
                                             class="fa-solid fa-trash" aria-hidden="true"></i>Delete all
                                         students</button>
@@ -528,51 +515,43 @@
                         </div>
                     </div>
 
-                    <!-- Pagination Controls for Database -->
-                    <div id="db-pagination" class="pagination-controls" style="display: none;">
-                        <button id="db-prev-page" class="btn-icon pagination-btn" title="Previous Page">
-                            <i class="fa-solid fa-chevron-left"></i>
-                        </button>
-                        <div id="db-page-numbers" class="page-numbers"></div>
-                        <button id="db-next-page" class="btn-icon pagination-btn" title="Next Page">
-                            <i class="fa-solid fa-chevron-right"></i>
-                        </button>
-                    </div>
-
                     <div class="table-container">
                         <table class="database-table">
                             <thead>
                                 <tr>
-                                    <th class="sortable" data-sort="name">
-                                        <i class="fa-solid fa-user"></i> Name <i
-                                            class="sort-icon fa-solid fa-sort-up"></i>
+                                    <th class="sortable name-column" data-sort="name">
+                                        Name <i class="sort-icon fa-solid fa-sort-up"></i>
                                     </th>
                                     <th class="sortable id-column" data-sort="id">
-                                        <i class="fa-solid fa-id-card"></i> Card ID <i
-                                            class="sort-icon fa-solid fa-sort"></i>
+                                        Card ID <i class="sort-icon fa-solid fa-sort"></i>
                                     </th>
                                     <th class="sortable email-column" data-sort="email">
-                                        <i class="fa-solid fa-envelope"></i> Email <i
-                                            class="sort-icon fa-solid fa-sort"></i>
+                                        Email <i class="sort-icon fa-solid fa-sort"></i>
                                     </th>
                                     <th class="sortable programme-column" data-sort="programme">
-                                        <i class="fa-solid fa-graduation-cap"></i> Programme <i
-                                            class="sort-icon fa-solid fa-sort"></i>
+                                        Programme <i class="sort-icon fa-solid fa-sort"></i>
                                     </th>
-                                    <th class="admin-only actions-header" style="display: none;">Actions</th>
+                                    <th class="admin-only actions-header" style="display: none;"><span class="visually-hidden">Actions</span></th>
                                 </tr>
                             </thead>
                             <tbody id="database-tbody">
                             </tbody>
                         </table>
                         <div id="empty-database" class="empty-logs" style="display: none;">
-                            <i class="fa-solid fa-database"
+                            <i class="fa-solid fa-user-graduate"
                                 style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
-                            <p style="font-size: 1.1em; margin-bottom: 5px;">The database is empty.</p>
-                            <p style="font-size: 0.9em; color: #999;">Import an Excel or CSV student list, or add a new
-                                entry to get
-                                started.</p>
+                            <p style="font-size: 1.1em; margin-bottom: 5px;">No students yet.</p>
+                            <p style="font-size: 0.9em; color: #999;">Import an Excel or CSV student list, or add a
+                                student to get started.</p>
                         </div>
+                    </div>
+
+                    <div id="db-pagination" class="pagination-controls" style="display: none;">
+                        <button type="button" id="db-prev-page" class="btn-icon pagination-btn" title="Previous page"
+                            aria-label="Previous page"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                        <div id="db-page-numbers" class="page-numbers"></div>
+                        <button type="button" id="db-next-page" class="btn-icon pagination-btn" title="Next page"
+                            aria-label="Next page"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                     </div>
                 </div>
             </div>

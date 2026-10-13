@@ -52,7 +52,8 @@
         return candidate;
     }
 
-    const studentColumns = ['Name', 'Card ID', 'Email', 'Programme', 'Hardware UID'];
+    // "UID" is read back as the card's UID (detectStudentColumns: legacyUid).
+    const studentColumns = ['Name', 'Card ID', 'Email', 'Programme', 'UID'];
     // programmeCode(id) names a student's programme in the file.
     function studentExportRows(database, programmeCode = () => '') {
         return [studentColumns.slice(), ...Object.values(database).filter(student => !student.isStaff)

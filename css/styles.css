@@ -2119,11 +2119,12 @@
             background: linear-gradient(to right, rgba(92, 107, 192, 0.12), rgba(92, 107, 192, 0.04));
         }
 
-        /* The wrapper div that was missing its style */
+        /* Border-box: its padding (room for Add to EIS) must not widen the table. */
         .day-separator-content {
             display: flex;
             justify-content: center;
             align-items: center;
+            box-sizing: border-box;
             width: 100%;
             gap: 12px;
             position: relative;
@@ -4619,7 +4620,7 @@
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    padding: 12px 8px 12px 12px;
+    padding: 12px 16px 12px 12px;
     border: 1px solid rgba(0, 0, 0, 0.06);
     border-radius: 16px;
     background: rgba(255, 255, 255, 0.97);
@@ -4631,8 +4632,8 @@
     line-height: 1.4;
     text-align: left;
     pointer-events: auto;
-    /* Picked up and swiped away by hand: no text selection, no native drag. */
-    cursor: grab;
+    /* Tapped or swiped away by hand: no text selection, no native drag. */
+    cursor: pointer;
     touch-action: none;
     -webkit-user-select: none;
     user-select: none;
@@ -4696,31 +4697,6 @@
     display: none;
 }
 
-.in-page-notification .notification-close,
-.in-page-notification .notification-close:hover {
-    flex-shrink: 0;
-    display: grid;
-    place-items: center;
-    width: 28px;
-    height: 28px;
-    margin: 2px 0 0;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: transparent;
-    box-shadow: none;
-    color: #90a4ae;
-    font-size: 0.875rem;
-    cursor: pointer;
-    transform: none;
-    filter: none;
-}
-
-.in-page-notification .notification-close:hover {
-    background: rgba(0, 0, 0, 0.05);
-    color: #546e7a;
-}
-
 .in-page-notification-success { --toast-accent: #2e7d32; --toast-tint: rgba(76, 175, 80, 0.15); }
 .in-page-notification-warning { --toast-accent: #ef6c00; --toast-tint: rgba(251, 140, 0, 0.16); }
 .in-page-notification-error { --toast-accent: #c62828; --toast-tint: rgba(229, 57, 53, 0.13); border-color: rgba(229, 57, 53, 0.22); }
@@ -4742,11 +4718,6 @@
 
 .dark-mode .in-page-notification-message {
     color: #b0bec5;
-}
-
-.dark-mode .in-page-notification .notification-close:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #cfd8dc;
 }
 
 /* --- Top bar: the photo + name chip opens Settings or the profile --- */
@@ -6754,12 +6725,14 @@ body.signed-out #main-container {
     position: absolute;
     inset: -1px;
     z-index: -1;
-    border-radius: 12px;
-    border: 1px solid rgba(255, 255, 255, 0.65);
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), rgba(255, 255, 255, 0.04) 48%, rgba(255, 255, 255, 0.16)), rgba(255, 255, 255, 0.5);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-    backdrop-filter: blur(22px) saturate(160%);
-    box-shadow: 0 8px 24px -8px rgba(26, 35, 65, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    border-radius: 16px;
+    /* The liquid glass of the floating date (see "Liquid glass"), a little
+       more opaque so the fields on it stay easy to read. */
+    background: radial-gradient(120% 70% at 50% -10%, var(--glass-sheen), transparent 60%),
+        color-mix(in srgb, var(--glass-solid) 55%, transparent);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: inset 0 1px 1px var(--glass-rim), inset 0 -1px 1px var(--glass-rim-soft), var(--glass-lift);
     opacity: 0;
     pointer-events: none;
     transition: opacity 180ms ease, inset 180ms ease;
@@ -6768,12 +6741,6 @@ body.signed-out #main-container {
 .history-filter-bar.is-stuck::before {
     opacity: 1;
     inset: -1px -10px;
-}
-
-.dark-mode .history-filter-bar::before {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: linear-gradient(135deg, rgba(60, 60, 66, 0.55), rgba(28, 28, 30, 0.2) 48%, rgba(60, 60, 66, 0.3)), rgba(28, 28, 30, 0.6);
-    box-shadow: 0 8px 24px -8px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
 /* --- Settings lists: compact rows, not tables or grids --- */
@@ -9726,7 +9693,6 @@ html.scan-locked body {
     --sk-on-primary: rgba(255, 255, 255, 0.2);
     --sk-banner: linear-gradient(135deg, #3949ab, #1a237e);
     --sk-tab-active: rgba(0, 0, 0, 0.18);
-    --sk-module-head: #3949ab;
     --sk-primary: #3949ab;
     --sk-scan: #3949ab;
     --sk-divider: rgba(0, 0, 0, 0.08);
@@ -9752,7 +9718,6 @@ html.scan-locked body {
     --sk-on-primary: rgba(255, 255, 255, 0.14);
     --sk-banner: linear-gradient(135deg, #2c3e50, #1a237e);
     --sk-tab-active: rgba(0, 0, 0, 0.25);
-    --sk-module-head: #2c3e50;
     --sk-scan: #3949ab;
     --sk-divider: rgba(255, 255, 255, 0.1);
     --sk-shadow: none;
@@ -10172,71 +10137,56 @@ html:not([data-stando-nfc]) .sk-nfc {
     background: #1c1c1e;
 }
 
+/* The panel's header: its title and count, as in .list-panel. */
 .sk-module-header {
     display: flex;
-    align-items: center;
-    height: 64px;
-    padding: 0 30px;
-    background: var(--sk-module-head);
+    flex-direction: column;
+    gap: 10px;
+    padding: 24px 22px 6px;
 }
 
-.sk-module-header .sk {
-    width: 104px;
-    height: 16px;
+.sk-module-title {
+    width: 130px;
+    height: 20px;
+}
+
+.sk-module-count {
+    width: 76px;
 }
 
 .sk-module-body {
     --sk-delay: 0.44s;
     display: flex;
     flex-direction: column;
-    padding: 16px 15px 22px;
+    padding: 12px 20px 22px;
 }
 
+/* Search, sort, Add and ⋯ in one row. */
 .sk-filter {
     display: flex;
-    gap: 3px;
+    gap: 8px;
+    margin-bottom: 16px;
 }
 
 .sk-field {
     flex: 1;
-    height: 35px;
-    border-radius: 10px;
+    height: 42px;
+    border-radius: 21px;
 }
 
-.sk-select {
-    flex: 0 0 135px;
+.sk-round {
+    flex: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 21px;
 }
 
-.sk-count {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    min-height: 32px;
-    margin: 10px 0 22px;
+.sk-round.sk-sort {
+    width: 150px;
 }
 
-.sk-count > .sk-text {
-    width: 85px;
-}
-
-.sk-tools {
-    display: flex;
-    gap: 3px;
-}
-
-.sk-tool {
-    width: 72px;
-    height: 32px;
-    border-radius: 6px;
-}
-
-.sk-tool:first-child {
-    border-radius: 16px 6px 6px 16px;
-}
-
-.sk-tool-more {
-    width: 32px;
-    border-radius: 6px 16px 16px 6px;
+.sk-round.sk-add {
+    width: 92px;
 }
 
 .sk-day {
@@ -10360,18 +10310,22 @@ html:not([data-stando-nfc]) .sk-nfc {
         width: 130px;
     }
 
-    .sk-module-header .sk {
-        width: 104px;
-        height: 16px;
+    .sk-module-header {
+        padding: 20px 16px 4px;
     }
 
-    .sk-tool,
-    .sk-tool-more {
-        width: 32px;
+    .sk-module-body {
+        padding: 10px 12px 18px;
     }
 
-    .sk-tool:first-child {
-        width: 34px;
+    .sk-filter {
+        gap: 6px;
+        margin-bottom: 10px;
+    }
+
+    .sk-round.sk-sort,
+    .sk-round.sk-add {
+        width: 42px;
     }
 }
 
@@ -10576,59 +10530,1175 @@ body:not(.has-programmes) .programme-option {
     }
 }
 
-/* --- Floating date and Add to EIS: liquid glass, as Syllabase's floating toolbar.
-   Each control is glass in its own colour, blurring the logs scrolling under it;
-   the space between them lets clicks through. Light mode shows more colour so it
-   never reads washed-out; dark mode more shine. Without backdrop blur (or when
-   transparency is reduced) they stay solid. --- */
-#floating-sticky-bar {
-    --glass-mix: 84%;
-    --glass-shine: rgba(255, 255, 255, 0.16);
-    --glass-edge: rgba(255, 255, 255, 0.45);
-    --glass-shadow: rgba(26, 35, 65, 0.32);
+/* =========================================================================
+   Liquid glass
+   Clear glass, as Syllabase's floating toolbar: the content behind is blurred
+   and brightened rather than covered by colour, a light rim catches the top
+   left and bottom right edges, and a soft shadow lifts it off the page. A
+   control in a colour (Add to EIS) is glass tinted with that colour. Without
+   backdrop blur, or when transparency is reduced, it is a solid surface.
+   ========================================================================= */
+:root {
+    --glass-fill: rgba(255, 255, 255, 0.36);
+    --glass-solid: #fff;
+    --glass-text: var(--primary-color);
+    --glass-rim: rgba(255, 255, 255, 0.95);
+    --glass-rim-soft: rgba(255, 255, 255, 0.2);
+    --glass-sheen: rgba(255, 255, 255, 0.5);
+    --glass-lift: 0 0 0 0.5px rgba(26, 35, 65, 0.1), 0 2px 6px -2px rgba(26, 35, 65, 0.12), 0 14px 32px -14px rgba(26, 35, 65, 0.45);
+    --glass-blur: blur(8px) saturate(210%) brightness(1.06);
 }
 
-.dark-mode #floating-sticky-bar {
-    --glass-mix: 72%;
-    --glass-shine: rgba(255, 255, 255, 0.28);
-    --glass-edge: rgba(255, 255, 255, 0.16);
-    --glass-shadow: rgba(0, 0, 0, 0.55);
+.dark-mode {
+    --glass-fill: rgba(44, 44, 50, 0.48);
+    --glass-solid: #2a2a30;
+    --glass-text: #c5cae9;
+    --glass-rim: rgba(255, 255, 255, 0.4);
+    --glass-rim-soft: rgba(255, 255, 255, 0.06);
+    --glass-sheen: rgba(255, 255, 255, 0.1);
+    --glass-lift: 0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -12px rgba(0, 0, 0, 0.8);
+    --glass-blur: blur(12px) saturate(170%) brightness(0.9);
 }
 
+/* Positioned for its rim and sheen; Add to EIS is already placed absolutely. */
+.liquid-glass,
+#floating-sticky-bar #floating-date-badge {
+    position: relative;
+}
+
+.liquid-glass,
 #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
-    --glass-tint: var(--primary-color);
-    border: 1px solid var(--glass-edge);
-    background-color: var(--glass-tint);
-    color: #fff;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -6px var(--glass-shadow);
+    isolation: isolate;
+    border: 0;
+    background: var(--glass-solid);
+    color: var(--glass-text);
+    box-shadow: inset 0 1px 1px var(--glass-rim), inset 0 -1px 1px var(--glass-rim-soft), var(--glass-lift);
+}
+
+/* The rim: brightest at the top left, fading through the sides, catching
+   again at the bottom right. */
+.liquid-glass::before,
+#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn)::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    padding: 1px;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--glass-rim), var(--glass-rim-soft) 38%, transparent 55%, var(--glass-rim-soft) 75%, var(--glass-rim));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+}
+
+/* The sheen: light pooled in the upper half, as on a curved surface. */
+.liquid-glass::after,
+#floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn)::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background: radial-gradient(120% 70% at 50% -10%, var(--glass-sheen), transparent 60%);
+    pointer-events: none;
 }
 
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .liquid-glass,
     #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
-        background-color: color-mix(in srgb, var(--glass-tint) var(--glass-mix), transparent);
-        background-image: linear-gradient(180deg, var(--glass-shine), rgba(255, 255, 255, 0) 60%);
-        -webkit-backdrop-filter: blur(14px) saturate(180%);
-        backdrop-filter: blur(14px) saturate(180%);
+        background: var(--glass-fill);
+        -webkit-backdrop-filter: var(--glass-blur);
+        backdrop-filter: var(--glass-blur);
+    }
+
+    #floating-sticky-bar #floating-eis-btn {
+        background: color-mix(in srgb, var(--success-color) 62%, transparent);
     }
 }
 
+@media (prefers-reduced-transparency: reduce) {
+    .liquid-glass,
+    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
+        background: var(--glass-solid) !important;
+        -webkit-backdrop-filter: none !important;
+        backdrop-filter: none !important;
+    }
+}
+
+/* The floating day: the date in the app's colour on clear glass, aligned with
+   the list it labels. Add to EIS is green glass beside it on wide screens. */
+#floating-sticky-bar {
+    top: calc(10px + env(safe-area-inset-top, 0px));
+}
+
+#floating-sticky-bar #floating-date-badge {
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 999px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+#floating-sticky-bar #floating-eis-btn {
+    gap: 8px;
+    height: auto;
+    padding: 8px 16px;
+    border-radius: 999px;
+    color: #fff;
+    font-weight: 600;
+    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.15);
+}
+
 #floating-sticky-bar #floating-eis-btn:hover:not(:disabled) {
-    border-color: var(--glass-edge);
-    background-color: color-mix(in srgb, var(--glass-tint) var(--glass-mix), transparent);
-    box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.4), 0 6px 16px -6px var(--glass-shadow);
-    filter: brightness(1.08);
+    border: 0;
+    box-shadow: inset 0 1px 1px var(--glass-rim), inset 0 -1px 1px var(--glass-rim-soft), var(--glass-lift);
+    filter: brightness(1.06);
 }
 
 #floating-sticky-bar #floating-eis-btn:active:not(:disabled) {
     transform: scale(0.97);
-    filter: brightness(0.95);
+    filter: brightness(0.96);
 }
 
-@media (prefers-reduced-transparency: reduce) {
-    #floating-sticky-bar :is(#floating-date-badge, #floating-eis-btn) {
-        background-color: var(--glass-tint) !important;
-        background-image: none !important;
-        -webkit-backdrop-filter: none !important;
-        backdrop-filter: none !important;
+@media (max-width: 768px) {
+    #floating-sticky-bar .floating-bar-inner {
+        justify-content: flex-start;
+        padding: 0 32px;
+    }
+}
+
+/* =========================================================================
+   Attendance and Students panels
+   A light header (title, count, refresh) and one toolbar row: search, sort
+   (and programme), Add and ⋯ with Select, Import, Export and Delete all. The
+   pages sit under the list. Phones show sort and programme as icons that open
+   the native list; the list itself fits the screen without sideways scrolling.
+   ========================================================================= */
+.visually-hidden {
+    position: absolute !important;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* The Student List has no course: no course buttons, groups or scan button. */
+body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-controls, .scan-buttons) {
+    display: none !important;
+}
+
+.list-panel {
+    border-radius: 20px;
+    box-shadow: 0 1px 2px rgba(26, 35, 65, 0.06), 0 8px 24px -12px rgba(26, 35, 65, 0.18);
+}
+
+.dark-mode .list-panel {
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.list-panel > .list-panel-head,
+.dark-mode .list-panel > .list-panel-head {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px 20px 4px 22px;
+    background: transparent;
+    color: var(--text-color);
+}
+
+.list-panel-heading {
+    min-width: 0;
+}
+
+.list-panel .module-title {
+    display: block;
+    margin: 0;
+    font-size: 1.375rem;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
+}
+
+.list-panel .list-panel-count {
+    margin: 4px 0 0;
+    color: #78909c;
+    font-size: 0.875rem;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    white-space: normal;
+}
+
+.dark-mode .list-panel .list-panel-count {
+    color: #90a4ae;
+}
+
+.list-panel .module-header-actions .refresh-btn,
+.list-panel .module-header-actions .refresh-btn:hover:not(:disabled),
+.list-panel .module-header-actions .refresh-btn:active:not(:disabled) {
+    width: 40px;
+    height: 40px;
+    margin: -6px -8px 0 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #78909c;
+    box-shadow: none;
+    transform: none;
+}
+
+.list-panel .module-header-actions .refresh-btn:hover:not(:disabled) {
+    background: rgba(57, 73, 171, 0.08);
+    color: var(--primary-color);
+}
+
+.dark-mode .list-panel .module-header-actions .refresh-btn:hover:not(:disabled) {
+    background: rgba(121, 134, 203, 0.14);
+    color: var(--primary-light);
+}
+
+.list-panel > .module-content {
+    padding: 12px 20px 18px;
+}
+
+/* --- The toolbar row --- */
+.list-panel .list-toolbar {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 14px;
+}
+
+.list-panel .list-toolbar .filter-search {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.list-panel .list-toolbar .search > :is(i, svg) {
+    left: 15px;
+    font-size: 0.875rem;
+}
+
+.list-panel .list-toolbar .filter-input,
+.dark-mode .list-panel .list-toolbar .filter-input {
+    height: 42px;
+    min-width: 0;
+    padding: 0 16px 0 40px;
+    border-radius: 21px;
+    font-size: 0.9375rem;
+}
+
+/* A select with its icon: on wide screens the chosen option shows beside the
+   icon; on phones only the icon, and tapping it opens the list. */
+.icon-select {
+    position: relative;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 42px;
+    box-sizing: border-box;
+    padding: 0 0 0 14px;
+    border: 1px solid #e0e0e0;
+    border-radius: 21px;
+    background: var(--card-background);
+    color: #607d8b;
+    cursor: pointer;
+    transition: border-color 0.2s, background-color 0.2s, color 0.2s;
+}
+
+.icon-select > :is(i, svg) {
+    flex-shrink: 0;
+    font-size: 0.875rem;
+    pointer-events: none;
+}
+
+.icon-select:hover,
+.icon-select:focus-within {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.icon-select.is-active {
+    border-color: rgba(57, 73, 171, 0.35);
+    background: rgba(57, 73, 171, 0.08);
+    color: var(--primary-color);
+}
+
+.dark-mode .icon-select {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    color: #b0bec5;
+}
+
+.dark-mode .icon-select:is(:hover, :focus-within, .is-active) {
+    border-color: var(--primary-light);
+    color: var(--primary-light);
+}
+
+.list-panel .icon-select .sort-dropdown,
+.dark-mode .list-panel .icon-select .sort-dropdown {
+    height: 100%;
+    max-width: 200px;
+    margin: 0;
+    padding: 0 36px 0 0;
+    border: 0;
+    border-radius: 0 21px 21px 0;
+    background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%2378909c' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 14px center / 12px;
+    color: var(--text-color);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    box-shadow: none;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+}
+
+.list-panel .icon-select .sort-dropdown:disabled {
+    cursor: default;
+}
+
+.icon-select:has(.sort-dropdown:disabled) {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.dark-mode .list-panel .icon-select .sort-dropdown option {
+    background: #1c1c1e;
+}
+
+body:not(.has-programmes) .programme-filter-field {
+    display: none;
+}
+
+body:not(.is-admin) .list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+    display: none;
+}
+
+/* Add (green) and ⋯ (quiet), as round as the fields beside them. */
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    gap: 8px;
+    margin: 0;
+}
+
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
+    height: 42px;
+    min-width: 42px;
+    padding: 0 18px 0 16px;
+    gap: 8px;
+    border-radius: 21px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+}
+
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn,
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn:hover:not(:disabled),
+.list-panel .list-toolbar :is(.logs-actions, .database-actions) > .row-menu > .row-menu-btn[aria-expanded="true"] {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+}
+
+/* --- Pages, under the list --- */
+.list-panel .pagination-controls {
+    gap: 6px;
+    margin: 14px 0 0;
+    padding: 14px 0 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.07);
+    border-bottom: 0;
+}
+
+.dark-mode .list-panel .pagination-controls {
+    border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+.list-panel .pagination-controls :is(.pagination-btn, .page-btn) {
+    min-width: 38px;
+    height: 38px;
+    border-radius: 19px;
+}
+
+.list-panel .page-status {
+    display: none;
+    padding: 0 10px;
+    color: #607d8b;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.dark-mode .list-panel .page-status {
+    color: #b0bec5;
+}
+
+/* A day's heading row is a soft band in either theme. */
+.dark-mode .list-panel .logs-table tr.day-separator {
+    background-color: transparent;
+    border-top: 0;
+}
+
+/* --- Table headings: small, quiet, no fill --- */
+.list-panel :is(.logs-table, .database-table) th,
+.dark-mode .list-panel :is(.logs-table, .database-table) th {
+    padding: 10px 14px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    background: transparent;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.dark-mode .list-panel :is(.logs-table, .database-table) th {
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+    color: #90a4ae;
+}
+
+/* --- Students: columns as wide as their content; long e-mails end in "…" --- */
+#database-tab .database-table {
+    min-width: 0;
+    table-layout: auto;
+    border-collapse: separate;
+}
+
+#database-tab .database-table td {
+    padding: 12px 14px;
+    border-top: 0;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.dark-mode #database-tab .database-table td {
+    border-top: 0;
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+}
+
+#database-tab .database-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+@media (min-width: 761px) {
+    #database-tab .database-table :is(.id-column, .id-cell, .programme-column, .programme-cell, .actions-header, .actions-cell) {
+        width: 1%;
+    }
+}
+
+#database-tab .database-table .name-cell {
+    font-weight: 600;
+}
+
+#database-tab .database-table .email-cell {
+    color: #546e7a;
+}
+
+.dark-mode #database-tab .database-table .email-cell {
+    color: #b0bec5;
+}
+
+#database-tab .database-table .email-cell .cell-text {
+    display: block;
+    max-width: 34ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#database-tab .database-table .id-cell {
+    font-variant-numeric: tabular-nums;
+}
+
+.card-id-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 6px;
+    background: #e3f2fd;
+    color: #1565c0;
+    font-family: 'Google Sans Code', ui-monospace, monospace;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+
+.card-id-badge + .card-id-badge {
+    margin-left: 4px;
+}
+
+.dark-mode .card-id-badge {
+    background: rgba(100, 181, 246, 0.14);
+    color: #90caf9;
+}
+
+.cell-empty {
+    opacity: 0.4;
+}
+
+.cell-sub {
+    display: block;
+    margin-top: 3px;
+    color: #78909c;
+    font-family: 'Google Sans Code', ui-monospace, monospace;
+    font-size: 0.75rem;
+    white-space: nowrap;
+}
+
+/* Narrower windows: tighter cells, names and e-mails end in "…", Edit is an icon. */
+@media (max-width: 1000px) {
+    #database-tab .database-table :is(th, td) {
+        padding-left: 10px;
+        padding-right: 10px;
+    }
+
+    #database-tab .database-table .name-cell .cell-text {
+        display: block;
+        max-width: 20ch;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    #database-tab .database-table .email-cell .cell-text {
+        max-width: 22ch;
+    }
+
+    #database-tab .database-table .actions-cell .row-edit-btn {
+        width: 32px;
+        padding: 0;
+    }
+
+    #database-tab .database-table .actions-cell .row-edit-btn span {
+        display: none;
+    }
+}
+
+/* Sort and programme as icons; the invisible select over each still opens
+   the native list. */
+@media (max-width: 900px) {
+    .icon-select {
+        justify-content: center;
+        width: 42px;
+        padding: 0;
+    }
+
+    .list-panel .icon-select .sort-dropdown,
+    .dark-mode .list-panel .icon-select .sort-dropdown {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        max-width: none;
+        padding: 0;
+        opacity: 0;
+    }
+}
+
+/* --- Phones and narrow windows --- */
+@media (max-width: 768px) {
+    .list-panel > .list-panel-head,
+    .dark-mode .list-panel > .list-panel-head {
+        padding: 16px 14px 2px 16px;
+    }
+
+    .list-panel .module-title {
+        font-size: 1.25rem;
+    }
+
+    .list-panel > .module-content {
+        padding: 10px 12px 14px;
+    }
+
+    .list-panel .list-toolbar {
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .list-panel .list-toolbar .filter-input,
+    .dark-mode .list-panel .list-toolbar .filter-input {
+        padding-right: 12px;
+        font-size: 1rem;
+    }
+
+    .list-panel .list-toolbar :is(.logs-actions, .database-actions) {
+        gap: 6px;
+    }
+
+    .list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon,
+    .list-panel .list-toolbar :is(.logs-actions, .database-actions) > .btn-icon:hover:not(:disabled) {
+        width: 42px;
+        padding: 0;
+    }
+
+    .list-panel .pagination-controls .page-numbers > .page-btn {
+        display: none;
+    }
+
+    .list-panel .page-status {
+        display: inline;
+    }
+}
+
+/* Lists as two-line rows; the headings go (sort with the toolbar). */
+@media (max-width: 760px) {
+    #scanner-tab .logs-table,
+    #database-tab .database-table {
+        display: block;
+        min-width: 0;
+        width: 100%;
+    }
+
+    #scanner-tab .logs-table thead,
+    #database-tab .database-table thead {
+        display: none;
+    }
+
+    #scanner-tab .logs-table tbody,
+    #database-tab .database-table tbody {
+        display: block;
+    }
+
+    /* Students: name and programme, then e-mail and Card ID; Edit and ⋯ at the end. */
+    #database-tab .database-table tbody tr {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas: "name programme actions" "email id actions";
+        align-items: center;
+        column-gap: 10px;
+        row-gap: 3px;
+        padding: 11px 2px 11px 4px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .dark-mode #database-tab .database-table tbody tr {
+        border-bottom-color: rgba(255, 255, 255, 0.07);
+    }
+
+    #database-tab .database-table tbody tr:last-child {
+        border-bottom: 0;
+    }
+
+    #database-tab .database-table tbody td,
+    .dark-mode #database-tab .database-table tbody td {
+        display: block;
+        width: auto;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    #database-tab .database-table .cell-text {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #database-tab .database-table .name-cell { grid-area: name; }
+
+    #database-tab .database-table .email-cell {
+        grid-area: email;
+        font-size: 0.8125rem;
+    }
+
+    #database-tab .database-table .email-cell .cell-text {
+        max-width: none;
+    }
+
+    #database-tab .database-table .programme-cell {
+        grid-area: programme;
+        justify-self: end;
+    }
+
+    #database-tab .database-table .id-cell {
+        grid-area: id;
+        justify-self: end;
+    }
+
+    #database-tab .database-table .id-cell .card-id-badge {
+        padding: 0;
+        background: transparent;
+        color: #78909c;
+        font-size: 0.75rem;
+    }
+
+    .dark-mode #database-tab .database-table .id-cell .card-id-badge {
+        color: #90a4ae;
+    }
+
+    #database-tab .database-table .actions-cell {
+        grid-area: actions;
+    }
+
+    /* Attendance: the name (with the date under it when sorted by name), the
+       times beside it, then Edit and ⋯. */
+    #scanner-tab .logs-table tbody tr:not(.day-separator) {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas: "name times actions" "date times actions";
+        align-items: center;
+        column-gap: 10px;
+        padding: 10px 2px 10px 4px;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .dark-mode #scanner-tab .logs-table tbody tr:not(.day-separator) {
+        border-bottom-color: rgba(255, 255, 255, 0.07);
+    }
+
+    #scanner-tab .logs-table tbody tr:last-child {
+        border-bottom: 0;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator) {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+        grid-template-areas: "select name times actions" "select date times actions";
+    }
+
+    /* Under a day's heading the date is not repeated: one line, centred. */
+    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
+        grid-template-areas: "name times actions";
+    }
+
+    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody .name-cell {
+        align-self: center;
+    }
+
+    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
+        grid-template-areas: "select name times actions";
+    }
+
+    #scanner-tab .logs-table tbody tr:not(.day-separator) > td,
+    .dark-mode #scanner-tab .logs-table tbody tr:not(.day-separator) > td {
+        display: block;
+        min-width: 0;
+        padding: 0;
+        border: 0;
+        background: transparent;
+    }
+
+    #scanner-tab .logs-table tbody .select-column { grid-area: select; }
+
+    #scanner-tab .logs-table tbody .name-cell {
+        grid-area: name;
+        align-self: end;
+        font-weight: 600;
+        white-space: normal;
+        overflow-wrap: anywhere;
+        line-height: 1.3;
+    }
+
+    #scanner-tab .logs-table tbody .date-cell {
+        grid-area: date;
+        align-self: start;
+        margin-top: 2px;
+        color: #78909c;
+        font-size: 0.8125rem;
+        text-align: left;
+    }
+
+    #scanner-tab .logs-table tbody .times-cell { grid-area: times; }
+    #scanner-tab .logs-table tbody .actions-cell { grid-area: actions; }
+
+    #scanner-tab .logs-table .cat-label {
+        width: auto;
+        min-width: 44px;
+        margin-right: 6px;
+    }
+
+    #scanner-tab .logs-table tr.day-separator {
+        display: block;
+    }
+
+    #scanner-tab .logs-table tr.day-separator td {
+        display: block;
+        padding: 10px 4px;
+        border-radius: 12px;
+    }
+
+    #scanner-tab .logs-table .day-separator-content {
+        justify-content: flex-start;
+        gap: 10px;
+    }
+
+    #scanner-tab .logs-table .day-separator-checkbox {
+        position: static;
+        flex: none;
+        margin: 0 4px 0 8px;
+    }
+
+    /* Selecting: the "select all" box above the list. */
+    #scanner-tab .logs-table.bulk-mode thead {
+        display: block;
+    }
+
+    #scanner-tab .logs-table.bulk-mode thead tr {
+        display: flex;
+    }
+
+    #scanner-tab .logs-table.bulk-mode thead th:not(.select-column-header) {
+        display: none !important;
+    }
+
+    #scanner-tab .logs-table.bulk-mode thead .select-column-header {
+        display: flex !important;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 4px 10px;
+        border: 0;
+    }
+
+    #scanner-tab .logs-table.bulk-mode thead .select-column-header::after {
+        content: 'Select all';
+        letter-spacing: 0.04em;
+    }
+
+    #scanner-tab .logs-table tr.skeleton-row {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 4px;
+    }
+
+    #scanner-tab .logs-table tr.skeleton-row > td {
+        display: block;
+        flex: 1;
+        padding: 0;
+        border: 0;
+    }
+}
+
+/* =========================================================================
+   Edit Log Entry: one line per time, with the time, its group and delete
+   ========================================================================= */
+.dialog .timestamp-edit-group {
+    margin: 0 0 14px;
+}
+
+.dialog .timestamp-label {
+    display: block;
+    margin: 0 0 6px;
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.dark-mode .dialog .timestamp-label {
+    color: #90a4ae;
+}
+
+.dialog .timestamp-fields {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dialog .timestamp-fields > .timestamp-time {
+    flex: 1 1 0;
+    min-width: 0;
+}
+
+.dialog .timestamp-fields > .timestamp-session {
+    flex: 1.2 1 0;
+    min-width: 0;
+}
+
+.dialog .timestamp-fields > .timestamp-session[hidden] {
+    display: none;
+}
+
+.dialog .timestamp-fields > .delete-time-btn,
+.dialog .timestamp-fields > .delete-time-btn:hover:not(:disabled) {
+    flex: none;
+    display: inline-grid;
+    place-items: center;
+    width: 42px;
+    height: 42px;
+    margin: 0;
+    padding: 0;
+    border: 1px solid rgba(229, 57, 53, 0.25);
+    border-radius: 50%;
+    background: rgba(229, 57, 53, 0.08);
+    color: #c62828;
+    box-shadow: none;
+    font-size: 0.9375rem;
+    transform: none;
+}
+
+.dialog .timestamp-fields > .delete-time-btn:hover:not(:disabled) {
+    background: rgba(229, 57, 53, 0.16);
+}
+
+.dark-mode .dialog .timestamp-fields > .delete-time-btn {
+    border-color: rgba(239, 154, 154, 0.3);
+    background: rgba(239, 154, 154, 0.12);
+    color: #ef9a9a;
+}
+
+/* Dialog selects: the chevron sits inside the rounded field, clear of its curve. */
+.dialog select:where(:not([multiple], .settings-sort-select, .sort-dropdown)) {
+    padding-right: 40px !important;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23607d8b' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 16px center;
+    background-size: 12px;
+    appearance: none;
+    -webkit-appearance: none;
+    cursor: pointer;
+}
+
+.dark-mode .dialog select:where(:not([multiple], .settings-sort-select, .sort-dropdown)) {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23b0bec5' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+
+.dark-mode .dialog select option {
+    background: #1c1c1e;
+}
+
+/* Dividers drawn with an inline light grey. */
+.dark-mode .dialog hr {
+    border-top-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+/* A card being read in a dialog: the illustration, then one centred pill. */
+.nfc-input-status {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: fit-content;
+    max-width: 100%;
+    box-sizing: border-box;
+    margin: 6px auto 4px;
+    padding: 9px 16px;
+    border-radius: 999px;
+    background: rgba(57, 73, 171, 0.08);
+    color: var(--primary-color);
+    font-size: 0.9375rem;
+    font-weight: 600;
+    line-height: 1.2;
+}
+
+.nfc-input-status > :is(i, svg) {
+    flex-shrink: 0;
+    font-size: 0.95em;
+}
+
+.nfc-input-wait {
+    padding-bottom: 8px;
+}
+
+.nfc-input-status.is-waiting > :is(i, svg) {
+    animation: reg-pulse 1.4s ease-in-out infinite;
+}
+
+.nfc-input-status.is-success {
+    background: rgba(76, 175, 80, 0.12);
+    color: #2e7d32;
+}
+
+.nfc-input-status.is-error {
+    background: rgba(229, 57, 53, 0.08);
+    color: #c62828;
+}
+
+.dark-mode .nfc-input-status {
+    background: rgba(121, 134, 203, 0.16);
+    color: #c5cae9;
+}
+
+.dark-mode .nfc-input-status.is-success {
+    background: rgba(129, 199, 132, 0.16);
+    color: #a5d6a7;
+}
+
+.dark-mode .nfc-input-status.is-error {
+    background: rgba(239, 83, 80, 0.14);
+    color: #ef9a9a;
+}
+
+/* =========================================================================
+   Dialogs open without flicker
+   A backdrop fades in with its blur already set (animating the blur flickers
+   on phones). A dialog opened over another dims it a little and does not blur
+   it again. On phones each sheet slides up from the bottom instead of fading,
+   so two sheets are never seen through each other.
+   ========================================================================= */
+/* The dim and blur are a layer of their own, so fading them in never fades
+   the dialog on top of them. */
+.dialog-backdrop {
+    background-color: transparent;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    animation: none;
+}
+
+.dialog-backdrop::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: rgba(0, 0, 0, 0.5);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    animation: backdrop-in 0.2s ease-out backwards;
+    pointer-events: none;
+}
+
+@keyframes backdrop-in {
+    from { opacity: 0; }
+}
+
+.dialog-backdrop ~ .dialog-backdrop:not(.confirmation-backdrop)::before {
+    background-color: rgba(0, 0, 0, 0.28);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+}
+
+@media (max-width: 768px) {
+    .dialog {
+        animation: sheet-up 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+    }
+
+    /* Settings fills the screen, so its lists have room; the website download
+       is for computers. */
+    .settings-dialog {
+        height: calc(100vh - 12px);
+        height: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+    }
+
+    .settings-dialog .website-download {
+        display: none;
+    }
+}
+
+@keyframes sheet-up {
+    from { transform: translateY(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .dialog-backdrop::before {
+        animation: none !important;
+    }
+}
+
+/* =========================================================================
+   Lock screen: the course, and the latest name, large
+   ========================================================================= */
+.scan-lock-course .scan-lock-course-name {
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.9375rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.scan-lock-course .scan-lock-course-code {
+    overflow: visible;
+    font-weight: 800;
+}
+
+.scan-lock-course .scan-lock-course-title {
+    font-weight: 500;
+    opacity: 0.8;
+}
+
+.scan-lock-course .scan-lock-course-title:empty {
+    display: none;
+}
+
+/* The name replaces the tap illustration while it shows, at the same height,
+   so nothing below moves. */
+.scan-lock-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 100%;
+}
+
+.scan-lock-stage > .card-tap {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.scan-lock-stage.has-result > .card-tap {
+    opacity: 0;
+    transform: scale(0.92);
+}
+
+.scan-lock .scan-lock-result {
+    position: absolute;
+    inset: 0;
+    height: auto;
+    margin: 0;
+    pointer-events: none;
+}
+
+.scan-lock .scan-lock-result-item {
+    flex-direction: column;
+    gap: 10px;
+    padding: 0 4px;
+    color: var(--lock-text);
+    font-size: 1rem;
+}
+
+.scan-lock .scan-lock-result-name {
+    display: -webkit-box;
+    max-width: 100%;
+    overflow: hidden;
+    font-size: clamp(2.1rem, 10vw, 3.25rem);
+    font-weight: 750;
+    letter-spacing: -0.015em;
+    line-height: 1.08;
+    text-align: center;
+    text-overflow: ellipsis;
+    white-space: normal;
+    text-wrap: balance;
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+.scan-lock .scan-lock-result-item.is-unknown .scan-lock-result-name {
+    color: var(--lock-unknown);
+    font-variant-numeric: tabular-nums;
+}
+
+.scan-lock-result-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 14px;
+    border-radius: 999px;
+    background: var(--lock-ok-bg);
+    color: var(--lock-ok);
+    font-size: 1rem;
+    font-weight: 700;
+}
+
+.scan-lock-result-item.is-unknown .scan-lock-result-note {
+    background: var(--lock-unknown-bg);
+    color: var(--lock-unknown);
+}
+
+.scan-lock-result-note > :is(i, svg) {
+    font-size: 0.95em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .scan-lock-stage > .card-tap {
+        transition: none;
     }
 }

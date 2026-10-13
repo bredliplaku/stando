@@ -1063,9 +1063,8 @@ function renderTableSkeletons() {
     }
     tbody.innerHTML = html;
 
-    // Also update the count to "..."
     const countEl = document.getElementById('filtered-count');
-    if (countEl) countEl.textContent = '...';
+    if (countEl) countEl.textContent = 'Loading…';
 }
 
 /**
@@ -1511,21 +1510,14 @@ function setupEventListeners() {
                 return; // Only global admins can access database tab
             }
 
-            // Hide or show the course buttons based on the selected tab
-            if (courseButtons) {
-                const sessionControls = document.getElementById('session-controls');
-
-                if (tabId === 'database-tab') {
-                    courseButtons.style.display = 'none';
-                    if (sessionControls) sessionControls.style.display = 'none'; // <--- HIDE
-                } else {
-                    courseButtons.style.display = isSignedIn ? 'flex' : 'none';
-                    // Only show session controls if a course is selected and has sections
-                    if (sessionControls && currentCourse && courseInfoMap[currentCourse]?.availableSections) {
-                        // Re-trigger render logic to decide if it should be visible
-                        renderSessionControls(currentCourse);
-                    }
-                }
+            // The Student List has no course: its class hides the course buttons,
+            // groups and scan button (see the stylesheet), and scanning stops.
+            document.body.classList.toggle('on-student-list', tabId === 'database-tab');
+            if (tabId === 'database-tab') {
+                if (isScanning) stopScanning();
+            } else if (courseButtons) {
+                courseButtons.style.display = isSignedIn ? 'flex' : 'none';
+                if (currentCourse) renderSessionControls(currentCourse);
             }
 
             // Update the active state on the tab buttons
@@ -3762,12 +3754,27 @@ function showMainContent() {
     processPendingNotifications();
 }
 
-function handleRouting() {
+// Leaves the address on a course without adding a history entry, so Back never
+// returns to a link that only redirects again.
+function replaceRouteCourse(course) {
+    history.replaceState(null, '', window.location.pathname + window.location.search + (course ? '#' + encodeURIComponent(course) : ''));
+}
+
+// event is the hashchange (Back, Forward, an edited address); without one, this
+// is the address the page opened with.
+function handleRouting(event) {
     if (isInitializing) {
         return;
     }
 
     const hash = getRouteCourse();
+    const fallbackCourse = () => currentCourse || (availableCourses.length > 0 ? availableCourses[0] : '');
+
+    // Locked, the course stays the one the lock protects; Back does not change it.
+    if (isScanLockScreenShown()) {
+        if (hash !== currentCourse) replaceRouteCourse(currentCourse);
+        return;
+    }
 
     // If no hash, go to default course
     if (!hash) {
@@ -3825,21 +3832,17 @@ function handleRouting() {
     }
 
     // Case 3: Is it an unauthorized course for a non-Global Admin?
-    if (!isGlobalAdmin && courseInfoMap[hash]) {
-        console.warn('Access denied to course:', hash);
-        showNotification('error', 'Access Denied', 'You do not have access to this course.');
-        // Redirect to current (or default) course
-        window.location.hash = currentCourse || (availableCourses.length > 0 ? availableCourses[0] : '');
-        return;
-    }
-
     // Case 4: The course doesn't exist at all (not in the full map).
-    if (!courseInfoMap[hash]) {
-        console.warn('Course not found:', hash);
-        showNotification('error', 'Not Found', 'The course you tried to access does not exist.');
-        // Redirect to current (or default) course
-        window.location.hash = currentCourse || (availableCourses.length > 0 ? availableCourses[0] : '');
-        return;
+    // Either way the address goes back to the course on screen. Only a link the
+    // page opened with is reported; going Back to an old address is quiet.
+    const denied = !!courseInfoMap[hash];
+    console.warn(denied ? 'Access denied to course:' : 'Course not found:', hash);
+    const course = fallbackCourse();
+    replaceRouteCourse(course);
+    if (course && course !== currentCourse) handleCourseChange(course);
+    if (!event) {
+        showNotification(denied ? 'error' : 'warning', denied ? 'Access Denied' : 'Course Not Found',
+            denied ? 'You do not have access to this course.' : 'That link is for a course that no longer exists.');
     }
 }
 
@@ -6501,12 +6504,10 @@ function renderRegistrationsTable(registrations) {
         const isHex = rawUid.includes(':') || /^[0-9A-Fa-f]{8}$/.test(rawUid);
         const hexUid = isHex ? rawUid : (convertExternalIdToUid(rawUid) || rawUid);
         const decId = isHex ? (convertUidToExternalId(rawUid) || rawUid) : rawUid;
+        // The Card ID, with the card's UID under it.
         const uidCellDisplay = (hexUid && decId && hexUid !== decId)
-            ? `<div style="display:flex; flex-direction:column; gap:2px;">
-                 <span><span class="uid-badge">${escapeHtml(hexUid)}</span></span>
-                 <span style="font-size:0.85em; opacity:0.75; font-family:monospace;"><i class="fa-solid fa-id-card" style="font-size:0.85em; opacity:0.6; margin-right:3px;"></i>${escapeHtml(decId)}</span>
-               </div>`
-            : `<span class="uid-badge">${escapeHtml(hexUid || reg.uid || 'N/A')}</span>`;
+            ? `<span class="card-id-badge">${escapeHtml(decId)}</span><small class="cell-sub" title="UID">UID ${escapeHtml(hexUid)}</small>`
+            : `<span class="card-id-badge">${escapeHtml(hexUid || reg.uid || 'N/A')}</span>`;
 
         row.innerHTML = `
             <td>${escapeHtml(reg.name) || 'N/A'}</td>
@@ -8600,7 +8601,7 @@ function startNfcForInputDialog(inputElement, statusContainer, scanButton, cardL
     }
 
     statusContainer.style.minHeight = '48px';
-    statusContainer.innerHTML = `<div class="nfc-input-wait">${cardTapAnimationHtml({ label: cardLabel })}<div class="sync-status syncing" style="justify-content: center; padding: 4px 0 12px; font-size: 1em;"><i class="fa-solid fa-wifi"></i> <span>Ready to Scan...</span></div></div>`;
+    statusContainer.innerHTML = `<div class="nfc-input-wait">${cardTapAnimationHtml({ label: cardLabel })}<div class="nfc-input-status is-waiting" role="status"><i class="fa-solid fa-wifi" aria-hidden="true"></i><span>Ready to scan</span></div></div>`;
     // It sits below the fields; bring it into view so the hint is seen.
     requestAnimationFrame(() => statusContainer.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
 
@@ -8625,7 +8626,7 @@ function startNfcForInputDialog(inputElement, statusContainer, scanButton, cardL
             inputElement.dispatchEvent(new Event('input', { bubbles: true }));
             inputElement.dataset.hardwareUid = serialNumber;
             playSound(true);
-            statusContainer.innerHTML = `<div class="sync-status success" style="justify-content: center; padding: 15px 0; font-size: 1em;"><i class="fa-solid fa-circle-check"></i> <span>Card Scanned!</span></div>`;
+            statusContainer.innerHTML = `<div class="nfc-input-status is-success" role="status"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Card scanned</span></div>`;
 
             if (scanButton) {
                 scanButton.disabled = true; // Deactivate the button
@@ -8641,7 +8642,7 @@ function startNfcForInputDialog(inputElement, statusContainer, scanButton, cardL
         };
     }).catch(err => {
         if (err.name !== 'AbortError') {
-            statusContainer.innerHTML = `<div class="sync-status error" style="justify-content: center; padding: 15px 0; font-size: 1em;"><i class="fa-solid fa-circle-xmark"></i> <span>Scan failed. Is NFC on?</span></div>`;
+            statusContainer.innerHTML = `<div class="nfc-input-status is-error" role="status"><i class="fa-solid fa-circle-xmark" aria-hidden="true"></i><span>Scan failed. Is NFC on?</span></div>`;
         }
         if (window.activeNfcController === nfcController) window.activeNfcController = null;
     });
@@ -9789,7 +9790,7 @@ function showAddEntryDialog() {
     dialog.innerHTML = `
         <h3 class="dialog-title"><i class="fa-solid fa-user-plus"></i> Add New Student</h3>
         <div class="dialog-content">
-            <p style="margin-bottom: 15px; opacity: 0.7;">Enter details for the new database entry.</p>
+            <p style="margin-bottom: 15px; opacity: 0.7;">Enter the student's details.</p>
             
             <div class="form-group">
                 <label class="dialog-label-fixed" for="add-name">Name <span class="required">*</span></label>
@@ -9804,17 +9805,18 @@ function showAddEntryDialog() {
             ${programmeFieldHtml('add-programme', dbProgrammeFilter === 'none' ? '' : dbProgrammeFilter)}
 
             <div class="form-group">
-                <label class="dialog-label-fixed" for="add-hardware-uid"><i class="fa-solid fa-wifi"></i> UID</label>
-                <div class="admin-input-wrapper" style="margin:0; width:100%;">
-                    <input type="text" id="add-hardware-uid" class="form-control" placeholder="Optional legacy card UID">
-                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" aria-label="Scan UID"><i class="fa-solid fa-wifi"></i></button>' : ''}
-                </div>
+                <label class="dialog-label-fixed" for="add-student-id"><i class="fa-solid fa-id-card"></i> Card ID</label>
+                <input type="text" id="add-student-id" class="form-control" inputmode="numeric" placeholder="e.g. 16384437">
             </div>
 
             <div class="form-group">
-                <label class="dialog-label-fixed" for="add-student-id"><i class="fa-solid fa-id-card"></i> Card ID</label>
-                <input type="text" id="add-student-id" class="form-control" placeholder="Card ID">
+                <label class="dialog-label-fixed" for="add-hardware-uid"><i class="fa-solid fa-wifi"></i> UID</label>
+                <div class="admin-input-wrapper" style="margin:0; width:100%;">
+                    <input type="text" id="add-hardware-uid" class="form-control" placeholder="e.g. b5:01:fa:ce (optional)">
+                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan the card" aria-label="Scan the card"><i class="fa-solid fa-wifi"></i></button>' : ''}
+                </div>
             </div>
+            <p class="form-hint">The Card ID is the number Stando shows for the card. Scanning the card fills in both.</p>
             
             <div id="nfc-status-container" style="margin-top:10px;"></div>
         </div>
@@ -9839,7 +9841,7 @@ function showAddEntryDialog() {
     const nfcStatusContainer = dialog.querySelector('#nfc-status-container');
     const scanBtn = dialog.querySelector('.scan-uid-btn');
 
-    // Legacy cards can fill an empty ID; an IT-supplied ID remains independent.
+    // A UID fills an empty Card ID with the number it stands for; a typed Card ID stays.
     if (hwInput && idInput) {
         let generatedId = '';
         hwInput.addEventListener('input', () => {
@@ -9894,7 +9896,7 @@ function showAddEntryDialog() {
         if (!isValidEmail(email)) { showInputError(emailInput, 'A valid email is required.'); isValid = false; }
         const programme = readProgrammeField(dialog.querySelector('#add-programme'));
         if (!programme.ok) isValid = false;
-        if (!uid && !hardwareUid) { showInputError(idInput, 'UID or ID is required.'); isValid = false; }
+        if (!uid && !hardwareUid) { showInputError(idInput, 'Enter a Card ID or a UID.'); isValid = false; }
         if (!isValid) return;
 
         const submissionData = {
@@ -9985,9 +9987,9 @@ function editDatabaseEntry(dbKey) {
         <hr style="margin: 15px 0; border:0; border-top:1px solid #eee;">
         
         <div id="uid-list-container"></div>
-        
+
         <div style="display: flex; justify-content: flex-end; margin-top: 15px;">
-             <button id="add-new-uid-row-btn" class="btn-blue btn-sm"><i class="fa-solid fa-plus"></i> Add ID</button>
+             <button type="button" id="add-new-uid-row-btn" class="btn-blue btn-sm"><i class="fa-solid fa-plus"></i> Add Card</button>
         </div>
         <div id="nfc-status-container" style="margin-top:10px;"></div>
     </div> 
@@ -10001,6 +10003,10 @@ function editDatabaseEntry(dbKey) {
 
     const uidListContainer = dialog.querySelector('#uid-list-container');
     const nfcStatusContainer = dialog.querySelector('#nfc-status-container');
+    // "Card 1", "Card 2"… as cards are added and removed.
+    const numberCards = () => uidListContainer.querySelectorAll('.uid-edit-row-title').forEach((title, index) => {
+        title.lastChild.textContent = ` Card ${index + 1}`;
+    });
 
     const createUidRow = (idVal = '', hwVal = '') => {
         const uidGroup = document.createElement('div');
@@ -10012,21 +10018,22 @@ function editDatabaseEntry(dbKey) {
 
         uidGroup.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                <span style="font-weight:600; font-size:0.85em; opacity:0.8;"><i class="fa-solid fa-id-card"></i> Card ID</span>
-                <button type="button" class="btn-red btn-sm remove-uid-btn" title="Remove"><i class="fa-solid fa-trash-can"></i> Remove</button>
+                <span class="uid-edit-row-title" style="font-weight:600; font-size:0.85em; opacity:0.8;"><i class="fa-solid fa-id-card"></i> Card</span>
+                <button type="button" class="btn-red btn-sm remove-uid-btn" title="Remove this card"><i class="fa-solid fa-trash-can"></i> Remove</button>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-                <label class="dialog-label-fixed" style="width:90px; min-width:90px;"><i class="fa-solid fa-wifi"></i> UID</label>
-                <div style="flex-grow:1; display:flex; gap:6px;">
-                    <input type="text" class="form-control hw-uid-input" value="${escapeHtml(initHw)}" placeholder="Optional legacy card UID">
-                    ${nfcSupported ? '<button class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan UID" aria-label="Scan UID"><i class="fa-solid fa-wifi"></i></button>' : ''}
-                </div>
+                <label class="dialog-label-fixed" style="width:90px; min-width:90px;"><i class="fa-solid fa-id-card"></i> Card ID</label>
+                <input type="text" class="form-control student-id-input" inputmode="numeric" value="${escapeHtml(initId)}" placeholder="e.g. 16384437">
             </div>
             <div class="form-group" style="margin-bottom:0;">
-                <label class="dialog-label-fixed" style="width:90px; min-width:90px;"><i class="fa-solid fa-id-card"></i> Card ID</label>
-                <input type="text" class="form-control student-id-input" value="${escapeHtml(initId)}" placeholder="Card ID">
+                <label class="dialog-label-fixed" style="width:90px; min-width:90px;"><i class="fa-solid fa-wifi"></i> UID</label>
+                <div style="flex-grow:1; display:flex; gap:6px;">
+                    <input type="text" class="form-control hw-uid-input" value="${escapeHtml(initHw)}" placeholder="e.g. b5:01:fa:ce (optional)">
+                    ${nfcSupported ? '<button type="button" class="btn-blue btn-icon btn-sm scan-uid-btn" title="Scan the card" aria-label="Scan the card"><i class="fa-solid fa-wifi"></i></button>' : ''}
+                </div>
             </div>`;
         uidListContainer.appendChild(uidGroup);
+        numberCards();
 
         const hwInputEl = uidGroup.querySelector('.hw-uid-input');
         const idInputEl = uidGroup.querySelector('.student-id-input');
@@ -10042,8 +10049,9 @@ function editDatabaseEntry(dbKey) {
         uidGroup.querySelector('.remove-uid-btn').addEventListener('click', () => {
             if (uidListContainer.querySelectorAll('.uid-edit-row').length > 1) {
                 uidGroup.remove();
+                numberCards();
             } else {
-                showNotification('warning', 'Cannot Remove', 'At least one Card/ID pair is required.');
+                showNotification('warning', 'Cannot Remove', 'A student needs at least one card.');
             }
         });
 
@@ -10120,7 +10128,7 @@ function editDatabaseEntry(dbKey) {
             const hardwareUid = rawHw;
 
             if (!studentId && !hardwareUid) {
-                showInputError(idEl, 'At least one ID or UID is required.');
+                showInputError(idEl, 'Enter a Card ID or a UID.');
                 isValid = false;
             } else {
                 if (studentId) finalUids.push(studentId);
@@ -10405,8 +10413,8 @@ function showAddLogEntryDialog() {
         // Collect all searchable IDs and UIDs for this student
         const allUids = [...(data.uids || []), ...(data.hardware_uids || [])];
 
-        // Readable subtitle with ID and UID (Global Admin only)
-        const idParts = (data.uids && data.uids.length > 0) ? `ID: ${data.uids.join(', ')}` : '';
+        // Readable subtitle with Card ID and UID (Global Admin only)
+        const idParts = (data.uids && data.uids.length > 0) ? `Card ID: ${data.uids.join(', ')}` : '';
         const hwParts = (data.hardware_uids && data.hardware_uids.length > 0) ? `UID: ${data.hardware_uids.join(', ')}` : '';
         const subtitle = isGlobalAdmin
             ? [idParts, hwParts].filter(Boolean).join(' • ')
@@ -10428,7 +10436,7 @@ function showAddLogEntryDialog() {
         
         <div class="form-group" style="margin-bottom:0;">
             <label class="dialog-label-fixed"><i class="fa-solid fa-search"></i> Search</label>
-            <input type="text" id="manual-name-search" class="form-control" placeholder="${isGlobalAdmin ? 'Type name, ID, or UID...' : 'Type student name...'}" autocomplete="off">
+            <input type="text" id="manual-name-search" class="form-control" placeholder="${isGlobalAdmin ? 'Type a name, Card ID or UID' : 'Type a student name'}" autocomplete="off">
         </div>
 
         <div id="student-list-container" class="student-list-container" style="max-height:120px; min-height:80px; overflow-y:auto; margin-top:8px;"></div>
@@ -10645,36 +10653,31 @@ function showEditLogDialog(group) {
         idDisplay = (group.uid && !group.uid.includes(':')) ? group.uid : (convertUidToExternalId(group.uid) || group.uid);
     }
 
-    let timestampFields = '';
-    group.originalLogs.forEach((log, index) => {
-        const timeObj = new Date(log.timestamp);
-        const formattedTime = timeObj.getHours().toString().padStart(2, '0') + ':' + timeObj.getMinutes().toString().padStart(2, '0');
-        const manualClass = (log.manual === true || log.manual === 'true') ? 'manual-timestamp-input' : '';
-
-        // --- Session Dropdown ---
-        const sessionLabel = log.session ? log.session : 'Default';
-        const optionsHtml = generateSessionOptions(sessionLabel);
-
-        timestampFields += `
-        <div class="timestamp-edit-group" data-log-id="${log.id}">
-            <div class="form-group" style="align-items:center;">
-                <label class="dialog-label-fixed">Time ${index + 1}</label>
-                
-                <div style="flex-grow:1; display:flex; flex-direction:column; gap:5px;">
-                    <div class="input-with-icon">
-                        <i class="fa-regular fa-clock"></i>
-                        <input type="time" class="form-control timestamp-time ${manualClass}" value="${formattedTime}">
-                    </div>
-                    <select class="form-control timestamp-session" style="font-size:0.85em; padding:4px 8px; height:auto;">
-                        ${optionsHtml}
-                    </select>
-                </div>
-
-                <button class="delete-time-btn btn-red btn-icon" data-index="${index}" title="Delete Timestamp" style="margin-left:10px; border-radius:6px;">
-                    <i class="fa-solid fa-trash-can"></i>
+    // One line per time: the time, its group (when the course has groups) and delete.
+    const hasGroups = Object.keys(parseAvailableSections(courseInfoMap[currentCourse]?.availableSections)).length > 0;
+    const timestampRowHtml = ({ label, time, session, manual, logId = '', index = '' }) => `
+        <div class="timestamp-edit-group${logId ? '' : ' new-item-flash'}"${logId ? ` data-log-id="${escapeHtml(String(logId))}"` : ' data-is-new="true"'}>
+            <span class="timestamp-label">${escapeHtml(label)}</span>
+            <div class="timestamp-fields">
+                <input type="time" class="form-control timestamp-time${manual ? ' manual-timestamp-input' : ''}" value="${time}" aria-label="${escapeHtml(label)}">
+                <select class="form-control timestamp-session" aria-label="Group"${hasGroups ? '' : ' hidden'}>${generateSessionOptions(session)}</select>
+                <button type="button" class="delete-time-btn" data-index="${index}" title="Delete this time" aria-label="Delete ${escapeHtml(label.toLowerCase())}">
+                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
                 </button>
             </div>
         </div>`;
+
+    let timestampFields = '';
+    group.originalLogs.forEach((log, index) => {
+        const timeObj = new Date(log.timestamp);
+        timestampFields += timestampRowHtml({
+            label: `Time ${index + 1}`,
+            time: `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`,
+            session: log.session || 'Default',
+            manual: log.manual === true || log.manual === 'true',
+            logId: log.id,
+            index
+        });
     });
 
     dialog.innerHTML = `
@@ -10733,32 +10736,13 @@ function showEditLogDialog(group) {
             newTimeValue = `${String(nextHour).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
         }
 
-        const defaultSessionOptions = generateSessionOptions(getCurrentActiveSession());
-
-        const newTimestampGroup = document.createElement('div');
-        newTimestampGroup.setAttribute('class', 'timestamp-edit-group new-item-flash');
-        newTimestampGroup.dataset.isNew = "true";
-        newTimestampGroup.innerHTML = `
-        <div class="form-group">
-            <label class="dialog-label-fixed">New Time</label>
-            <div class="input-with-icon" style="flex-grow:1; display:flex; flex-direction:column; gap:5px;">
-                <div class="input-with-icon">
-                    <i class="fa-regular fa-clock"></i>
-                    <input type="time" class="form-control timestamp-time manual-timestamp-input" value="${newTimeValue}">
-                </div>
-                <select class="form-control timestamp-session" style="font-size:0.85em; padding:4px 8px; height:auto;">
-                    ${defaultSessionOptions}
-                </select>
-            </div>
-            <button class="delete-time-btn btn-red btn-icon" title="Remove" style="margin-left:10px;">
-                <i class="fa-solid fa-trash"></i>
-            </button>
-        </div>`;
-
-        timestampContainer.appendChild(newTimestampGroup);
-        newTimestampGroup.querySelector('.delete-time-btn').addEventListener('click', function () {
-            this.closest('.timestamp-edit-group').remove();
-        });
+        timestampContainer.insertAdjacentHTML('beforeend', timestampRowHtml({
+            label: 'New time', time: newTimeValue, session: getCurrentActiveSession(), manual: true
+        }));
+        const newTimestampGroup = timestampContainer.lastElementChild;
+        newTimestampGroup.querySelector('.delete-time-btn').addEventListener('click', () => newTimestampGroup.remove());
+        if (!isTouchDevice()) newTimestampGroup.querySelector('.timestamp-time').focus({ preventScroll: true });
+        newTimestampGroup.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
 
     const closeDialog = () => { if (document.body.contains(dialogBackdrop)) document.body.removeChild(dialogBackdrop); closeDialogMode(); };
@@ -11695,7 +11679,7 @@ function updateLogsList() {
     if (!currentCourse) {
         endLogsSwap();
         logsTbody.innerHTML = '';
-        filteredCount.textContent = '0';
+        filteredCount.textContent = listCountText(0, 'record');
         emptyLogs.innerHTML = `<i class="fa-solid fa-hand-pointer" style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
                        <p style="font-size: 1.1em; margin-bottom: 5px;">Please select a course.</p>
                        <p style="font-size: 0.9em; color: #999;">Choose a course above to view its attendance history.</p>`;
@@ -11712,7 +11696,7 @@ function updateLogsList() {
         // skeleton timer or the new data takes over.
         if (logsSwap) return;
         logsTbody.innerHTML = '';
-        filteredCount.textContent = '0';
+        filteredCount.textContent = 'Loading…';
         emptyLogs.innerHTML = `<div class="loading-spinner" style="margin: 20px auto;"></div><p style="text-align: center;">Loading logs...</p>`;
         emptyLogs.style.display = 'block';
         tableContainer.classList.remove('reloading');
@@ -11796,7 +11780,7 @@ function updateLogsList() {
     }
 
     const finalLogCount = result.reduce((acc, group) => acc + group.originalLogs.length, 0);
-    filteredCount.textContent = finalLogCount;
+    filteredCount.textContent = listCountText(finalLogCount, 'record', filter ? currentCourseLogs.length : null);
 
     const [field, direction] = currentSort.split('-');
     const sortMultiplier = direction === 'asc' ? 1 : -1;
@@ -11817,11 +11801,6 @@ function updateLogsList() {
     const startIndex = (logsCurrentPage - 1) * ITEMS_PER_PAGE;
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const paginatedResult = result.slice(startIndex, endIndex);
-
-    // Update count display to show pagination info
-    if (result.length > ITEMS_PER_PAGE) {
-        filteredCount.textContent = `${startIndex + 1}-${Math.min(endIndex, result.length)} of ${result.length}`;
-    }
 
     // Render pagination controls
     renderLogsPagination(logsCurrentPage, totalPages);
@@ -12430,7 +12409,7 @@ function programmeBadgeHtml(id) {
     const programme = programmeById(id);
     return programme
         ? `<span class="programme-badge" title="${escapeHtml(programmeOptionLabel(programme))}">${escapeHtml(programme.code)}</span>`
-        : '<span style="opacity:0.4;">—</span>';
+        : '<span class="cell-empty">—</span>';
 }
 
 // Student List filter: every programme with students, plus "No programme" when some lack one.
@@ -12509,13 +12488,9 @@ function updateDatabaseList() {
     const endIndex = startIndex + ITEMS_PER_PAGE;
     const paginatedEntries = entries.slice(startIndex, endIndex);
 
-    // Update count display
     const totalCount = students.length;
-    if (entries.length > ITEMS_PER_PAGE) {
-        dbEntryCount.textContent = `${startIndex + 1}-${Math.min(endIndex, entries.length)} of ${entries.length}`;
-    } else {
-        dbEntryCount.textContent = (dbFilter || dbProgrammeFilter) ? `${entries.length} of ${totalCount}` : totalCount;
-    }
+    dbEntryCount.textContent = listCountText(entries.length, 'student', dbFilter || dbProgrammeFilter ? totalCount : null);
+    document.getElementById('db-programme-filter')?.closest('.icon-select')?.classList.toggle('is-active', !!dbProgrammeFilter);
 
     // Render pagination controls
     renderDbPagination(dbCurrentPage, totalPages);
@@ -12542,14 +12517,15 @@ function updateDatabaseList() {
             ? data.uids
             : (data.hardware_uids || []).map(convertUidToExternalId).filter(Boolean);
         const idBadges = idList.length > 0
-            ? idList.map(id => `<span class="uid-badge" style="background:#e3f2fd; color:#1565c0;">${escapeHtml(id)}</span>`).join(' ')
-            : `<span style="opacity:0.4;">—</span>`;
+            ? idList.map(id => `<span class="card-id-badge">${escapeHtml(id)}</span>`).join('')
+            : `<span class="cell-empty">—</span>`;
 
         // Hardware UIDs are not listed (searching still finds them); Edit shows them.
+        // On phones each row is two lines: name and programme, then email and Card ID.
         row.innerHTML = `
-            <td class="name-cell">${escapeHtml(data.name)}</td>
+            <td class="name-cell"><span class="cell-text">${escapeHtml(data.name)}</span></td>
             <td class="id-cell">${idBadges}</td>
-            <td class="email-cell">${escapeHtml(data.email || '')}</td>
+            <td class="email-cell"><span class="cell-text">${escapeHtml(data.email || '')}</span></td>
             <td class="programme-cell">${programmeBadgeHtml(data.programmeId)}</td>
             <td class="actions-cell admin-only">
                 <div class="actions-cell-content card-actions">
@@ -12978,7 +12954,7 @@ function updatePageTitle() {
 }
 
 // The header banner names the course on screen, as Syllabase does: its code above
-// its name. The Student List and a page without a course keep "Stando".
+// its name. The Student List keeps "Stando", with the size of the list above it.
 function updateAppHeader() {
     const header = document.querySelector('.app-header');
     if (!header) return;
@@ -12987,7 +12963,7 @@ function updateAppHeader() {
     const code = course ? getCleanCourseCode(course) : '';
     const title = course ? getCourseTitle(course) : '';
     const heading = title || code || 'Stando';
-    const eyebrow = title ? code : '';
+    const eyebrow = title ? code : onCourses ? '' : studentListSummary();
     // The startup skeleton draws the next visit's banner in the same shape.
     if (isSignedIn && !isInitializing && onCourses) {
         try { localStorage.setItem('stando_header', title ? 'titled' : 'plain'); } catch { /* The plain banner. */ }
@@ -13008,6 +12984,14 @@ function updateAppHeader() {
     }
 }
 
+// "139 students in 4 programmes", above "Stando" on the Student List.
+function studentListSummary() {
+    const students = studentEntries();
+    const programmes = new Set(students.map(([, s]) => s.programmeId).filter(id => programmeById(id)));
+    const count = listCountText(students.length, 'student');
+    return programmes.size > 1 ? `${count} in ${programmes.size} programmes` : count;
+}
+
 /**
  Update the entire UI.
  */
@@ -13017,18 +13001,6 @@ async function updateUI() {
     updateDatabaseList();
     updatePageTitle();
     updateRegisterCardButton();
-
-
-    // This logic ensures the course buttons are correctly hidden when on the database tab.
-    const activeTabId = document.querySelector('.tab.active')?.dataset.tab;
-    const courseButtonsContainer = document.getElementById('course-buttons-container');
-    if (courseButtonsContainer) {
-        if (activeTabId === 'database-tab') {
-            courseButtonsContainer.style.display = 'none';
-        } else {
-            courseButtonsContainer.style.display = 'flex';
-        }
-    }
 
     const logsForCurrentCourse = getLogsForCurrentUser();
 
@@ -13616,9 +13588,10 @@ function updateScanLockButton() {
     if (lockBtn) lockBtn.hidden = !(scanLockSession && isScanning);
 }
 
+// Notifications stay above the lock screen and can still be swiped or tapped away.
 function setScanLockInert(inert) {
     Array.from(document.body.children).forEach(el => {
-        if (el.id === 'scan-lock' || el.id === 'scan-announcement-overlay' || el.tagName === 'SCRIPT') return;
+        if (['scan-lock', 'scan-announcement-overlay', 'in-page-notification-area'].includes(el.id) || el.tagName === 'SCRIPT') return;
         if (inert && !el.inert) {
             el.inert = true;
             el.dataset.scanLockInert = '1';
@@ -13650,12 +13623,14 @@ function showScanLockScreen() {
             <div class="scan-lock-inner">
                 <div class="scan-lock-top">
                     <span class="scan-lock-badge"><i class="fa-solid fa-lock" aria-hidden="true"></i> Locked</span>
-                    <span class="scan-lock-course"><span class="scan-lock-course-code"></span><span class="scan-lock-course-group" hidden></span></span>
+                    <span class="scan-lock-course"><span class="scan-lock-course-name"><strong class="scan-lock-course-code"></strong> <span class="scan-lock-course-title"></span></span><span class="scan-lock-course-group" hidden></span></span>
                 </div>
                 <div class="scan-lock-view">
                     <div class="scan-lock-clock" aria-hidden="true"></div>
-                    <div class="scan-lock-result" aria-live="polite" aria-atomic="true"></div>
-                    ${cardTapAnimationHtml()}
+                    <div class="scan-lock-stage">
+                        ${cardTapAnimationHtml()}
+                        <div class="scan-lock-result" aria-live="polite" aria-atomic="true"></div>
+                    </div>
                     <h2 class="scan-lock-title" id="scan-lock-title"></h2>
                     <button type="button" class="scan-lock-status" data-key="list" aria-live="polite">
                         <span class="scan-lock-status-text"></span><i class="fa-solid fa-chevron-down scan-lock-status-more" aria-hidden="true"></i>
@@ -13715,10 +13690,12 @@ function updateScanLockScreen() {
         const el = screen.querySelector(selector);
         if (el.textContent !== text) el.textContent = text;
     };
-    // The course as people write it ("CE 121"), and the group, if any, beside it.
+    // The course as people write it ("CE 121") with its name, and the group, if any, beside it.
     const session = getCurrentActiveSession();
     const group = screen.querySelector('.scan-lock-course-group');
-    setText('.scan-lock-course-code', scanLockCourse() ? getCourseLabel(scanLockCourse()) : '');
+    const lockedCourse = scanLockCourse();
+    setText('.scan-lock-course-code', lockedCourse ? getCleanCourseCode(lockedCourse) : '');
+    setText('.scan-lock-course-title', lockedCourse ? getCourseTitle(lockedCourse) : '');
     setText('.scan-lock-course-group', session !== 'Default' ? session : '');
     group.hidden = session === 'Default';
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
@@ -13757,7 +13734,7 @@ function flashScanLockStatus(message) {
     }, 4000);
 }
 
-// --- The latest scan, under the clock ---
+// --- The latest scan, large, in place of the tap illustration ---
 // Each name slides in as the previous one leaves. Both moves take a fifth of a
 // second, so a queue of students tapping one after another never waits on them.
 const SCAN_LOCK_RESULT_MS = 5000;
@@ -13765,15 +13742,19 @@ const SCAN_LOCK_RESULT_MS = 5000;
 function showScanLockResult(scan) {
     const box = document.querySelector('#scan-lock .scan-lock-result');
     if (!box) return;
+    const stage = box.closest('.scan-lock-stage');
     box.querySelectorAll('.scan-lock-result-item:not(.is-leaving)').forEach(leaveScanLockResult);
     const item = document.createElement('span');
     item.className = `scan-lock-result-item${scan.unknown ? ' is-unknown' : ''}`;
-    item.innerHTML = `<i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-circle-check'}" aria-hidden="true"></i><span class="scan-lock-result-name"></span>`;
+    item.innerHTML = `<span class="scan-lock-result-name"></span>
+        <span class="scan-lock-result-note"><i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-circle-check'}" aria-hidden="true"></i>${scan.unknown ? 'Not in the student list' : 'Recorded'}</span>`;
     item.querySelector('.scan-lock-result-name').textContent = scan.name;
     box.appendChild(item);
+    stage?.classList.add('has-result');
     clearTimeout(box._timer);
     box._timer = setTimeout(() => {
         box.querySelectorAll('.scan-lock-result-item:not(.is-leaving)').forEach(leaveScanLockResult);
+        stage?.classList.remove('has-result');
     }, SCAN_LOCK_RESULT_MS);
 }
 
@@ -14119,26 +14100,26 @@ function showNotification(type, title, message, duration = 5000) {
 
     // Title and message are plain text: they often carry names and server errors.
     // Line breaks ("\n") in the message are kept.
+    // No close button: a tap or a swipe dismisses it.
     notification.innerHTML = `
         <span class="toast-icon" aria-hidden="true"><i class="fa-solid fa-${icon}"></i></span>
         <div class="in-page-notification-text"><strong></strong><span class="in-page-notification-message"></span></div>
-        <button type="button" class="notification-close" title="Dismiss" aria-label="Dismiss notification"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     `;
     notification.querySelector('strong').textContent = title;
     notification.querySelector('.in-page-notification-message').textContent = message ?? '';
+    notification.title = 'Tap to dismiss';
     if (type === 'error') notification.setAttribute('role', 'alert');
 
     // Newest at the top, like a phone's notifications.
     notificationArea.prepend(notification);
 
-    // Errors stay until dismissed; everything else leaves on its own, but not
-    // while the pointer rests on it or a finger holds it.
+    // Each leaves on its own (errors stay longer), but not while the pointer
+    // rests on it or a finger holds it.
     const startTimer = (ms) => {
-        if (type === 'error') return;
         clearTimeout(notification._autoTimer);
         notification._autoTimer = setTimeout(() => leaveNotification(notification), ms);
     };
-    startTimer(duration || 5000);
+    startTimer(type === 'error' ? Math.max(duration || 0, 10000) : duration || 5000);
     notification.addEventListener('pointerenter', (event) => {
         if (event.pointerType === 'mouse') clearTimeout(notification._autoTimer);
     });
@@ -14146,8 +14127,7 @@ function showNotification(type, title, message, duration = 5000) {
         if (event.pointerType === 'mouse' && !notification.classList.contains('is-dragging')) startTimer(2500);
     });
 
-    notification.querySelector('.notification-close').addEventListener('click', () => leaveNotification(notification));
-    makeNotificationSwipeable(notification, () => startTimer(3000));
+    makeNotificationSwipeable(notification, () => startTimer(type === 'error' ? 6000 : 3000));
 }
 
 // A notification leaves the way it is going, fading as it moves; then the space
@@ -14175,11 +14155,12 @@ function leaveNotification(element, { x = 0, y = -12, rotate = 0 } = {}) {
 }
 
 // Swipe a notification away sideways (either way) or up, with a finger or by
-// dragging with the mouse. Let go before it is far enough and it springs back.
+// dragging with the mouse; a tap without moving dismisses it too. Let go of a
+// swipe before it is far enough and it springs back.
 function makeNotificationSwipeable(element, onSettle) {
     let drag = null;
     element.addEventListener('pointerdown', (event) => {
-        if (event.button !== 0 || event.target.closest('.notification-close') || element.classList.contains('removing')) return;
+        if (event.button !== 0 || element.classList.contains('removing')) return;
         drag = { id: event.pointerId, x: event.clientX, y: event.clientY, t: performance.now(), dx: 0, dy: 0, axis: null };
         element.setPointerCapture(event.pointerId);
         element.style.animation = 'none';
@@ -14212,8 +14193,10 @@ function makeNotificationSwipeable(element, onSettle) {
         drag = null;
         element.classList.remove('is-dragging');
         if (element.classList.contains('removing')) return;
-        // Far enough, or flicked fast enough, and it goes.
-        if (axis === 'x' && (Math.abs(dx) > element.offsetWidth * 0.35 || Math.abs(dx) / ms > 0.6)) {
+        // Far enough, or flicked fast enough, and it goes; a tap sends it up.
+        if (!axis && event.type === 'pointerup') {
+            leaveNotification(element);
+        } else if (axis === 'x' && (Math.abs(dx) > element.offsetWidth * 0.35 || Math.abs(dx) / ms > 0.6)) {
             const side = Math.sign(dx);
             leaveNotification(element, { x: side * (element.offsetWidth + 60), y: 0, rotate: side * 12 });
         } else if (axis === 'y' && (dy < -element.offsetHeight * 0.5 || dy / ms < -0.6)) {
@@ -14230,84 +14213,55 @@ function makeNotificationSwipeable(element, onSettle) {
     element.addEventListener('pointercancel', end);
 }
 
-// --- PAGINATION HELPER FUNCTIONS ---
-
-/**
- * Renders pagination controls for the logs table.
- */
-function renderLogsPagination(currentPage, totalPages) {
-    const container = document.getElementById('logs-pagination');
-    const pageNumbers = document.getElementById('logs-page-numbers');
-    const prevBtn = document.getElementById('logs-prev-page');
-    const nextBtn = document.getElementById('logs-next-page');
-
-    if (!container || totalPages <= 1) {
-        if (container) container.style.display = 'none';
-        return;
-    }
-
-    container.style.display = 'flex';
-    pageNumbers.innerHTML = '';
-
-    // Generate page buttons
-    const pages = generatePageNumbers(currentPage, totalPages);
-    pages.forEach(page => {
-        const btn = document.createElement('button');
-        btn.setAttribute('class', 'page-btn' + (page === currentPage ? ' active' : '') + (page === '...' ? ' ellipsis' : ''));
-        btn.textContent = page;
-        if (page !== '...') {
-            btn.onclick = () => {
-                logsCurrentPage = parseInt(page);
-                updateLogsList();
-            };
-        }
-        pageNumbers.appendChild(btn);
-    });
-
-    // Update prev/next button states
-    prevBtn.disabled = currentPage <= 1;
-    nextBtn.disabled = currentPage >= totalPages;
-    prevBtn.onclick = () => { logsCurrentPage--; updateLogsList(); };
-    nextBtn.onclick = () => { logsCurrentPage++; updateLogsList(); };
+// The count under a list's title: "12 records", or "5 of 78 records" while a
+// search or filter hides some (total given).
+function listCountText(count, noun, total = null) {
+    const plural = n => `${noun}${n === 1 ? '' : 's'}`;
+    return total != null && total !== count
+        ? `${count} of ${total} ${plural(total)}`
+        : `${count} ${plural(count)}`;
 }
 
-/**
- * Renders pagination controls for the database table.
- */
-function renderDbPagination(currentPage, totalPages) {
-    const container = document.getElementById('db-pagination');
-    const pageNumbers = document.getElementById('db-page-numbers');
-    const prevBtn = document.getElementById('db-prev-page');
-    const nextBtn = document.getElementById('db-next-page');
+// --- PAGINATION HELPER FUNCTIONS ---
 
-    if (!container || totalPages <= 1) {
-        if (container) container.style.display = 'none';
+// Pages under a list: ‹ 1 2 3 … › on wide screens, ‹ Page 2 of 6 › on phones.
+// Changing page brings the top of the list back into view.
+function renderPagination(prefix, currentPage, totalPages, goTo) {
+    const container = document.getElementById(`${prefix}-pagination`);
+    const pageNumbers = document.getElementById(`${prefix}-page-numbers`);
+    const prevBtn = document.getElementById(`${prefix}-prev-page`);
+    const nextBtn = document.getElementById(`${prefix}-next-page`);
+    if (!container) return;
+    if (totalPages <= 1) {
+        container.style.display = 'none';
         return;
     }
 
+    const show = page => {
+        goTo(page);
+        container.closest('.module')?.querySelector('.list-toolbar')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    };
     container.style.display = 'flex';
-    pageNumbers.innerHTML = '';
-
-    // Generate page buttons
-    const pages = generatePageNumbers(currentPage, totalPages);
-    pages.forEach(page => {
-        const btn = document.createElement('button');
-        btn.setAttribute('class', 'page-btn' + (page === currentPage ? ' active' : '') + (page === '...' ? ' ellipsis' : ''));
-        btn.textContent = page;
-        if (page !== '...') {
-            btn.onclick = () => {
-                dbCurrentPage = parseInt(page);
-                updateDatabaseList();
-            };
-        }
-        pageNumbers.appendChild(btn);
+    pageNumbers.innerHTML = generatePageNumbers(currentPage, totalPages).map(page => page === '...'
+        ? '<span class="page-btn ellipsis" aria-hidden="true">…</span>'
+        : `<button type="button" class="page-btn${page === currentPage ? ' active' : ''}" data-page="${page}"${page === currentPage ? ' aria-current="page"' : ''} aria-label="Page ${page}">${page}</button>`
+    ).join('') + `<span class="page-status" aria-hidden="true">Page ${currentPage} of ${totalPages}</span>`;
+    pageNumbers.querySelectorAll('button[data-page]').forEach(btn => {
+        btn.onclick = () => show(Number(btn.dataset.page));
     });
 
-    // Update prev/next button states
     prevBtn.disabled = currentPage <= 1;
     nextBtn.disabled = currentPage >= totalPages;
-    prevBtn.onclick = () => { dbCurrentPage--; updateDatabaseList(); };
-    nextBtn.onclick = () => { dbCurrentPage++; updateDatabaseList(); };
+    prevBtn.onclick = () => show(currentPage - 1);
+    nextBtn.onclick = () => show(currentPage + 1);
+}
+
+function renderLogsPagination(currentPage, totalPages) {
+    renderPagination('logs', currentPage, totalPages, page => { logsCurrentPage = page; updateLogsList(); });
+}
+
+function renderDbPagination(currentPage, totalPages) {
+    renderPagination('db', currentPage, totalPages, page => { dbCurrentPage = page; updateDatabaseList(); });
 }
 
 /**

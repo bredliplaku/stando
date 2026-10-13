@@ -40,8 +40,8 @@ but plays the failure sound and turns the scan result orange. You can search
 records by name, card, date or session to find an entry or make a correction.
 
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
-records attendance, showing each student's name under the clock (or the Card ID
-of an unknown card). Swipe down to see the cards scanned so far. Any lecturer of
+records attendance, showing each student's name in large type under the clock
+(or the Card ID of an unknown card). Swipe down to see the cards scanned so far. Any lecturer of
 the course on screen taps their staff card to unlock it; a tap again (or 30
 seconds untouched) locks it again. This needs your own card in
 **Settings → Staff**; without it, scanning works but does not lock. A phone that
@@ -79,9 +79,10 @@ Reconnect and check the sync status to make sure they have been saved online.
 ### Student list and exports
 
 Global administrators manage the student list in the **Student List** tab, where
-each student has a programme and the list can be filtered by programme.
-Upload an Excel or CSV file instead of entering everyone by hand: use
-**Import → Download template** for a starting file, then review the preview:
+each student has a programme and the list can be filtered by programme. Opening
+it stops scanning. Upload an Excel or CSV file instead of entering everyone by
+hand: use **⋯ → Import → Download template** for a starting file, then review the
+preview:
 
 - **Merge** adds new students and updates those with a matching card ID or email.
 - **Replace All** replaces the entire student list.
@@ -94,8 +95,9 @@ Tampermonkey) fill it in on the EIS page.
 <details>
 <summary>Student import format</summary>
 
-The template uses **Name**, **Card ID**, **Email** and **Programme**. Imports also
-accept older **UID / Student ID** headings and an optional **Hardware UID** column.
+The template uses **Name**, **Card ID**, **Email** and **Programme**, and exports add
+the card's **UID** (such as `b5:01:fa:ce`). Imports also accept the older **Student ID**
+and **Hardware UID** headings.
 
 Programme is optional. Use a code from **Settings → Programmes** (such as
 `BA CE`) or its full name; an unknown programme stops the import at that row.
@@ -103,7 +105,7 @@ Instead of a column, you can choose one programme for every student in the file.
 Students the file gives no programme keep the one they have.
 
 Store card IDs as text to retain leading zeros; separate multiple IDs with
-semicolons. Leave Hardware UID empty when it is unavailable. Each student needs
+semicolons. Leave UID empty when it is unavailable. Each student needs
 a name and either a card ID or email. Imports need an internet connection.
 
 </details>
