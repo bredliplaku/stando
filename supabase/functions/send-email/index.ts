@@ -192,14 +192,14 @@ async function getCourseLabel(courseName: string): Promise<{ code: string; title
   }
   code = code.replace(/_/g, " ");
   const title = String(course?.title ?? "").trim();
-  return { code, title, label: title ? `${code} · ${title}` : code };
+  return { code, title, label: title ? `${code} ${title}` : code };
 }
 
 function courseValueHtml(course: { code: string; title: string }, session: string): string {
   return `<strong>${escapeHtml(course.code)}</strong>${course.title ? ` ${escapeHtml(course.title)}` : ""}${sessionBadgeHtml(session)}`;
 }
 
-// "BA CE · Bachelor in Civil Engineering", or "" when the student has no programme.
+// "BA CE Bachelor in Civil Engineering", or "" when the student has no programme.
 async function getStudentProgramme(email: string): Promise<string> {
   const { data: students } = await service.from("students").select("programme_id").ilike("email", email);
   const id = students?.find((row) => row.programme_id != null)?.programme_id;
@@ -207,7 +207,7 @@ async function getStudentProgramme(email: string): Promise<string> {
   const { data: programmes } = await service.from("programmes").select("code,name").eq("id", id);
   const programme = programmes?.[0];
   if (!programme) return "";
-  return programme.name ? `${programme.code} · ${programme.name}` : String(programme.code);
+  return programme.name ? `${programme.code} ${programme.name}` : String(programme.code);
 }
 
 async function getAdminEmailsForCourse(courseName: string): Promise<string[]> {
@@ -412,7 +412,7 @@ Deno.serve(async (req) => {
         const statusText = isPartial ? "partially approved" : "approved";
         const statusColor = isPartial ? "#e67e22" : "#1a56db";
         const partialNote = isPartial
-          ? `<p style="margin:4px 0 0;font-size:11px;color:#888;">Blue&nbsp;=&nbsp;approved &nbsp;&middot;&nbsp; Grey&nbsp;=&nbsp;not approved</p>` : "";
+          ? `<p style="margin:4px 0 0;font-size:11px;color:#888;">Blue&nbsp;=&nbsp;approved, grey&nbsp;=&nbsp;not approved</p>` : "";
         const customMessageHtml = customMessage.trim()
           ? `<table cellpadding="0" cellspacing="0" border="0" style="width:100%;margin-bottom:20px;">
               <tr><td style="background:#f0f7ff;border-left:3px solid #0053A1;padding:10px 14px;font-style:italic;color:#555;font-size:13px;text-align:justify;hyphens:auto;-webkit-hyphens:auto;-ms-hyphens:auto;" lang="en">${escapeHtml(customMessage).replace(/\n/g, "<br>")}</td></tr>

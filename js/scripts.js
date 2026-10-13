@@ -936,10 +936,9 @@ async function showAbsenceHistoryDialog() {
                     <span><strong>${escapeHtml(req.studentName)}</strong>${programmeById(studentProgrammeId(req.studentEmail)) ? ` ${programmeBadgeHtml(studentProgrammeId(req.studentEmail))}` : ''}</span>
                     ${statusBadge}
                 </div>
-                <div style="font-size:0.9em; color:#666; display:flex; align-items:center; flex-wrap:wrap;">
+                <div class="meta-parts" style="font-size:0.9em; color:#666;">
                     ${courseCellHtml(req.course, sessionBadge ? ` ${sessionBadge}` : '')}
-                    <span style="margin:0 6px;">&bull;</span> 
-                    ${escapeHtml(req.absenceDate)}
+                    <span>${escapeHtml(req.absenceDate)}</span>
                 </div>
                 <div style="font-size:0.85em; opacity:0.7; margin-top:2px;">
                     ${escapeHtml(req.reasonType)}
@@ -1062,7 +1061,7 @@ function clearAllAppData() {
     // Find all keys used by this application.
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || key.startsWith(SCAN_LOCK_KEY) || [KIOSK_MODE_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course', 'stando_view'].includes(key)) {
+        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || key.startsWith(SCAN_LOCK_KEY) || [KIOSK_MODE_KEY, COLOUR_THEME_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course', 'stando_view'].includes(key)) {
             keysToRemove.push(key);
         }
     }
@@ -1990,10 +1989,10 @@ function addDialogCloseButton(backdrop) {
 }
 
 // Searchable selects (programmes, courses): a search box over the list. Typing
-// part of a code, name or group narrows it; arrows and Enter choose. Options in
-// an <optgroup> show under its label, and an option's data-code shows in bold.
-// The <select> stays underneath and holds the value, so forms read it and hear
-// its 'change' as before.
+// narrows it to the best matches (see matchTier); arrows, Enter and the pointer
+// choose. Options in an <optgroup> show under its label, and data-code (on an
+// option or optgroup) shows in bold. The <select> stays underneath and holds the
+// value, so forms read it and hear its 'change' as before.
 let comboCount = 0;
 function enhanceSearchSelect(select) {
     if (select.dataset.combo) return;
@@ -2035,16 +2034,34 @@ function enhanceSearchSelect(select) {
     let active = -1;
 
     const groupOf = option => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.label : '';
+    const groupCodeOf = option => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.dataset.code || '' : '';
     const choices = () => [...select.options].filter(option => option.value && !option.disabled);
     const selectedLabel = () => select.value ? select.selectedOptions[0]?.textContent || '' : '';
     const showSelected = () => { input.value = selectedLabel(); };
     showSelected();
-    const optionHtml = option => {
-        const code = option.dataset.code;
-        const text = option.textContent;
-        return code && text.startsWith(code)
-            ? `<strong>${escapeHtml(code)}</strong>${escapeHtml(text.slice(code.length))}`
-            : escapeHtml(text);
+    const codeHtml = (text, code) => code && text.startsWith(code)
+        ? `<strong>${escapeHtml(code)}</strong>${escapeHtml(text.slice(code.length))}`
+        : escapeHtml(text);
+    const optionHtml = option => codeHtml(option.textContent, option.dataset.code);
+    const groupHtml = option => codeHtml(groupOf(option), groupCodeOf(option));
+
+    // How well an option answers the search, 5 to 0. Only the best tier shows, so
+    // "BA CE" lists BA CE (or its courses), not everything with "ba" and "ce" in it:
+    // 5 its code, or its group's code, is the search; 4 its label starts with it;
+    // 3 every word starts one of its words; 2 the same, counting its group's label;
+    // 1 every word appears anywhere.
+    const fold = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const wordsOf = text => fold(text).split(/[^a-z0-9]+/).filter(Boolean);
+    const startsWords = (words, own) => words.every(word => own.some(part => part.startsWith(word)));
+    const matchTier = (option, query, words) => {
+        if (fold(option.dataset.code) === query || (groupCodeOf(option) && fold(groupCodeOf(option)) === query)) return 5;
+        const label = fold(option.textContent);
+        if (label.startsWith(query)) return 4;
+        const own = wordsOf(option.textContent);
+        if (startsWords(words, own)) return 3;
+        if (startsWords(words, [...own, ...wordsOf(groupOf(option))])) return 2;
+        const all = `${label} ${fold(groupOf(option))}`;
+        return words.every(word => all.includes(word)) ? 1 : 0;
     };
 
     const place = () => {
@@ -2059,26 +2076,29 @@ function enhanceSearchSelect(select) {
         list.style.bottom = up ? `${window.innerHeight - rect.top + 4}px` : '';
     };
     const optionItems = () => list.querySelectorAll('[role="option"]');
-    const setActive = (index) => {
+    const setActive = (index, scroll = true) => {
         active = index;
         const items = optionItems();
         items.forEach((item, i) => item.classList.toggle('is-active', i === index));
         const item = items[index];
         if (item) {
             input.setAttribute('aria-activedescendant', item.id);
-            item.scrollIntoView({ block: 'nearest' });
+            if (scroll) item.scrollIntoView({ block: 'nearest' });
         } else input.removeAttribute('aria-activedescendant');
     };
-    const render = (query) => {
-        const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-        matches = choices().filter(option => {
-            const text = `${option.textContent} ${groupOf(option)}`.toLowerCase();
-            return words.every(word => text.includes(word));
-        });
+    const render = (text) => {
+        const query = fold(text);
+        const words = query.split(/[^a-z0-9]+/).filter(Boolean);
+        if (!words.length) matches = choices();
+        else {
+            const tiers = choices().map(option => [option, matchTier(option, query, words)]);
+            const best = Math.max(...tiers.map(([, tier]) => tier), 0);
+            matches = best ? tiers.filter(([, tier]) => tier === best).map(([option]) => option) : [];
+        }
         let group = null;
         list.innerHTML = matches.length
             ? matches.map((option, i) => {
-                const heading = groupOf(option) !== group ? `<li class="combo-group" role="presentation">${escapeHtml(groupOf(option))}</li>` : '';
+                const heading = groupOf(option) && groupOf(option) !== group ? `<li class="combo-group" role="presentation">${groupHtml(option)}</li>` : '';
                 group = groupOf(option);
                 return `${heading}<li role="option" id="${id}-option-${i}" data-index="${i}" class="combo-option${option.value === select.value ? ' is-selected' : ''}" aria-selected="${option.value === select.value}">${optionHtml(option)}</li>`;
             }).join('')
@@ -2143,6 +2163,11 @@ function enhanceSearchSelect(select) {
         close();
     }, 120));
     list.addEventListener('pointerdown', (event) => event.preventDefault()); // Keeps focus in the box.
+    // The pointer moves the highlight, as the arrow keys do.
+    list.addEventListener('pointermove', (event) => {
+        const item = event.target.closest('[role="option"]');
+        if (item && Number(item.dataset.index) !== active) setActive(Number(item.dataset.index), false);
+    });
     list.addEventListener('click', (event) => {
         const item = event.target.closest('[role="option"]');
         if (item) choose(matches[Number(item.dataset.index)]);
@@ -2647,6 +2672,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
         ${programmeList ? '<button type="button" class="settings-tab-btn" data-target="sect-programmes" role="tab" aria-selected="false"><i class="fa-solid fa-graduation-cap tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Programmes">Programmes</span></button>' : ''}
         <button type="button" class="settings-tab-btn" data-target="sect-staff" role="tab" aria-selected="false"><i class="fa-solid fa-user-tie tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Staff">Staff</span></button>
         <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
+        ${themeTabHtml()}
     </div>
 
     <div class="dialog-content" style="padding:0; position:relative; display:flex; flex-direction:column; overflow:hidden;">
@@ -2662,7 +2688,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
                     <input type="search" id="course-search-input" class="settings-search-input" placeholder="Search courses" aria-label="Search courses">
                 </div>
                 ${settingsSortSelectHtml('settings-course-sort')}
-                <button type="button" id="add-new-course-btn" class="btn-green btn-sm" title="New course" aria-label="New course">
+                <button type="button" id="add-new-course-btn" class="btn-green toolbar-add" title="New course" aria-label="New course">
                     <i class="fa-solid fa-plus" aria-hidden="true"></i><span class="btn-text">New Course</span>
                 </button>
             </div>
@@ -2676,7 +2702,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     <input type="search" id="programme-search-input" class="settings-search-input" placeholder="Search programmes" aria-label="Search programmes">
                 </div>
-                <button type="button" id="add-programme-btn" class="btn-green btn-sm" title="New programme" aria-label="New programme">
+                <button type="button" id="add-programme-btn" class="btn-green toolbar-add" title="New programme" aria-label="New programme">
                     <i class="fa-solid fa-plus" aria-hidden="true"></i><span class="btn-text">New Programme</span>
                 </button>
             </div>
@@ -2689,7 +2715,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
                     <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
                     <input type="search" id="staff-search-input" class="settings-search-input" placeholder="Search staff" aria-label="Search staff">
                 </div>
-                <button type="button" id="add-staff-btn" class="btn-green btn-sm" title="Add staff" aria-label="Add staff">
+                <button type="button" id="add-staff-btn" class="btn-green toolbar-add" title="Add staff" aria-label="Add staff">
                     <i class="fa-solid fa-user-plus" aria-hidden="true"></i><span class="btn-text">Add Staff</span>
                 </button>
             </div>
@@ -2697,6 +2723,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
         </div>
 
         ${trustedDevicesSectionHtml()}
+        ${themeSectionHtml()}
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -2714,7 +2741,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
             lastAvatarClickTime = now;
             avatarClickCount++;
             if (avatarClickCount === 5) {
-                profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:#f44336; display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
+                profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:var(--danger-color); display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
                 profilePicContainer.onclick = confirmClearAllAppData;
                 avatarClickCount = 0;
             }
@@ -2795,6 +2822,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
 
     // 4. Action Buttons
     bindTrustedDevicesSection(dialog);
+    bindThemeSection(dialog);
     document.getElementById('add-staff-btn').onclick = () => showStaffEditorDialog(null);
     document.getElementById('add-new-course-btn').onclick = () => showCourseEditorDialog(null);
 
@@ -2973,7 +3001,9 @@ function showCourseEditorDialog(courseName, courseData = null) {
             </div>
         </div>
 
-        ${isGlobalAdmin && courseProgrammesSupported ? programmeFieldHtml('edit-c-programme', data.programmeId, { required: false, placeholder: 'No programme' }) : ''}
+        ${!isGlobalAdmin || !courseProgrammesSupported ? ''
+            : courseProgrammesMultiple ? programmesFieldHtml('edit-c-programmes', data.programmeIds || [])
+                : programmeFieldHtml('edit-c-programme', (data.programmeIds || [])[0], { required: false, placeholder: 'No programme' })}
 
         <div class="form-group" style="align-items:flex-start; margin-top: 15px;">
             <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-layer-group"></i> Sections</label>
@@ -3025,7 +3055,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
         </div>
 
         ${(!isNew && isGlobalAdmin) ? switchRowHtml('edit-c-archived', data.archived, 'Archived',
-            'Hidden from the course list. Its attendance and requests stay.') : ''}
+            'Hidden from lists. Its records stay.') : ''}
 
     </div>
     <div class="dialog-actions">
@@ -3036,6 +3066,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
 
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
+    bindProgrammesField(dialog.querySelector('[data-programmes-field]'));
 
     // --- Section Builder Logic ---
     const sectionListContainer = document.getElementById('section-builder-list');
@@ -3155,7 +3186,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
                             ${userAvatarHtml(shown, staff.photo, 'user-avatar settings-row-avatar')}
                             <div class="student-info" style="flex-grow:1;">
                                 <div class="student-name">${escapeHtml(shown)}</div>
-                                <div class="student-uid">${escapeHtml(staff.role === 'Global' ? 'Administrator' : (staff.role || 'Staff'))} &bull; ${escapeHtml(staff.email)}</div>
+                                <div class="student-uid"><span class="role-chip">${escapeHtml(staff.role === 'Global' ? 'Administrator' : (staff.role || 'Staff'))}</span>${escapeHtml(staff.email)}</div>
                             </div>
                             ${isSelected ? '<i class="fa-solid fa-check student-item-check" aria-hidden="true"></i>' : ''}
                         `;
@@ -3249,6 +3280,8 @@ function showCourseEditorDialog(courseName, courseData = null) {
         if (isGlobalAdmin && !isNew) payload.archived = isArchived;
         const programmeSelect = dialog.querySelector('#edit-c-programme');
         if (programmeSelect) payload.programmeId = readProgrammeField(programmeSelect, false).id;
+        const programmesField = dialog.querySelector('[data-programmes-field]');
+        if (programmesField) payload.programmeIds = readProgrammesField(programmesField);
 
         try {
             const res = await callWebApp('saveCourseSettings_Admin', payload, 'POST');
@@ -3341,7 +3374,7 @@ function renderProgrammesInSettings(filterText = '') {
     // Active courses per programme, once courses can name one.
     const courseCounts = new Map();
     Object.values(courseInfoMap).forEach(info => {
-        if (info?.programmeId && !info.archived) courseCounts.set(Number(info.programmeId), (courseCounts.get(Number(info.programmeId)) || 0) + 1);
+        if (!info?.archived) courseProgrammes(info).forEach(programme => courseCounts.set(programme.id, (courseCounts.get(programme.id) || 0) + 1));
     });
     const shown = (programmeList || []).filter(p => !query || p.code.toLowerCase().includes(query) || p.name.toLowerCase().includes(query));
     const row = p => {
@@ -3394,7 +3427,7 @@ function showProgrammeEditorDialog(programme) {
                 </div>
                 <p class="form-hint">${isNew ? 'Students choose it when they register their card.' : `A change shows at once for its ${students}.`}</p>
                 ${isNew ? '' : switchRowHtml('programme-archived', programme.archived, 'Archived',
-                    'No longer offered when students register or are added. Its students keep it.')}
+                    'No longer offered. Its students keep it.')}
             </div>
             <div class="dialog-actions">
                 ${isNew ? '' : '<button type="button" id="delete-programme-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>'}
@@ -3514,6 +3547,7 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     <div class="settings-tabs-container" role="tablist">
         <button type="button" class="settings-tab-btn active" data-target="sect-my-courses" role="tab" aria-selected="true"><i class="fa-solid fa-book-open tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="My Courses">My Courses</span></button>
         <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
+        ${themeTabHtml()}
     </div>`;
 
     // --- HTML Structure (Unified with Global Settings) ---
@@ -3534,6 +3568,7 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
             <div class="settings-scroll" id="lecturer-courses-container"></div>
         </div>
         ${trustedDevicesSectionHtml()}
+        ${themeSectionHtml()}
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -3550,7 +3585,7 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
         lastAvatarClickTime = now;
         avatarClickCount++;
         if (avatarClickCount === 5) {
-            profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:#f44336; display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
+            profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:var(--danger-color); display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
             profilePicContainer.onclick = confirmClearAllAppData;
             avatarClickCount = 0;
         }
@@ -3565,6 +3600,7 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     bindSettingsTabs(dialog);
     if (initialTab !== 'sect-my-courses') showSettingsTab(dialog, initialTab);
     bindTrustedDevicesSection(dialog);
+    bindThemeSection(dialog);
     reloadTrustedDevices();
 
     // --- Async Data Fetch ---
@@ -3941,6 +3977,202 @@ function showStudentImportGuide() {
         backdrop.remove();
         excelInput.click();
     };
+}
+
+// ============================================================
+// COLOUR THEME
+// Administrators and lecturers choose Stando's five colours in Settings → Theme.
+// The choice belongs to their account (public.user_preferences, from
+// supabase/migrations/user_theme.sql), so it follows them to every device and
+// website; this browser keeps a copy only to paint it before the account answers.
+// A colour left as Stando's sets nothing, so the stylesheet's own shades show; a
+// chosen one sets --<family>-main and .theme-<family>, and the stylesheet mixes
+// the family's other shades from it (styles.css, "Theme colours").
+// ============================================================
+const THEME_FAMILIES = [
+    { id: 'primary', label: 'Primary', hint: 'Header and buttons', fallback: '#3949ab' },
+    { id: 'secondary', label: 'Secondary', hint: 'Requests and warnings', fallback: '#fb8c00' },
+    { id: 'tertiary', label: 'Tertiary', hint: 'Information', fallback: '#2196f3' },
+    { id: 'success', label: 'Success', hint: 'Adding and approving', fallback: '#43a047' },
+    { id: 'danger', label: 'Danger', hint: 'Deleting and rejecting', fallback: '#f44336' }
+];
+const COLOUR_THEME_KEY = 'stando_colours';
+let colourThemeSupported = false;
+let accountColourTheme = {};
+
+// "#abc", "abc" or "#AABBCC" → "#aabbcc"; anything else → ''.
+function normalizeHexColour(value) {
+    const hex = String(value || '').trim().replace(/^#?/, '#').toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(hex)) return '#' + [...hex.slice(1)].map(c => c + c).join('');
+    return /^#[0-9a-f]{6}$/.test(hex) ? hex : '';
+}
+
+// Only the colours that differ from Stando's own.
+function cleanColourTheme(theme) {
+    const clean = {};
+    THEME_FAMILIES.forEach(({ id, fallback }) => {
+        const hex = normalizeHexColour(theme?.[id]);
+        if (hex && hex !== fallback) clean[id] = hex;
+    });
+    return clean;
+}
+
+// Paints the page, or one preview (a .theme-scope), in these colours.
+function applyColourTheme(theme, target = document.documentElement) {
+    const clean = cleanColourTheme(theme);
+    THEME_FAMILIES.forEach(({ id }) => {
+        if (clean[id]) target.style.setProperty(`--${id}-main`, clean[id]);
+        else target.style.removeProperty(`--${id}-main`);
+        target.classList.toggle(`theme-${id}`, !!clean[id]);
+    });
+    return clean;
+}
+
+function useColourTheme(theme) {
+    accountColourTheme = applyColourTheme(theme);
+    try {
+        if (Object.keys(accountColourTheme).length) localStorage.setItem(COLOUR_THEME_KEY, JSON.stringify(accountColourTheme));
+        else localStorage.removeItem(COLOUR_THEME_KEY);
+    } catch { /* The account still has it. */ }
+}
+
+// After sign-in: staff get their account's colours, everyone else Stando's.
+async function loadAccountColourTheme() {
+    if (!isAdmin) {
+        useColourTheme({});
+        return;
+    }
+    const { data, error } = await supabaseClient.from('user_preferences').select('theme').maybeSingle();
+    if (error) {
+        colourThemeSupported = false;
+        console.warn('Colour theme unavailable:', error.message);
+        return;
+    }
+    colourThemeSupported = true;
+    useColourTheme(data?.theme);
+}
+
+async function saveAccountColourTheme(theme) {
+    const userId = (await supabaseClient.auth.getSession()).data.session?.user?.id;
+    if (!userId) throw new Error('Sign in again to save your colours.');
+    const clean = cleanColourTheme(theme);
+    const { error } = await supabaseClient.from('user_preferences').upsert(
+        { user_id: userId, theme: Object.keys(clean).length ? clean : null, updated_at: new Date().toISOString() },
+        { onConflict: 'user_id' });
+    if (error) throw new Error(error.message);
+    useColourTheme(clean);
+}
+
+function themeTabHtml() {
+    return colourThemeSupported
+        ? '<button type="button" class="settings-tab-btn" data-target="sect-theme" role="tab" aria-selected="false"><i class="fa-solid fa-palette tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Theme">Theme</span></button>'
+        : '';
+}
+
+// A small Stando in the chosen colours: the banner, course buttons, a request,
+// information, a day's date, Add, Delete and Start Scanning.
+function themePreviewHtml() {
+    const now = new Date();
+    const date = [now.getDate(), now.getMonth() + 1].map(n => String(n).padStart(2, '0')).join('-') + `-${now.getFullYear()}`;
+    return `
+        <div class="theme-preview theme-scope" id="theme-preview" aria-hidden="true">
+            <div class="tp-banner"><span class="tp-code">CE 121</span><span class="tp-name">Civil Engineering Drawing</span></div>
+            <div class="tp-body">
+                <div class="tp-row">
+                    <span class="tp-course is-active">CE 121</span>
+                    <span class="tp-course"><i class="fa-solid fa-table-list"></i> CE 101</span>
+                    <span class="tp-course"><i class="fa-solid fa-table-list"></i> MATH 101</span>
+                </div>
+                <div class="tp-row">
+                    <span class="tp-pill is-secondary"><i class="fa-solid fa-hand-point-up"></i> Requests <b>3</b></span>
+                    <span class="tp-pill is-tertiary"><i class="fa-solid fa-circle-info"></i> Information</span>
+                </div>
+                <div class="tp-row">
+                    <span class="tp-date"><i class="fa-solid fa-calendar-day"></i> ${date}</span>
+                    <span class="tp-pill is-success"><i class="fa-solid fa-plus"></i> Add</span>
+                    <span class="tp-pill is-danger"><i class="fa-solid fa-trash"></i> Delete</span>
+                </div>
+                <div class="tp-scan"><span><i class="fa-solid fa-wifi"></i></span>Start Scanning</div>
+            </div>
+        </div>`;
+}
+
+function themeSectionHtml() {
+    if (!colourThemeSupported) return '';
+    const value = family => accountColourTheme[family.id] || family.fallback;
+    return `
+        <div id="sect-theme" class="settings-section" style="display:none; flex-direction:column; height:100%;">
+            <div class="settings-scroll theme-settings">
+                <p class="settings-device-hint">Your colours, on every device and website you sign in to.</p>
+                <div class="theme-swatches">
+                    ${THEME_FAMILIES.map(family => `
+                    <div class="theme-swatch">
+                        <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour">
+                        <label class="theme-swatch-text" for="theme-${family.id}">
+                            <span class="theme-swatch-name">${family.label}</span>
+                            <span class="theme-swatch-hint">${family.hint}</span>
+                        </label>
+                        <input type="text" class="form-control theme-hex" id="theme-${family.id}-code" value="${value(family)}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${family.label} colour code">
+                    </div>`).join('')}
+                </div>
+                <div class="settings-group-label">Preview</div>
+                ${themePreviewHtml()}
+                <div class="theme-actions">
+                    <button type="button" id="theme-reset-btn" class="btn-secondary" title="Stando's own colours; Save keeps them"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</button>
+                    <button type="button" id="theme-save-btn" class="btn-blue"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
+                </div>
+            </div>
+        </div>`;
+}
+
+// Picking a colour (or typing its code) repaints the preview; Save paints the page
+// and stores the colours in the account. Reset puts Stando's colours back in the
+// fields, for Save to keep.
+function bindThemeSection(dialog) {
+    const section = dialog.querySelector('#sect-theme');
+    if (!section) return;
+    const preview = section.querySelector('#theme-preview');
+    const fields = THEME_FAMILIES.map(family => ({
+        family,
+        swatch: section.querySelector(`#theme-${family.id}`),
+        code: section.querySelector(`#theme-${family.id}-code`)
+    }));
+    const read = () => Object.fromEntries(fields.map(({ family, swatch }) => [family.id, swatch.value]));
+    const repaint = () => applyColourTheme(read(), preview);
+    const set = (field, hex) => {
+        field.swatch.value = hex;
+        field.code.value = hex;
+        field.code.classList.remove('is-invalid');
+    };
+    fields.forEach(field => {
+        field.swatch.addEventListener('input', () => { set(field, field.swatch.value); repaint(); });
+        field.code.addEventListener('input', () => {
+            const hex = normalizeHexColour(field.code.value);
+            field.code.classList.toggle('is-invalid', !hex);
+            if (!hex) return;
+            field.swatch.value = hex;
+            repaint();
+        });
+        field.code.addEventListener('blur', () => set(field, field.swatch.value));
+    });
+    section.querySelector('#theme-reset-btn').onclick = () => {
+        fields.forEach(field => set(field, field.family.fallback));
+        repaint();
+    };
+    section.querySelector('#theme-save-btn').onclick = async (event) => {
+        const button = event.currentTarget;
+        button.disabled = true;
+        try {
+            await saveAccountColourTheme(read());
+            section.querySelectorAll('input').forEach(input => { input._initialValue = input.value; });
+            showNotification('success', 'Saved', 'Your colours are saved to your account.');
+        } catch (error) {
+            showNotification('error', 'Save Failed', error.message);
+        } finally {
+            button.disabled = false;
+        }
+    };
+    repaint();
 }
 
 /**
@@ -4827,6 +5059,7 @@ async function onSuccessfulAuth(isRestore = false) {
         });
         // Scanning needs a trusted device; knowing now lets it start offline later.
         if (isAdmin) checkDeviceTrusted();
+        loadAccountColourTheme().catch(error => console.warn('Colour theme unavailable:', error?.message || error));
 
         // 4. Process Available Courses from boot data
         const fetchedCourseDict = bootData.courses;
@@ -6659,7 +6892,7 @@ function showRequestPermissionDialog() {
     const courseOptions = isEnrolledEmpty
         ? '<option value="">No enrolled courses available</option>'
         : '<option value="">Search or choose a course</option>' + (courseGroups
-            ? courseGroups.map(group => `<optgroup label="${escapeHtml(group.programme ? programmeOptionLabel(group.programme) : 'Other courses')}">${group.courses.map(courseOption).join('')}</optgroup>`).join('')
+            ? courseGroups.map(group => `<optgroup label="${escapeHtml(group.programme ? programmeOptionLabel(group.programme) : 'Other courses')}"${group.programme ? ` data-code="${escapeHtml(group.programme.code)}"` : ''}>${group.courses.map(courseOption).join('')}</optgroup>`).join('')
             : enrolledCourses.map(courseOption).join(''));
 
     const emptyCourseExplanation = isEnrolledEmpty
@@ -6745,7 +6978,7 @@ function showRequestPermissionDialog() {
         </div>
     </div>
     
-    <div id="reason-help-text" style="display:none; background-color:#e3f2fd; color:#0d47a1; padding:12px; border-radius:8px; margin-bottom:15px; font-size:0.9em; line-height:1.4; border-left:4px solid #2196F3;"></div>
+    <div id="reason-help-text" style="display:none; background-color:var(--tertiary-50); color:var(--tertiary-900); padding:12px; border-radius:8px; margin-bottom:15px; font-size:0.9em; line-height:1.4; border-left:4px solid var(--tertiary-500);"></div>
 
     <div class="form-group" id="request-file-group" style="display:none; align-items:flex-start;">
         <label class="dialog-label-fixed" id="request-file-label" style="margin-top:10px;">Document</label>
@@ -6927,7 +7160,7 @@ function showRequestPermissionDialog() {
             captchaSolved = true;
         } else {
             btn.classList.add('incorrect');
-            btn.style.background = '#f44336';
+            btn.style.background = 'var(--danger-color)';
             btn.style.color = '#fff';
             // Generate new captcha after wrong answer
             setTimeout(() => {
@@ -7055,7 +7288,7 @@ function showRequestPermissionDialog() {
         helpText.style.display = 'none';
         helpText.style.background = '#e3f2fd'; // Reset info blue
         helpText.style.color = '#0d47a1';
-        helpText.style.borderLeftColor = '#2196F3';
+        helpText.style.borderLeftColor = 'var(--tertiary-500)';
 
         fileGroup.style.display = 'none';
         explGroup.style.display = 'none';
@@ -7115,7 +7348,7 @@ function showRequestPermissionDialog() {
             case 'Club':
                 submitBtn.disabled = true; // Disabled - Dean must email
                 helpText.style.background = '#fff3e0';
-                helpText.style.color = '#ef6c00';
+                helpText.style.color = 'var(--secondary-800)';
                 helpText.style.borderLeftColor = '#ff9800';
                 helpText.innerHTML = `<i class="fa-solid fa-envelope"></i> The Dean of Students Office must email the lecturer to request permission on your behalf.`;
                 helpText.style.display = 'block';
@@ -7133,7 +7366,7 @@ function showRequestPermissionDialog() {
                 explInput.setAttribute('minlength', '50');
 
                 helpText.style.background = '#fff3e0';
-                helpText.style.color = '#ef6c00';
+                helpText.style.color = 'var(--secondary-800)';
                 helpText.style.borderLeftColor = '#ff9800';
                 helpText.innerHTML = `<i class="fa-solid fa-lock"></i> If you cannot write it here, please visit the lecturer's office to discuss in person.`;
                 helpText.style.display = 'block';
@@ -7638,14 +7871,17 @@ function sbMapCourseInfo(rows) {
             adminEmails: row.admin_emails || '',
             availableSections: row.available_sections || '',
             archived: row.archived || false,
-            programmeId: row.programme_id ?? null
+            programmeIds: Array.isArray(row.programme_ids) ? row.programme_ids.map(Number)
+                : row.programme_id != null ? [Number(row.programme_id)] : []
         };
     });
     return courseInfoMap;
 }
 
-// Courses can name their programme once supabase/migrations/course_programmes.sql has run.
+// Courses can name a programme once supabase/migrations/course_programmes.sql has run,
+// and several once course_programmes_multiple.sql has.
 let courseProgrammesSupported = false;
+let courseProgrammesMultiple = false;
 
 function sbMapDatabase(rows) {
     const database = {};
@@ -7707,10 +7943,11 @@ function sbMapDevices(rows) {
 // Newer columns are asked for first and dropped while a migration has not run yet.
 async function sbGetCourseInfo() {
     const columns = 'name,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,available_sections,archived';
-    for (const extra of [',title,programme_id', ',title', '']) {
+    for (const extra of [',title,programme_ids', ',title,programme_id', ',title', '']) {
         const result = await supabaseClient.from('courses').select(columns + extra);
         if (SB_MISSING_COLUMN.includes(result.error?.code) && extra) continue;
         courseProgrammesSupported = extra.includes('programme_id');
+        courseProgrammesMultiple = extra.includes('programme_ids');
         return sbMapCourseInfo(sbUnwrap(result));
     }
 }
@@ -7723,7 +7960,7 @@ async function sbGetProgrammes() {
         return null;
     }
     return (data || []).map(row => ({ id: row.id, code: String(row.code || '').trim(), name: String(row.name || '').trim(), archived: !!row.archived }))
-        .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' }));
+        .sort(compareProgrammes);
 }
 
 // Read every page so a large roster or course is not silently truncated.
@@ -8723,6 +8960,7 @@ function getSuggestedDate(metadata) {
 function handleSignoutClick() {
     // Clear kiosk + Supabase sessions and reload to ensure a clean state
     localStorage.removeItem(KIOSK_MODE_KEY);
+    localStorage.removeItem(COLOUR_THEME_KEY);
     localStorage.removeItem('last_active_course');
     // The next sign-in starts its own inactivity clock; an old one would end it at once.
     localStorage.removeItem(LAST_ACTIVITY_KEY);
@@ -9205,6 +9443,7 @@ function setupAuthStateTracking() {
     supabaseClient.auth.onAuthStateChange((event) => {
         if (event === 'SIGNED_OUT' && isSignedIn) {
             try { localStorage.removeItem(LAST_ACTIVITY_KEY); } catch { /* Cleared at the next sign-out. */ }
+            useColourTheme({});
             isSignedIn = false;
             isAdmin = false;
             isGlobalAdmin = false;
@@ -9680,7 +9919,7 @@ function cardFieldsHtml(id, { cardId = '', uid = '', required = true, scan = nfc
             </div>
             <details class="more-settings"${open ? ' open' : ''}>
                 <summary>More settings</summary>
-                ${switchRowHtml(`${id}-use-uid`, useUid, 'Use UID', 'Enter the card’s UID instead; its Card ID is worked out from it.')}
+                ${switchRowHtml(`${id}-use-uid`, useUid, 'Use UID', 'Type or scan the UID; the Card ID follows.')}
             </details>
         </div>`;
 }
@@ -10322,8 +10561,8 @@ function showAddLogEntryDialog() {
         const idParts = (data.uids && data.uids.length > 0) ? `Card ID: ${data.uids.join(', ')}` : '';
         const hwParts = (data.hardware_uids && data.hardware_uids.length > 0) ? `UID: ${data.hardware_uids.join(', ')}` : '';
         const subtitle = isGlobalAdmin
-            ? [idParts, hwParts].filter(Boolean).join(' • ')
-            : (data.email || '');
+            ? [idParts, hwParts].filter(Boolean)
+            : [data.email].filter(Boolean);
 
         studentList.push({
             name: data.name || 'Unknown',
@@ -10438,7 +10677,7 @@ function showAddLogEntryDialog() {
                 <div class="student-avatar-placeholder">${student.initials}</div>
                 <div class="student-info">
                     <div class="student-name">${escapeHtml(student.name)}</div>
-                    ${student.subtitle ? `<div class="student-uid" style="font-size:0.82em; opacity:0.75;">${escapeHtml(student.subtitle)}</div>` : ''}
+                    ${student.subtitle.length ? `<div class="student-uid meta-parts" style="font-size:0.82em; opacity:0.75;">${student.subtitle.map(part => `<span>${escapeHtml(part)}</span>`).join('')}</div>` : ''}
                 </div>`;
             div.onclick = () => selectStudent(student);
             listContainer.appendChild(div);
@@ -11294,7 +11533,7 @@ function showStudentColumnMappingDialog(workbook, fileName = '') {
         const columnsHtml = Array.from({ length: width }, (_, index) => {
             const heading = String(header[index] ?? '').trim();
             const example = String(sample[index] ?? '').trim();
-            const label = `${XLSX.utils.encode_col(index)}${heading ? ' — ' + heading : ''}${example ? ' · ' + example : ''}`;
+            const label = `${XLSX.utils.encode_col(index)}${heading ? ' — ' + heading : ''}${example ? ` (e.g. ${example})` : ''}`;
             return `<option value="${index}">${escapeHtml(label.slice(0, 120))}</option>`;
         }).join('');
         Object.entries(selects).forEach(([field, select]) => {
@@ -11373,7 +11612,7 @@ function showDatabaseImportDialog(excelList, onBack = null) {
     dialog.innerHTML = `
         <h3 class="dialog-title" id="student-import-review-title"><i class="fa-solid fa-file-import"></i> Import Students</h3>
         <div class="dialog-content">
-            <p><strong>${excelList.length} students</strong>${excelList.length > 5 ? ' · Previewing first 5' : ''}</p>
+            <p><strong>${excelList.length} students</strong>${excelList.length > 5 ? ', the first 5 shown here' : ''}</p>
             <div class="table-container"><table class="database-table"><thead><tr><th>Name</th><th>Card ID</th><th>Email</th>${programmeList ? '<th>Programme</th>' : ''}</tr></thead><tbody>
                 ${excelList.slice(0, 5).map(student => `<tr><td>${escapeHtml(student.name)}</td><td>${escapeHtml(student.uids.join('; '))}</td><td>${escapeHtml(student.email)}</td>${programmeList ? `<td>${escapeHtml(programmeCode(student.programmeId)) || '—'}</td>` : ''}</tr>`).join('')}
             </tbody></table></div>
@@ -11502,7 +11741,7 @@ function showImportDialog(importedLogs, courseName = currentCourse) {
     backdrop.className = 'dialog-backdrop';
     backdrop.innerHTML = '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="logs-import-title">' +
         '<h3 class="dialog-title" id="logs-import-title"><i class="fa-solid fa-file-import"></i> Import Logs</h3><div class="dialog-content">' +
-        '<p><strong>' + importedLogs.length + ' logs</strong> · ' + escapeHtml(getCourseLabel(courseName)) + '</p>' +
+        '<p><strong>' + importedLogs.length + ' logs</strong> for ' + escapeHtml(getCourseLabel(courseName)) + '</p>' +
         '<p>Merge adds new logs and keeps existing entries. Replace All replaces this course\'s logs.</p></div>' +
         '<div class="dialog-actions"><button type="button" id="cancel-import-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>' +
         '<button type="button" id="replace-logs-btn" class="btn-orange"><i class="fa-solid fa-arrows-rotate"></i> Replace All</button>' +
@@ -12105,8 +12344,14 @@ function switchRowHtml(id, checked, title, hint) {
 
 // --- Programmes ---
 
+// Programmes A–Z by code (the start of every label), wherever they are listed.
+function compareProgrammes(a, b) {
+    return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' })
+        || String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' });
+}
+
 function setProgrammeList(list) {
-    programmeList = Array.isArray(list) ? list : null;
+    programmeList = Array.isArray(list) ? [...list].sort(compareProgrammes) : null;
     document.body.classList.toggle('has-programmes', !!programmeList);
     if (dbProgrammeFilter && dbProgrammeFilter !== 'none' && !programmeById(dbProgrammeFilter)) dbProgrammeFilter = '';
 }
@@ -12120,7 +12365,7 @@ function programmeCode(id) {
 }
 
 function programmeOptionLabel(programme) {
-    return programme.name ? `${programme.code} · ${programme.name}` : programme.code;
+    return programme.name ? `${programme.code} ${programme.name}` : programme.code;
 }
 
 // Active programmes; an archived one stays listed while it is the current choice.
@@ -12128,7 +12373,7 @@ function programmeOptionsHtml(selectedId, placeholder = 'Choose a programme') {
     const selected = Number(selectedId) || null;
     return `<option value="">${escapeHtml(placeholder)}</option>` + (programmeList || [])
         .filter(p => !p.archived || p.id === selected)
-        .map(p => `<option value="${p.id}"${p.id === selected ? ' selected' : ''}>${escapeHtml(programmeOptionLabel(p))}${p.archived ? ' (archived)' : ''}</option>`)
+        .map(p => `<option value="${p.id}" data-code="${escapeHtml(p.code)}"${p.id === selected ? ' selected' : ''}>${escapeHtml(programmeOptionLabel(p))}${p.archived ? ' (archived)' : ''}</option>`)
         .join('');
 }
 
@@ -12140,6 +12385,60 @@ function programmeFieldHtml(id, selectedId, { required = true, placeholder } = {
             <label class="dialog-label-fixed" for="${id}"><i class="fa-solid fa-graduation-cap"></i> Programme${required ? ' <span class="required">*</span>' : ''}</label>
             <select id="${id}" class="form-control programme-select">${programmeOptionsHtml(selectedId, placeholder)}</select>
         </div>`;
+}
+
+// A course's Programmes field: the chosen ones as chips, A–Z, each with a remove
+// button, and a searchable list below to add another. The ids live in a hidden
+// input, so the dialog notices changes as with any field.
+function programmesFieldHtml(id, ids) {
+    if (!(programmeList || []).length) return '';
+    const options = programmeList.filter(p => !p.archived || ids.includes(p.id))
+        .map(p => `<option value="${p.id}" data-code="${escapeHtml(p.code)}">${escapeHtml(programmeOptionLabel(p))}${p.archived ? ' (archived)' : ''}</option>`).join('');
+    return `
+        <div class="form-group programmes-field" data-programmes-field>
+            <label class="dialog-label-fixed" for="${id}-add"><i class="fa-solid fa-graduation-cap"></i> Programmes</label>
+            <input type="hidden" id="${id}" value="${escapeHtml(ids.join(','))}">
+            <div class="programme-chips"></div>
+            <select id="${id}-add" class="form-control search-select" data-empty="No programme matches"><option value="">Add a programme</option>${options}</select>
+        </div>`;
+}
+
+function readProgrammesField(box) {
+    return box.querySelector('input[type="hidden"]').value.split(',').map(Number).filter(id => programmeById(id));
+}
+
+// Chips and adding; called once the dialog is on the page.
+function bindProgrammesField(box) {
+    if (!box || box.dataset.bound) return;
+    box.dataset.bound = 'on';
+    const hidden = box.querySelector('input[type="hidden"]');
+    const select = box.querySelector('select');
+    const chips = box.querySelector('.programme-chips');
+    const render = () => {
+        const chosen = readProgrammesField(box).map(programmeById).sort(compareProgrammes);
+        chips.innerHTML = chosen.length
+            ? chosen.map(p => `<span class="programme-chip"><strong>${escapeHtml(p.code)}</strong>${p.name ? ` <span>${escapeHtml(p.name)}</span>` : ''}<button type="button" class="programme-chip-remove" data-id="${p.id}" title="Remove ${escapeHtml(p.code)}" aria-label="Remove ${escapeHtml(p.code)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></span>`).join('')
+            : '<span class="programme-chips-empty">No programme yet</span>';
+        [...select.options].forEach(option => { if (option.value) option.disabled = chosen.some(p => String(p.id) === option.value); });
+    };
+    const set = ids => {
+        hidden.value = [...new Set(ids)].join(',');
+        hidden.dispatchEvent(new Event('input', { bubbles: true }));
+        render();
+    };
+    select.addEventListener('change', () => {
+        const id = Number(select.value);
+        if (!id) return;
+        set([...readProgrammesField(box), id]);
+        select.value = '';
+        const search = box.querySelector('.combo-input');
+        if (search) search.value = '';
+    });
+    chips.addEventListener('click', event => {
+        const button = event.target.closest('.programme-chip-remove');
+        if (button) set(readProgrammesField(box).filter(id => id !== Number(button.dataset.id)));
+    });
+    render();
 }
 
 // { ok, id } for a Programme field; a missing field (no programmes yet) is ok with no id.
@@ -12161,20 +12460,34 @@ function programmeBadgeHtml(id) {
         : '<span class="cell-empty">—</span>';
 }
 
-// Courses under their programmes, A–Z by code, with courses that have none last;
-// each keeps the order it was given in. null when they span fewer than two
-// programmes: someone who teaches or studies in one programme sees no headings.
-function groupCoursesByProgramme(courses) {
+// A course's programmes (those that still exist), A–Z.
+function courseProgrammes(info) {
+    return [...new Set(info?.programmeIds || [])].map(programmeById).filter(Boolean).sort(compareProgrammes);
+}
+
+// Items under their courses' programmes, A–Z by code, with those that have none
+// last; each keeps the order it was given in, and an item in two programmes shows
+// under both. null when they span fewer than two programmes: someone who teaches
+// or studies in one programme sees no headings.
+function groupByCourseProgramme(items, infoOf) {
     const groups = new Map();
-    courses.forEach(course => {
-        const programme = programmeById(courseInfoMap[course]?.programmeId);
+    const add = (programme, item) => {
         const key = programme ? programme.id : 0;
         if (!groups.has(key)) groups.set(key, { programme, courses: [] });
-        groups.get(key).courses.push(course);
+        groups.get(key).courses.push(item);
+    };
+    items.forEach(item => {
+        const programmes = courseProgrammes(infoOf(item));
+        if (programmes.length) programmes.forEach(programme => add(programme, item));
+        else add(null, item);
     });
     if ([...groups.keys()].filter(Boolean).length < 2) return null;
     return [...groups.values()].sort((a, b) => !a.programme ? 1 : !b.programme ? -1
-        : a.programme.code.localeCompare(b.programme.code, undefined, { numeric: true, sensitivity: 'base' }));
+        : compareProgrammes(a.programme, b.programme));
+}
+
+function groupCoursesByProgramme(courses) {
+    return groupByCourseProgramme(courses, course => courseInfoMap[course]);
 }
 
 // A programme heading for course lists: its code, then its name.
@@ -12440,8 +12753,7 @@ function courseLecturers(info) {
 // Keys are normalised, so a name with titles groups with the same name without them.
 function courseFacetValues(info, facet) {
     if (facet === 'programme') {
-        const programme = programmeById(info?.programmeId);
-        return programme ? [{ key: String(programme.id), label: programme.code, full: programmeOptionLabel(programme) }] : [];
+        return courseProgrammes(info).map(programme => ({ key: String(programme.id), label: programme.code, full: programmeOptionLabel(programme) }));
     }
     const term = courseTerm(info);
     if (facet === 'semester') return term ? [{ key: term.season, label: term.season }] : [];
@@ -12542,7 +12854,7 @@ function renderCoursesInSettings(courseInfo, filterText = '', targetContainerId 
         const isArchivedCollapsed = localStorage.getItem('settings_archived_collapsed') !== 'false';
 
         // Code, then lecturers on a muted line; the term tells offerings apart.
-        const programmeCount = new Set(searched.map(([, d]) => programmeById(d.programmeId)?.id).filter(Boolean)).size;
+        const programmeCount = new Set(searched.flatMap(([, d]) => courseProgrammes(d).map(programme => programme.id))).size;
         // Rows outside a programme group (archived, or one programme chosen) name their programme.
         const courseRow = ([courseName, data], showProgramme = false) => {
             const cleanCode = getCleanCourseCode(courseName, data.eisId);
@@ -12553,7 +12865,7 @@ function renderCoursesInSettings(courseInfo, filterText = '', targetContainerId 
             return `
                 <div class="settings-row${data.archived ? ' is-archived' : ''}">
                     <div class="settings-row-main">
-                        <span class="settings-row-title">${showProgramme && programmeById(data.programmeId) ? `${programmeBadgeHtml(data.programmeId)} ` : ''}<strong>${escapeHtml(cleanCode)}</strong>${data.title ? ` <span class="settings-row-name">${escapeHtml(data.title)}</span>` : ''}${data.eisId ? ` <span class="settings-row-eis selectable">#${escapeHtml(String(data.eisId))}</span>` : ''}${data.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
+                        <span class="settings-row-title">${showProgramme ? courseProgrammes(data).map(programme => `${programmeBadgeHtml(programme.id)} `).join('') : ''}<strong>${escapeHtml(cleanCode)}</strong>${data.title ? ` <span class="settings-row-name">${escapeHtml(data.title)}</span>` : ''}${data.eisId ? ` <span class="settings-row-eis selectable">#${escapeHtml(String(data.eisId))}</span>` : ''}${data.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
                         <span class="settings-row-people${lecturers.length ? '' : ' is-empty'}" title="${escapeHtml(people)}">${escapeHtml(people)}</span>
                     </div>
                     ${term ? `<div class="settings-row-meta">
@@ -12570,16 +12882,9 @@ function renderCoursesInSettings(courseInfo, filterText = '', targetContainerId 
             : `<div class="settings-empty">No ${kind} courses.</div>`;
         // Active courses under their programmes, unless one programme is chosen above.
         const activeHtml = () => {
-            if (programmeCount < 2 || facets.programme) return listHtml(activeList, 'active');
-            const groups = new Map();
-            activeList.forEach(entry => {
-                const programme = programmeById(entry[1].programmeId);
-                const key = programme ? programme.id : 0;
-                if (!groups.has(key)) groups.set(key, { programme, courses: [] });
-                groups.get(key).courses.push(entry);
-            });
-            return [...groups.values()]
-                .sort((a, b) => !a.programme ? 1 : !b.programme ? -1 : a.programme.code.localeCompare(b.programme.code, undefined, { numeric: true }))
+            const groups = !facets.programme && groupByCourseProgramme(activeList, entry => entry[1]);
+            if (!groups) return listHtml(activeList, 'active');
+            return groups
                 .map(group => `<div class="settings-programme-group"><div class="settings-programme-label">${programmeHeadingHtml(group.programme)}<span class="settings-group-count">${group.courses.length}</span></div>${listHtml(group.courses, 'active')}</div>`)
                 .join('');
         };
@@ -12700,7 +13005,7 @@ function renderStaffInSettings(staffList, filterText = '') {
                     ${userAvatarHtml(shown, s.photo, 'user-avatar settings-row-avatar')}
                     <div class="settings-row-main">
                         <span class="settings-row-title">${escapeHtml(shown)}</span>
-                        <span class="settings-row-people${named ? '' : ' is-empty'}"><span class="settings-row-role">${escapeHtml(role)} · </span>${named ? `<span class="selectable">${escapeHtml(s.email)}</span>` : 'Name appears after their first Google sign-in'}</span>
+                        <span class="settings-row-people${named ? '' : ' is-empty'}"><span class="settings-row-role role-chip">${escapeHtml(role)}</span>${named ? `<span class="selectable">${escapeHtml(s.email)}</span>` : 'Name appears after their first Google sign-in'}</span>
                     </div>
                     <div class="settings-row-meta"><span class="settings-row-term">${escapeHtml(role)}</span></div>
                     <div class="card-actions">
@@ -12788,7 +13093,7 @@ function studentListSummary() {
     const programmes = new Set(students.map(([, s]) => programmeById(s.programmeId)?.id).filter(Boolean));
     const without = students.filter(([, s]) => !programmeById(s.programmeId)).length;
     const summary = listCountText(programmes.size, 'programme');
-    return without ? `${summary} · ${listCountText(without, 'student')} without one` : summary;
+    return without ? `${summary}, ${listCountText(without, 'student')} without one` : summary;
 }
 
 /**
@@ -13043,7 +13348,7 @@ function showScanAnnouncement({ unknown, name }) {
         : '<i class="fa-solid fa-circle-check"></i>';
     overlay.querySelector('.scan-announcement-title').textContent = unknown ? 'Unknown card' : 'Welcome';
     overlay.querySelector('.scan-announcement-subtitle').textContent = unknown
-        ? 'Attendance recorded · Not in the student list'
+        ? 'Attendance recorded, but not in the student list'
         : 'Attendance Recorded';
     nameEl.textContent = name;
 

@@ -164,12 +164,29 @@ Students are linked to a programme, not to its spelling, so:
   it, you choose another programme and they move there first. Their cards and
   attendance are not affected.
 
-Courses can belong to a programme too: choose it in the course's settings.
-Wherever someone's courses span two or more programmes, Stando groups them by
-programme: the course buttons, **Settings → Courses** (with a Programme filter)
-and the course list of an absence request. Someone whose courses are all in one
-programme sees no grouping. This needs
-[supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql).
+Courses belong to programmes too, one or several (a course shared by two
+degrees): add them under **Programmes** in the course's settings. Wherever
+someone's courses span two or more programmes, Stando groups them by programme,
+and a shared course shows under each: the course buttons, **Settings → Courses**
+(with a Programme filter) and the course list of an absence request. Someone
+whose courses are all in one programme sees no grouping. This needs
+[supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql),
+then [course_programmes_multiple.sql](supabase/migrations/course_programmes_multiple.sql)
+for more than one programme per course.
+
+Programmes are listed A–Z by code everywhere. In a programme or course list,
+typing a code (`BA CE`) shows just that programme, or its courses.
+
+### Colours
+
+Administrators and lecturers choose Stando's colours in **Settings → Theme**:
+primary (header and buttons), secondary (requests and warnings), tertiary
+(information), success (adding and approving) and danger (deleting and
+rejecting). The preview shows them before **Save**; **Reset** puts Stando's own
+colours back, for Save to keep. The colours belong to the account, so they
+follow the person to every device and website; students always see Stando's.
+This needs [supabase/migrations/user_theme.sql](supabase/migrations/user_theme.sql);
+until then the tab is hidden.
 
 ### Staff names and email signatures
 

@@ -43,6 +43,18 @@
             document.documentElement.classList.toggle('dark-mode', dark);
             document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
         })();
+        // The account's colours as this browser last saw them (Settings → Theme), until
+        // the account answers. Keep in step with applyColourTheme() in scripts.js.
+        (function () {
+            try {
+                const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');
+                for (const family of ['primary', 'secondary', 'tertiary', 'success', 'danger']) {
+                    if (!/^#[0-9a-f]{6}$/.test(colours[family])) continue;
+                    document.documentElement.style.setProperty('--' + family + '-main', colours[family]);
+                    document.documentElement.classList.add('theme-' + family);
+                }
+            } catch { }
+        })();
         // Choose the startup skeleton: signed out unless a session is stored (or a Google
         // redirect is returning), otherwise the view this browser showed last. Keep in step
         // with markStartupView() in embed.js.
@@ -381,7 +393,7 @@
                             </select>
                         </label>
                         <div class="logs-actions">
-                            <button type="button" id="add-log-btn" class="btn-green btn-icon admin-only"
+                            <button type="button" id="add-log-btn" class="btn-green btn-icon toolbar-add admin-only"
                                 style="display: none;" title="Add a record" aria-label="Add a record"><i class="fa-solid fa-plus"
                                     aria-hidden="true"></i><span class="action-label">Add</span></button>
                             <div class="row-menu toolbar-menu admin-only">
@@ -489,7 +501,7 @@
                             </select>
                         </label>
                         <div class="database-actions">
-                            <button type="button" id="add-entry-btn" class="btn-green btn-icon admin-only"
+                            <button type="button" id="add-entry-btn" class="btn-green btn-icon toolbar-add admin-only"
                                 style="display: none;" title="Add a student" aria-label="Add a student"><i
                                     class="fa-solid fa-plus" aria-hidden="true"></i><span
                                     class="action-label">Add</span></button>
