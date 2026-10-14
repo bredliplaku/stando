@@ -12950,8 +12950,8 @@ body.on-student-list:not(.signed-out) #session-label {
    Course tabs, as in Syllabase
    Grey, flat tabs in segmented rows (each line rounded at its ends). Hovering
    rounds a tab and rings it; the chosen tab takes the app's colour, drops its
-   icon and grows to the course's full name. Programme labels sit inline before
-   their courses. A course's copy under another programme is outlined and
+   icon and grows to the course's full name. Each programme's label sits above its
+   own row of courses. A course's copy under another programme is outlined and
    muted; tapping it shows a note by the button (showCourseBubble).
    ========================================================================= */
 #course-buttons-container .course-button,
@@ -13074,27 +13074,26 @@ body.on-student-list:not(.signed-out) #session-label {
     }
 }
 
-/* Programmes in one flow: each label, then its courses, all wrapping together as
-   one line of text would, so a programme never starts a line of its own. The label,
-   with a hairline before every programme after the first, separates them; each
-   programme's run of tabs keeps its own rounded ends (updateCourseButtonRows). */
+/* Programmes stacked: each label above its own row of courses, so every programme
+   starts a line of its own; each row keeps its own rounded ends (updateCourseButtonRows). */
 #course-buttons-container.is-grouped {
-    flex-direction: row;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 14px;
+}
+
+#course-buttons-container.is-grouped .course-group-buttons {
+    display: flex;
     flex-wrap: wrap;
-    align-items: center;
     gap: 6px 2px;
 }
 
-#course-buttons-container.is-grouped .course-group,
-#course-buttons-container.is-grouped .course-group-buttons {
-    display: contents;
-}
-
 #course-buttons-container .course-group-label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
     gap: 6px;
-    margin: 0 8px 0 4px;
+    margin: 0 6px 8px;
     color: var(--primary-color);
     font-size: 0.8125rem;
     font-weight: 600;
@@ -13102,25 +13101,8 @@ body.on-student-list:not(.signed-out) #session-label {
     white-space: nowrap;
 }
 
-#course-buttons-container .course-group + .course-group > .course-group-label {
-    margin-left: 10px;
-}
-
-#course-buttons-container .course-group + .course-group > .course-group-label::before {
-    content: '';
-    align-self: stretch;
-    width: 1px;
-    min-height: 20px;
-    margin-right: 6px;
-    background: rgba(15, 23, 42, 0.15);
-}
-
 .dark-mode #course-buttons-container .course-group-label {
     color: var(--primary-200);
-}
-
-.dark-mode #course-buttons-container .course-group + .course-group > .course-group-label::before {
-    background: rgba(255, 255, 255, 0.18);
 }
 
 @media (max-width: 768px) {

@@ -12285,12 +12285,12 @@ function updateLogsList() {
     lastLogGroups = result;
 
     // --- PAGINATION LOGIC ---
-    const totalPages = Math.ceil(result.length / ITEMS_PER_PAGE);
+    // Sorted by date, pages break only between days, so a day is never cut in two.
+    const pages = paginateRows(result, currentSort.startsWith('date') ? group => group.date : null);
+    const totalPages = pages.length;
     if (logsCurrentPage > totalPages) logsCurrentPage = Math.max(1, totalPages);
 
-    const startIndex = (logsCurrentPage - 1) * ITEMS_PER_PAGE;
-    const endIndex = startIndex + ITEMS_PER_PAGE;
-    const paginatedResult = result.slice(startIndex, endIndex);
+    const paginatedResult = pages[logsCurrentPage - 1] || [];
 
     // Render pagination controls
     renderLogsPagination(logsCurrentPage, totalPages);
@@ -14848,6 +14848,25 @@ function renderPagination(prefix, currentPage, totalPages, goTo) {
     nextBtn.disabled = currentPage >= totalPages;
     prevBtn.onclick = () => show(currentPage - 1);
     nextBtn.onclick = () => show(currentPage + 1);
+}
+
+// Splits rows into pages of ITEMS_PER_PAGE. With dayOf, a day's rows stay together:
+// whole days fill a page up to the limit, and a longer day has a page of its own.
+function paginateRows(rows, dayOf) {
+    const pages = [];
+    let page = [];
+    for (let start = 0; start < rows.length;) {
+        let end = start + 1;
+        if (dayOf) while (end < rows.length && dayOf(rows[end]) === dayOf(rows[start])) end++;
+        if (page.length && page.length + (end - start) > ITEMS_PER_PAGE) {
+            pages.push(page);
+            page = [];
+        }
+        page.push(...rows.slice(start, end));
+        start = end;
+    }
+    if (page.length) pages.push(page);
+    return pages;
 }
 
 function renderLogsPagination(currentPage, totalPages) {
