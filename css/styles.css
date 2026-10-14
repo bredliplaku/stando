@@ -7204,7 +7204,14 @@ button.settings-group-label:active:not(:disabled) {
 .req-status-pill,
 .action-chip,
 .logs-count,
-.entry-count {
+.entry-count,
+.course-group-label,
+.settings-programme-label,
+.programme-badge,
+.programme-chip,
+.combo-list,
+.settings-facet,
+.session-label {
     user-select: none;
     -webkit-user-select: none;
 }
@@ -12270,97 +12277,99 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
    One row per colour (swatch, what it colours, its code), a small Stando
    repainted as the colours change, then Reset and Save.
    ========================================================================= */
-.theme-swatches {
-    display: grid;
-    gap: 8px;
-    margin: 0 0 18px;
+/* Side by side, as in Syllabase: each colour a swatch, its code and its name,
+   fewer per row on narrow screens. */
+.theme-label-note {
+    margin-left: 6px;
+    color: #9e9e9e;
+    font-weight: 600;
+    letter-spacing: 0.02em;
 }
 
-.theme-swatch {
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 100px;
+.theme-colours {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin: 0 0 14px;
+}
+
+.theme-colour {
+    display: flex;
+    flex: 1 1 96px;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 8px 10px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    border-radius: 14px;
-    background: var(--card-background);
+    gap: 4px;
+    min-width: 0;
 }
 
-.theme-swatch input[type="color"] {
-    width: 44px;
-    height: 36px;
+.theme-colour input[type="color"] {
+    width: 100%;
+    height: 38px;
     margin: 0;
-    padding: 0;
-    border: 0;
+    padding: 2px;
+    border: 1.5px solid #e0e0e0;
     border-radius: 10px;
     background: none;
     cursor: pointer;
 }
 
-.theme-swatch input[type="color"]::-webkit-color-swatch-wrapper {
+.theme-colour input[type="color"]::-webkit-color-swatch-wrapper {
     padding: 0;
 }
 
-.theme-swatch input[type="color"]::-webkit-color-swatch {
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 10px;
+.theme-colour input[type="color"]::-webkit-color-swatch {
+    border: 0;
+    border-radius: 7px;
 }
 
-.theme-swatch input[type="color"]::-moz-color-swatch {
-    border: 1px solid rgba(0, 0, 0, 0.12);
-    border-radius: 10px;
+.theme-colour input[type="color"]::-moz-color-swatch {
+    border: 0;
+    border-radius: 7px;
 }
 
-.theme-swatch-text {
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
-    margin: 0;
-    cursor: pointer;
-}
-
-.theme-swatch-name {
-    font-size: 0.9375rem;
-    font-weight: 600;
-}
-
-.theme-swatch-hint {
-    overflow: hidden;
-    color: #78909c;
-    font-size: 0.8125rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.dialog .theme-swatch .theme-hex {
+.dialog .theme-colour .theme-hex {
     width: 100%;
-    height: 36px;
+    height: auto;
     margin: 0;
-    padding: 0 8px !important;
+    padding: 5px 6px !important;
+    border-radius: 8px;
     font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     text-align: center;
 }
 
-.dialog .theme-swatch .theme-hex.is-invalid {
+.dialog .theme-colour .theme-hex.is-invalid {
     border-color: var(--danger-color);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger-color) 18%, transparent);
 }
 
+.theme-colour-name {
+    color: #9e9e9e;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.dark-mode .theme-colour input[type="color"] {
+    border-color: rgba(255, 255, 255, 0.16);
+}
+
+.theme-note {
+    flex: 1 1 auto;
+    margin-right: auto;
+    color: #9e9e9e;
+    font-size: 0.8125rem;
+}
+
 .theme-actions {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    margin-top: 16px;
-}
-
-.dark-mode .theme-swatch {
-    border-color: rgba(255, 255, 255, 0.08);
-}
-
-.dark-mode .theme-swatch input[type="color"]::-webkit-color-swatch {
-    border-color: rgba(255, 255, 255, 0.2);
+    margin-top: 12px;
 }
 
 /* The preview, drawn with the same recipes as the real parts. */
@@ -12421,17 +12430,31 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     white-space: nowrap;
 }
 
-.tp-course {
-    border: 1px solid rgba(15, 23, 42, 0.1);
-    border-radius: 10px;
-    background: var(--card-background);
-    color: var(--primary-color);
+/* As the course buttons: one segmented row, its ends rounded, the chosen one pressed. */
+.tp-row.is-segmented {
+    gap: 2px;
 }
 
-.tp-course.is-active {
-    border-color: color-mix(in srgb, var(--primary-color) 40%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 12%, var(--card-background));
-    color: color-mix(in srgb, var(--primary-color) 78%, #000);
+.tp-course {
+    border-radius: var(--border-radius-sm);
+    background: var(--card-background);
+    color: var(--primary-color);
+    box-shadow: var(--shadow-sm);
+}
+
+.tp-course:first-child {
+    border-radius: var(--border-radius-lg) var(--border-radius-sm) var(--border-radius-sm) var(--border-radius-lg);
+}
+
+.tp-course:last-child {
+    border-radius: var(--border-radius-sm) var(--border-radius-lg) var(--border-radius-lg) var(--border-radius-sm);
+}
+
+.tp-row .tp-course.is-active {
+    border-radius: var(--border-radius-lg);
+    background: var(--primary-50);
+    color: var(--primary-800);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .tp-pill {
@@ -12518,14 +12541,14 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 }
 
 .dark-mode .tp-course {
-    border-color: rgba(255, 255, 255, 0.1);
-    color: color-mix(in srgb, var(--primary-color) 45%, #fff);
+    background: #444;
+    color: #f0f0f0;
 }
 
-.dark-mode .tp-course.is-active {
-    border-color: color-mix(in srgb, var(--primary-color) 75%, transparent);
-    background: color-mix(in srgb, var(--primary-color) 32%, var(--card-background));
+.dark-mode .tp-row .tp-course.is-active {
+    background: var(--primary-color);
     color: #fff;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
 }
 
 .dark-mode .tp-pill.is-secondary {
@@ -12553,9 +12576,12 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 }
 
 @media (max-width: 768px) {
-    .theme-swatch {
-        grid-template-columns: 40px minmax(0, 1fr) 88px;
-        gap: 10px;
+    .theme-colour {
+        flex-basis: 56px;
+    }
+
+    .theme-note {
+        flex-basis: 100%;
     }
 
     .theme-actions > button {
@@ -12940,4 +12966,126 @@ body.is-selecting #scanner-tab {
     #scanner-tab .logs-table.bulk-mode thead {
         display: none !important;
     }
+}
+
+/* =========================================================================
+   Course and session buttons, compact
+   The same segmented rows: each line rounded at its ends, a button rounding
+   fully on hover, the chosen one pressed in. Lower than before, and on wider
+   screens each button is as wide as its code, so a short row does not
+   stretch into a long bar. On phones the buttons still share each line.
+   ========================================================================= */
+:is(#course-buttons-container, #session-controls) .course-button {
+    box-sizing: border-box;
+    min-height: 44px;
+    padding: 0 22px;
+}
+
+/* Hovering keeps the weight, so a button never changes width under the pointer. */
+:is(#course-buttons-container, #session-controls) .course-button:hover {
+    font-weight: 600;
+}
+
+#session-group-container .course-button {
+    min-width: 44px;
+    padding: 0;
+}
+
+@media (min-width: 769px) {
+    #course-buttons-container .course-button,
+    #session-category-group .course-button {
+        flex: 0 0 auto;
+        min-width: 120px;
+    }
+
+    #session-controls {
+        justify-content: flex-start;
+    }
+
+    #session-category-group,
+    #session-group-container {
+        flex: 0 1 auto;
+        justify-content: flex-start !important;
+    }
+
+    #session-group-container .course-button {
+        flex: 0 0 44px !important;
+        width: 44px !important;
+    }
+}
+
+@media (max-width: 768px) {
+    :is(#course-buttons-container, #session-controls) .course-button {
+        min-height: 42px;
+        padding: 0 14px;
+        font-size: 0.9rem;
+    }
+
+    #session-group-container .course-button {
+        padding: 0;
+    }
+}
+
+/* A course shown under two programmes: the copy not chosen is dimmed; tapping it
+   says the course is already selected. */
+#course-buttons-container .course-button.is-duplicate,
+#course-buttons-container .course-button.is-duplicate:hover {
+    border-color: transparent;
+    box-shadow: none;
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+#course-buttons-container .course-button.is-duplicate:hover {
+    border-radius: var(--border-radius-sm);
+}
+
+/* Under programme headings, the sessions have their own. */
+#session-label {
+    margin: 0 6px 8px;
+}
+
+#session-label[hidden],
+body.on-student-list:not(.signed-out) #session-label {
+    display: none;
+}
+
+/* A short message in the corner (showToast), as in Syllabase. */
+.toast {
+    position: fixed;
+    right: 22px;
+    bottom: calc(22px + env(safe-area-inset-bottom, 0px));
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    max-width: 340px;
+    padding: 12px 18px;
+    border-radius: 12px;
+    background: var(--primary-color);
+    color: #fff;
+    font-size: 0.875em;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    opacity: 0;
+    transform: translateY(80px) scale(0.9);
+    transition: transform 0.28s cubic-bezier(.34, 1.4, .64, 1), opacity 0.22s ease;
+    pointer-events: none;
+}
+
+.toast > :is(i, svg) {
+    flex-shrink: 0;
+    font-size: 1.15em;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.toast.ok {
+    background: var(--success-color);
+}
+
+.toast.err {
+    background: var(--danger-color);
 }

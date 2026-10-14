@@ -179,7 +179,10 @@ degrees): add them under **Programmes** in the course's settings. Wherever
 someone's courses span two or more programmes, Stando groups them by programme,
 and a shared course shows under each: the course buttons, **Settings → Courses**
 (with a Programme filter) and the course list of an absence request. Someone
-whose courses are all in one programme sees no grouping. This needs
+whose courses are all in one programme sees no grouping. Among the course
+buttons, the copy of a shared course you choose is pressed and its other copy
+dims (tapping it says the course is already selected); the session buttons get
+their own **Session** heading. This needs
 [supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql),
 then [course_programmes_multiple.sql](supabase/migrations/course_programmes_multiple.sql)
 for more than one programme per course.

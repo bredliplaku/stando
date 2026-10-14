@@ -411,9 +411,12 @@ function showStaffEditorDialog(staffData = null) {
 
                 showNotification('success', 'Success', `Staff member ${isEdit ? 'updated' : 'added'}.`);
 
-                document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                closeDialogMode();
-                showGlobalSettingsDialog('sect-staff');
+                dialogBackdrop.remove();
+                if (!refreshOpenSettings()) {
+                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
+                    closeDialogMode();
+                    showGlobalSettingsDialog('sect-staff');
+                }
             } catch (err) {
                 showNotification('error', 'Error', err.message);
                 btn.disabled = false;
@@ -647,6 +650,7 @@ function renderSessionControls(courseName) {
     // Safety check
     if (!courseInfoMap || !courseInfoMap[courseName]) {
         controls.style.display = 'none';
+        document.getElementById('session-label')?.setAttribute('hidden', '');
         return;
     }
 
@@ -656,6 +660,7 @@ function renderSessionControls(courseName) {
 
     if (categories.length === 0) {
         controls.style.display = 'none';
+        document.getElementById('session-label')?.setAttribute('hidden', '');
         activeSessionCategory = null;
         activeSessionGroup = null;
         return;
@@ -703,6 +708,13 @@ function renderSessionControls(courseName) {
 
     // Only show main container if at least one row is visible
     controls.style.display = (showCategories || showGroups) ? 'flex' : 'none';
+    // Under programme headings, the sessions get one too, so they are not read as the
+    // last programme's.
+    const sessionLabel = document.getElementById('session-label');
+    if (sessionLabel) {
+        sessionLabel.hidden = controls.style.display === 'none' ||
+            !document.getElementById('course-buttons-container')?.classList.contains('is-grouped');
+    }
 
     // Apply row-aware rounding to session button containers, and again whenever they reflow.
     requestAnimationFrame(() => {
@@ -2807,10 +2819,10 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
                 .map(s => [String(s.email).trim().toLowerCase(), staffDisplayName(s)]));
 
             // Render Courses
-            renderCoursesInSettings(courseInfo);
+            renderCoursesInSettings(courseInfo, searchInput?.value || '');
 
             // Render Staff (Grouped by position & sorted alphabetically ignoring titles)
-            renderStaffInSettings(loadedStaffList);
+            renderStaffInSettings(loadedStaffList, staffSearchInput?.value || '');
 
             renderTrustedDevices(globalData.devices || []);
 
@@ -2823,6 +2835,7 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     };
 
     loadSettingsData();
+    dialog._reload = loadSettingsData;
 
     // 4. Action Buttons
     bindTrustedDevicesSection(dialog);
@@ -2882,16 +2895,10 @@ window.deleteStaffKey = (rowIndex, name) => {
         onConfirm: () => {
             callWebApp('manageStaff_Admin', { actionType: 'delete', rowIndex }, 'POST')
                 .then(() => {
+                    if (refreshOpenSettings()) return;
                     document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
                     closeDialogMode();
-
-                    showGlobalSettingsDialog();
-
-                    // Auto-switch back to "Staff" tab
-                    setTimeout(() => {
-                        const tab = document.querySelector('.settings-tab-btn[data-target="sect-staff"]');
-                        if (tab) tab.click();
-                    }, 100);
+                    showGlobalSettingsDialog('sect-staff');
                 })
                 .catch(err => showNotification('error', 'Error', err.message));
         }
@@ -3294,10 +3301,12 @@ function showCourseEditorDialog(courseName, courseData = null) {
                 await refreshCoursePicker('Course saved.');
                 showNotification('success', 'Saved', 'Course updated.');
                 close();
-                document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                closeDialogMode();
-                if (isGlobalAdmin) showGlobalSettingsDialog();
-                else showAdminProfileDialog();
+                if (!refreshOpenSettings()) {
+                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
+                    closeDialogMode();
+                    if (isGlobalAdmin) showGlobalSettingsDialog();
+                    else showAdminProfileDialog();
+                }
             } else { throw new Error(res.message); }
         } catch (err) {
             showNotification('error', 'Save Failed', err.message);
@@ -3321,9 +3330,11 @@ function showCourseEditorDialog(courseName, courseData = null) {
                     await refreshCoursePicker('Course deleted.');
                     showNotification('delete', 'Deleted', 'Course and its logs removed.');
                     close();
-                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                    closeDialogMode();
-                    showGlobalSettingsDialog();
+                    if (!refreshOpenSettings()) {
+                        document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
+                        closeDialogMode();
+                        showGlobalSettingsDialog();
+                    }
                 }
             });
         };
@@ -3608,27 +3619,35 @@ function showAdminProfileDialog(initialTab = 'sect-my-courses') {
     reloadTrustedDevices();
 
     // --- Async Data Fetch ---
-    (async () => {
-        await fetchCourseInfo();
-        const loader = dialog.querySelector('#profile-loader');
-        if (loader) loader.style.display = 'none';
-
+    const searchInput = dialog.querySelector('#lecturer-course-search-input');
+    const renderMine = () => {
         const myCourseDict = {};
         availableCourses.forEach(c => {
             if (courseInfoMap[c]) myCourseDict[c] = courseInfoMap[c];
         });
-
-        renderCoursesInSettings(myCourseDict, '', 'lecturer-courses-container');
-
-        const searchInput = dialog.querySelector('#lecturer-course-search-input');
-        if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                renderCoursesInSettings(myCourseDict, e.target.value, 'lecturer-courses-container');
-            });
-        }
-        bindSettingsSortSelect(dialog.querySelector('#lecturer-course-sort'),
-            () => renderCoursesInSettings(myCourseDict, searchInput ? searchInput.value : '', 'lecturer-courses-container'));
+        renderCoursesInSettings(myCourseDict, searchInput ? searchInput.value : '', 'lecturer-courses-container');
+    };
+    searchInput?.addEventListener('input', renderMine);
+    bindSettingsSortSelect(dialog.querySelector('#lecturer-course-sort'), renderMine);
+    dialog._reload = async () => {
+        await fetchCourseInfo();
+        renderMine();
+    };
+    (async () => {
+        await fetchCourseInfo();
+        const loader = dialog.querySelector('#profile-loader');
+        if (loader) loader.style.display = 'none';
+        renderMine();
     })();
+}
+
+// After an editor opened from Settings saves, Settings stays as it was (tab, search,
+// scroll) and only reads its lists again. false when no Settings is open.
+function refreshOpenSettings() {
+    const settings = document.querySelector('.dialog-backdrop .settings-dialog');
+    if (!settings?._reload) return false;
+    Promise.resolve(settings._reload()).catch(error => console.warn('Settings did not refresh:', error));
+    return true;
 }
 
 // A student's profile: who they are, whether their Student ID card is registered
@@ -4082,7 +4101,7 @@ function themePreviewHtml() {
         <div class="theme-preview theme-scope" id="theme-preview" aria-hidden="true">
             <div class="tp-banner"><span class="tp-code">CE 121</span><span class="tp-name">Civil Engineering Drawing</span></div>
             <div class="tp-body">
-                <div class="tp-row">
+                <div class="tp-row is-segmented">
                     <span class="tp-course is-active">CE 121</span>
                     <span class="tp-course"><i class="fa-solid fa-table-list"></i> CE 101</span>
                     <span class="tp-course"><i class="fa-solid fa-table-list"></i> MATH 101</span>
@@ -4107,22 +4126,19 @@ function themeSectionHtml() {
     return `
         <div id="sect-theme" class="settings-section" style="display:none; flex-direction:column; height:100%;">
             <div class="settings-scroll theme-settings">
-                <p class="settings-device-hint">Your colours, on every device and website you sign in to.</p>
-                <div class="theme-swatches">
+                <div class="settings-group-label">Theme colours <span class="theme-label-note">pick a swatch or type a code</span></div>
+                <div class="theme-colours">
                     ${THEME_FAMILIES.map(family => `
-                    <div class="theme-swatch">
-                        <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour">
-                        <label class="theme-swatch-text" for="theme-${family.id}">
-                            <span class="theme-swatch-name">${family.label}</span>
-                            <span class="theme-swatch-hint">${family.hint}</span>
-                        </label>
+                    <div class="theme-colour" title="${family.label}: ${family.hint.toLowerCase()}">
+                        <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour (${family.hint.toLowerCase()})">
                         <input type="text" class="form-control theme-hex" id="theme-${family.id}-code" value="${value(family)}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${family.label} colour code">
+                        <span class="theme-colour-name">${family.label}</span>
                     </div>`).join('')}
                 </div>
-                <div class="settings-group-label">Preview</div>
                 ${themePreviewHtml()}
                 <div class="theme-actions">
-                    <button type="button" id="theme-reset-btn" class="btn-secondary" title="Stando's own colours; Save keeps them"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</button>
+                    <span class="theme-note">Live preview with these colours. They follow your account to every device.</span>
+                    <button type="button" id="theme-reset-btn" class="btn-secondary"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</button>
                     <button type="button" id="theme-save-btn" class="btn-blue"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
                 </div>
             </div>
@@ -14765,19 +14781,27 @@ function populateCourseButtons() {
         courseButtonsContainer.dataset.signature = signature;
         courseButtonsContainer.innerHTML = '';
         courseButtonsContainer.classList.toggle('is-grouped', !!groups);
-        const makeButton = ({ course, code, title, offering, guest }) => {
+        const makeButton = ({ course, code, title, offering, guest }, copy = '') => {
             const button = document.createElement('div');
             button.setAttribute('class', 'course-button');
             button.setAttribute('role', 'button');
             button.tabIndex = 0;
             button.dataset.course = course;
+            if (copy) button.dataset.copy = copy; // Which programme's copy of the course
 
             // Mark guest courses visually
             if (guest) button.classList.add('btn-orange');
 
             button.innerHTML = `<i class="fa-solid fa-table-list fa-fw course-button-icon" aria-hidden="true"></i><span class="course-button-label">${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span>`;
             button.title = title ? `${code} ${title}` : course.replace(/_/g, ' ');
-            button.addEventListener('click', () => selectCourseButton(course));
+            button.addEventListener('click', () => {
+                if (button.classList.contains('is-duplicate')) {
+                    showToast(`${code} is already selected`);
+                    return;
+                }
+                selectedCourseCopy = button.dataset.copy || '';
+                selectCourseButton(course);
+            });
             return button;
         };
         if (groups) {
@@ -14788,18 +14812,14 @@ function populateCourseButtons() {
                 section.setAttribute('aria-label', group.programme ? programmeOptionLabel(group.programme) : 'Other courses');
                 section.innerHTML = `<div class="course-group-label">${programmeHeadingHtml(group.programme)}</div><div class="course-group-buttons"></div>`;
                 const row = section.querySelector('.course-group-buttons');
-                group.courses.forEach(course => row.appendChild(makeButton(byCourse.get(course))));
+                group.courses.forEach(course => row.appendChild(makeButton(byCourse.get(course), group.programme ? `p${group.programme.id}` : 'other')));
                 courseButtonsContainer.appendChild(section);
             });
         } else {
             buttons.forEach(button => courseButtonsContainer.appendChild(makeButton(button)));
         }
     }
-    courseButtonsContainer.querySelectorAll('.course-button').forEach(button => {
-        const selected = button.dataset.course === currentCourse;
-        button.classList.toggle('active', selected);
-        button.setAttribute('aria-pressed', String(selected));
-    });
+    markCourseButtons(currentCourse);
 
     if (!currentCourse && coursesToDisplay.length > 0) {
         selectCourseButton(coursesToDisplay[0]);
@@ -14829,20 +14849,57 @@ function updateCourseButtonRows(container) {
     rows.forEach(updateButtonRows);
 }
 
+// The copy of a course chosen last (its programme), when a course shows under two.
+let selectedCourseCopy = '';
+
+// The chosen course's button is pressed; its copies under other programmes are
+// dimmed (tapping one says the course is already selected).
+function markCourseButtons(course, pressNow = false) {
+    const buttons = [...document.querySelectorAll('#course-buttons-container .course-button')];
+    const copies = buttons.filter(button => button.dataset.course === course);
+    const chosen = copies.find(button => (button.dataset.copy || '') === selectedCourseCopy) || copies[0];
+    if (chosen) selectedCourseCopy = chosen.dataset.copy || '';
+    buttons.forEach(button => {
+        const selected = button === chosen;
+        const duplicate = !selected && button.dataset.course === course;
+        button.classList.toggle('active', selected);
+        button.classList.toggle('is-duplicate', duplicate);
+        button.classList.remove('selecting');
+        button.setAttribute('aria-pressed', String(selected));
+        if (duplicate) button.setAttribute('aria-disabled', 'true');
+        else button.removeAttribute('aria-disabled');
+    });
+    if (chosen && pressNow) {
+        chosen.classList.add('selecting');
+        setTimeout(() => chosen.classList.remove('selecting'), 150);
+    }
+}
+
+// A short message in the corner, as Syllabase shows them: green when done, red for a
+// problem, the app's colour otherwise.
+let toastTimer = null;
+function showToast(message, type = 'info') {
+    let toast = document.getElementById('stando-toast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'stando-toast';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
+        document.body.appendChild(toast);
+    }
+    const icon = type === 'ok' ? 'fa-circle-check' : type === 'err' ? 'fa-circle-exclamation' : 'fa-circle-info';
+    toast.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span></span>`;
+    toast.querySelector('span').textContent = message;
+    toast.className = `toast ${type}`;
+    void toast.offsetWidth;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), type === 'err' ? 6000 : 3000);
+}
+
 function selectCourseButton(course) {
     // Give instant visual feedback by updating classes immediately
-    document.querySelectorAll('#course-buttons-container .course-button').forEach(btn => {
-        btn.classList.remove('active');
-        btn.classList.remove('selecting');
-        btn.setAttribute('aria-pressed', 'false');
-        if (btn.dataset.course === course) {
-            btn.classList.add('selecting'); // Add selecting feedback
-            btn.classList.add('active');
-            btn.setAttribute('aria-pressed', 'true');
-            // Remove selecting class after a short delay
-            setTimeout(() => btn.classList.remove('selecting'), 150);
-        }
-    });
+    markCourseButtons(course, true);
 
     renderSessionControls(course);
 
