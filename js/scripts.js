@@ -716,13 +716,18 @@ function renderSessionControls(courseName) {
             !document.getElementById('course-buttons-container')?.classList.contains('is-grouped');
     }
 
-    // Apply row-aware rounding to session button containers, and again whenever they reflow.
+    // Apply row-aware rounding to session button containers, and again whenever they reflow;
+    // each track's thumb sits under its chosen option.
+    const sessionGroups = document.getElementById('session-group-container');
     requestAnimationFrame(() => {
         updateButtonRows(catGroup);
-        updateButtonRows(document.getElementById('session-group-container'));
+        updateButtonRows(sessionGroups);
+        updateSegmentThumb(catGroup, false);
+        updateSegmentThumb(sessionGroups, false);
     });
-    watchButtonRows(catGroup);
-    watchButtonRows(document.getElementById('session-group-container'));
+    const placeTrack = track => { updateButtonRows(track); updateSegmentThumb(track, false); };
+    watchButtonRows(catGroup, placeTrack);
+    watchButtonRows(sessionGroups, placeTrack);
 }
 
 function selectSessionCategory(category) {
@@ -735,6 +740,7 @@ function selectSessionCategory(category) {
         btn.classList.toggle('active', (btn.dataset.category ?? btn.innerText.trim()) === category);
     });
 
+    updateSegmentThumb(catGroup, true);
     renderGroupsForCategory(category);
 
     // Re-check parent visibility (Group row might have appeared/disappeared)
@@ -784,7 +790,38 @@ function renderGroupsForCategory(category) {
     }
 
     // Apply row-aware rounding after group buttons are rendered
-    requestAnimationFrame(() => updateButtonRows(grpContainer));
+    requestAnimationFrame(() => {
+        updateButtonRows(grpContainer);
+        updateSegmentThumb(grpContainer, false);
+    });
+}
+
+// A group track's raised part (the thumb) slides to the chosen option, matching its
+// size; animate false just places it (first drawing, a resize).
+function updateSegmentThumb(track, animate = true) {
+    if (!track) return;
+    let thumb = track.querySelector(':scope > .segment-thumb');
+    if (!thumb) {
+        thumb = document.createElement('span');
+        thumb.className = 'segment-thumb';
+        thumb.setAttribute('aria-hidden', 'true');
+        track.prepend(thumb);
+        animate = false;
+    }
+    const active = track.querySelector(':scope > .course-button.active');
+    if (!active || track.offsetParent === null) {
+        thumb.style.opacity = '0';
+        return;
+    }
+    thumb.classList.toggle('no-slide', !animate || thumb.style.opacity !== '1');
+    thumb.style.width = `${active.offsetWidth}px`;
+    thumb.style.height = `${active.offsetHeight}px`;
+    thumb.style.transform = `translate(${active.offsetLeft}px, ${active.offsetTop}px)`;
+    thumb.style.opacity = '1';
+    if (thumb.classList.contains('no-slide')) {
+        void thumb.offsetWidth;
+        thumb.classList.remove('no-slide');
+    }
 }
 
 function selectSessionGroup(group) {
@@ -794,6 +831,7 @@ function selectSessionGroup(group) {
         if (btn.innerText.trim() === group) btn.classList.add('active');
         else btn.classList.remove('active');
     });
+    updateSegmentThumb(grpContainer, true);
 }
 
 // --- Absence History Logic ---
@@ -1896,6 +1934,7 @@ function isDialogDirty(dialog) {
     const inputs = dialog.querySelectorAll('input, select, textarea');
     for (const input of inputs) {
         if (input.id && (input.id.includes('search') || input.id.includes('filter'))) continue;
+        if (input.hasAttribute('data-no-dirty')) continue;
         if (input.disabled || input.readOnly) continue;
 
         if (input.type === 'checkbox' || input.type === 'radio') {
@@ -10494,7 +10533,8 @@ function showConfirmationDialog({ title, message, confirmText = 'Confirm', cance
             if (typeof onConfirm === 'function') await onConfirm();
             closeConfirmDialog();
         } catch (error) {
-            showNotification('error', 'Action Failed', error.message || 'Please try again.');
+            // error.quiet: the dialog already shows what to fix.
+            if (!error?.quiet) showNotification('error', 'Action Failed', error.message || 'Please try again.');
             confirmBtn.disabled = false;
             cancelBtn.disabled = false;
         }
@@ -10799,30 +10839,30 @@ function showEditLogDialog(group) {
     const idDisplay = cardLists.ids.join(', ') || scanned.cardId;
     const uidDisplay = cardLists.uids.join(', ') || (studentData ? '' : scanned.uid);
 
-    // One line per time: the time, its group (when the course has groups) and delete.
+    // One line per time: (while selecting) a box, the time, its group (when the course
+    // has groups) and delete. Labels are set by numberTimes.
     const hasGroups = Object.keys(parseAvailableSections(courseInfoMap[currentCourse]?.availableSections)).length > 0;
-    const timestampRowHtml = ({ label, time, session, manual, logId = '', index = '' }) => `
+    const timestampRowHtml = ({ time, session, manual, logId = '' }) => `
         <div class="timestamp-edit-group${logId ? '' : ' new-item-flash'}"${logId ? ` data-log-id="${escapeHtml(String(logId))}"` : ' data-is-new="true"'}>
-            <span class="timestamp-label">${escapeHtml(label)}</span>
+            <span class="timestamp-label">Time</span>
             <div class="timestamp-fields">
-                <input type="time" class="form-control timestamp-time${manual ? ' manual-timestamp-input' : ''}" value="${time}" aria-label="${escapeHtml(label)}">
+                <input type="checkbox" class="timestamp-select" data-no-dirty>
+                <input type="time" class="form-control timestamp-time${manual ? ' manual-timestamp-input' : ''}" value="${time}">
                 <select class="form-control timestamp-session" aria-label="Group"${hasGroups ? '' : ' hidden'}>${generateSessionOptions(session)}</select>
-                <button type="button" class="delete-time-btn" data-index="${index}" title="Delete this time" aria-label="Delete ${escapeHtml(label.toLowerCase())}">
+                <button type="button" class="delete-time-btn" title="Delete this time">
                     <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
                 </button>
             </div>
         </div>`;
 
     let timestampFields = '';
-    group.originalLogs.forEach((log, index) => {
+    group.originalLogs.forEach(log => {
         const timeObj = new Date(log.timestamp);
         timestampFields += timestampRowHtml({
-            label: `Time ${index + 1}`,
             time: `${String(timeObj.getHours()).padStart(2, '0')}:${String(timeObj.getMinutes()).padStart(2, '0')}`,
             session: log.session || 'Default',
             manual: log.manual === true || log.manual === 'true',
-            logId: log.id,
-            index
+            logId: log.id
         });
     });
 
@@ -10851,13 +10891,21 @@ function showEditLogDialog(group) {
         <hr style="border: none; border-top: 1px solid #eee; margin: 15px 0;">
         
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
-            <label class="inline-field-label" style="margin:0;">Timestamps</label>
+            <label class="inline-field-label" style="margin:0;">Times</label>
             <div class="dialog-button-group">
+                <button type="button" id="select-times-btn" class="btn-secondary btn-sm" aria-pressed="false"><i class="fa-regular fa-square-check" aria-hidden="true"></i> Select</button>
                 <button type="button" id="add-new-time-btn" class="btn-green btn-sm"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add Time</button>
                 <button type="button" id="delete-all-logs-btn" class="btn-red btn-sm"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete All</button>
             </div>
         </div>
-        
+
+        <div id="time-select-bar" class="time-select-bar" hidden>
+            <label class="time-select-all"><input type="checkbox" id="time-select-all" data-no-dirty> <span id="time-select-count">0 selected</span></label>
+            ${hasGroups ? `<select id="time-select-group" class="form-control" aria-label="Group for the selected times" data-no-dirty>${generateSessionOptions(getCurrentActiveSession())}</select>
+            <button type="button" id="time-set-group-btn" class="btn-blue btn-sm" disabled>Set Group</button>` : ''}
+            <button type="button" id="time-delete-selected-btn" class="btn-red btn-sm" disabled><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>
+        </div>
+
         <div id="timestamp-container">${timestampFields}</div>
     </div>
     <div class="dialog-actions">
@@ -10883,28 +10931,102 @@ function showEditLogDialog(group) {
         }
 
         timestampContainer.insertAdjacentHTML('beforeend', timestampRowHtml({
-            label: 'New time', time: newTimeValue, session: getCurrentActiveSession(), manual: true
+            time: newTimeValue, session: getCurrentActiveSession(), manual: true
         }));
         const newTimestampGroup = timestampContainer.lastElementChild;
-        newTimestampGroup.querySelector('.delete-time-btn').addEventListener('click', () => newTimestampGroup.remove());
+        numberTimes();
         if (!isTouchDevice()) newTimestampGroup.querySelector('.timestamp-time').focus({ preventScroll: true });
         newTimestampGroup.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     });
 
     const closeDialog = () => { if (document.body.contains(dialogBackdrop)) document.body.removeChild(dialogBackdrop); closeDialogMode(); };
 
-    // Delete individual timestamp logic
+    // Deleting a time (saved on Save): a saved one is hidden and remembered, a new one goes.
     const logsToDelete = new Set();
-    dialog.querySelectorAll('.delete-time-btn').forEach(btn => {
-        btn.addEventListener('click', function () {
-            const index = parseInt(this.getAttribute('data-index'));
-            const logId = group.originalLogs[index].id;
-            const timestampGroup = this.closest('.timestamp-edit-group');
-            logsToDelete.add(logId);
-            timestampGroup.classList.add('deleted');
-            timestampGroup.style.display = 'none';
+    const removeTimeRow = (row) => {
+        if (row.dataset.logId) {
+            logsToDelete.add(row.dataset.logId);
+            row.classList.add('deleted');
+            row.style.display = 'none';
+        } else {
+            row.remove();
+        }
+    };
+    timestampContainer.addEventListener('click', (event) => {
+        const button = event.target.closest('.delete-time-btn');
+        if (!button) return;
+        removeTimeRow(button.closest('.timestamp-edit-group'));
+        numberTimes();
+    });
+
+    // Selecting times: a box on each, then set their group or delete them together.
+    const selectButton = dialog.querySelector('#select-times-btn');
+    const selectBar = dialog.querySelector('#time-select-bar');
+    const selectAll = dialog.querySelector('#time-select-all');
+    const visibleRows = () => [...timestampContainer.querySelectorAll('.timestamp-edit-group:not(.deleted)')];
+    const chosenRows = () => visibleRows().filter(row => row.querySelector('.timestamp-select').checked);
+    const updateTimeSelection = () => {
+        const rows = visibleRows();
+        const chosen = chosenRows();
+        dialog.querySelector('#time-select-count').textContent = `${chosen.length} selected`;
+        selectAll.checked = rows.length > 0 && chosen.length === rows.length;
+        selectAll.indeterminate = chosen.length > 0 && chosen.length < rows.length;
+        dialog.querySelectorAll('#time-set-group-btn, #time-delete-selected-btn').forEach(button => { button.disabled = chosen.length === 0; });
+        rows.forEach(row => row.classList.toggle('is-selected', row.querySelector('.timestamp-select').checked));
+    };
+    const setSelectingTimes = (on) => {
+        timestampContainer.classList.toggle('is-selecting', on);
+        selectBar.hidden = !on;
+        selectButton.setAttribute('aria-pressed', String(on));
+        selectButton.innerHTML = on
+            ? '<i class="fa-solid fa-check" aria-hidden="true"></i> Done'
+            : '<i class="fa-regular fa-square-check" aria-hidden="true"></i> Select';
+        if (!on) timestampContainer.querySelectorAll('.timestamp-select').forEach(box => { box.checked = false; });
+        updateTimeSelection();
+    };
+    // "Time" alone, or "Time 1", "Time 2"… as times are added and deleted.
+    function numberTimes() {
+        const rows = visibleRows();
+        rows.forEach((row, index) => {
+            const label = rows.length > 1 ? `Time ${index + 1}` : 'Time';
+            row.querySelector('.timestamp-label').textContent = label;
+            row.querySelector('.timestamp-time').setAttribute('aria-label', label);
+            row.querySelector('.timestamp-select').setAttribute('aria-label', `Select ${label.toLowerCase()}`);
+            row.querySelector('.delete-time-btn').setAttribute('aria-label', `Delete ${label.toLowerCase()}`);
+        });
+        if (!rows.length && timestampContainer.classList.contains('is-selecting')) setSelectingTimes(false);
+        updateTimeSelection();
+    }
+    selectButton.addEventListener('click', () => setSelectingTimes(!timestampContainer.classList.contains('is-selecting')));
+    selectAll.addEventListener('change', () => {
+        visibleRows().forEach(row => { row.querySelector('.timestamp-select').checked = selectAll.checked; });
+        updateTimeSelection();
+    });
+    timestampContainer.addEventListener('change', (event) => {
+        if (event.target.classList.contains('timestamp-select')) updateTimeSelection();
+    });
+    // While selecting, a tap on a time's label ticks it.
+    timestampContainer.addEventListener('click', (event) => {
+        const label = event.target.closest('.timestamp-label');
+        if (!label || !timestampContainer.classList.contains('is-selecting')) return;
+        const box = label.closest('.timestamp-edit-group').querySelector('.timestamp-select');
+        box.checked = !box.checked;
+        updateTimeSelection();
+    });
+    dialog.querySelector('#time-set-group-btn')?.addEventListener('click', () => {
+        const value = dialog.querySelector('#time-select-group').value;
+        chosenRows().forEach(row => {
+            row.querySelector('.timestamp-session').value = value;
+            row.classList.remove('new-item-flash');
+            void row.offsetWidth;
+            row.classList.add('new-item-flash');
         });
     });
+    dialog.querySelector('#time-delete-selected-btn').addEventListener('click', () => {
+        chosenRows().forEach(removeTimeRow);
+        numberTimes();
+    });
+    numberTimes();
 
     // --- Delete All Logic ---
     document.getElementById('delete-all-logs-btn').addEventListener('click', () => {
@@ -11190,30 +11312,102 @@ function updateBulkUI() {
     }
 }
 
-// The selected rows as a table (name, Card ID, date, session, times), ready to paste
-// into Excel, Sheets or a message.
-async function copySelectedRecords() {
-    const pad = n => String(n).padStart(2, '0');
-    const rows = selectedLogGroups().map(group => {
-        const logs = group.originalLogs.filter(log => selectedLogIds.has(log.id)).sort((a, b) => a.timestamp - b.timestamp);
-        const sessions = [...new Set(logs.map(log => log.session).filter(session => session && session !== 'Default'))].join(', ');
-        const times = logs.map(log => { const time = new Date(log.timestamp); return `${pad(time.getHours())}:${pad(time.getMinutes())}`; }).join(', ');
-        return [group.name === 'Unknown' ? '' : group.name, group.uid || '', group.date, sessions, times];
-    });
-    const text = [['Name', 'Card ID', 'Date', 'Session', 'Times'], ...rows].map(cells => cells.join('\t')).join('\n');
-    try {
-        await navigator.clipboard.writeText(text);
-    } catch {
-        const area = document.createElement('textarea');
-        area.value = text;
-        area.setAttribute('readonly', '');
-        area.style.cssText = 'position:fixed; top:0; left:0; opacity:0;';
-        document.body.appendChild(area);
-        area.select();
-        document.execCommand('copy');
-        area.remove();
+// Copy: the selected records go to another course this person runs (any course for
+// a global administrator), on a day chosen here or on their own days. The copies keep
+// their times, and their group when that course has it; a record the course already
+// has (same card, same moment) is not copied twice.
+function copySelectedToCourse() {
+    const targets = Object.keys(courseInfoMap)
+        .filter(course => course !== currentCourse && isAdminForCourse(course) && !courseInfoMap[course]?.archived)
+        .sort((a, b) => compareCoursesForDisplay([a, courseInfoMap[a]], [b, courseInfoMap[b]]));
+    if (!targets.length) {
+        showNotification('info', 'No Other Course', 'You have no other active course to copy to.');
+        return;
     }
-    showNotification('success', 'Copied', `${rows.length} ${rows.length === 1 ? 'row' : 'rows'} copied, ready to paste into Excel or a message.`);
+    const logs = (courseData[currentCourse]?.logs || []).filter(log => selectedLogIds.has(log.id));
+    const days = [...new Set(logs.map(log => localDateString(new Date(log.timestamp))))].sort();
+    const rowCount = selectedLogGroups().length;
+    const rowsText = `${rowCount} ${rowCount === 1 ? 'row' : 'rows'}`;
+    const option = course => `<option value="${escapeHtml(course)}" data-code="${escapeHtml(getCleanCourseCode(course))}">${escapeHtml(getCourseLabel(course))}</option>`;
+    const groups = groupCoursesByProgramme(targets);
+    const options = groups
+        ? groups.map(group => `<optgroup label="${escapeHtml(group.programme ? programmeOptionLabel(group.programme) : 'Other courses')}"${group.programme ? ` data-code="${escapeHtml(group.programme.code)}"` : ''}>${group.courses.map(option).join('')}</optgroup>`).join('')
+        : targets.map(option).join('');
+
+    showConfirmationDialog({
+        title: `Copy ${rowsText} to another course`,
+        message: `The copies keep their times, and their group when that course has it.
+            <div class="form-group" style="margin-top:15px; text-align:left;">
+                <label class="dialog-label-fixed" for="bulk-copy-course"><i class="fa-solid fa-book-open"></i> Course</label>
+                <select id="bulk-copy-course" class="form-control search-select" data-empty="No course matches"><option value="">Search or choose a course</option>${options}</select>
+            </div>
+            <div class="form-group" style="text-align:left;">
+                <label class="dialog-label-fixed" for="bulk-copy-date"><i class="fa-solid fa-calendar-day"></i> Day</label>
+                <input type="date" id="bulk-copy-date" class="form-control" value="${days[days.length - 1] || ''}"${days.length > 1 ? ' disabled' : ''}>
+                ${days.length > 1 ? `<label class="check-line"><input type="checkbox" id="bulk-copy-keep-days" checked> Keep each record's own day</label>` : ''}
+            </div>`,
+        confirmText: 'Copy',
+        onConfirm: async () => {
+            const select = document.getElementById('bulk-copy-course');
+            const dayInput = document.getElementById('bulk-copy-date');
+            const keepDays = !!document.getElementById('bulk-copy-keep-days')?.checked;
+            const quiet = message => Object.assign(new Error(message), { quiet: true });
+            clearInputError(select);
+            clearInputError(dayInput);
+            const target = select.value;
+            if (!target) {
+                showInputError(select, 'Choose a course.');
+                throw quiet('Choose a course.');
+            }
+            if (!keepDays && !/^\d{4}-\d{2}-\d{2}$/.test(dayInput.value)) {
+                showInputError(dayInput, 'Choose a day.');
+                throw quiet('Choose a day.');
+            }
+
+            // The course's records first, so nothing is copied twice.
+            await loadAndMergeCourseData(target);
+            if (!courseData[target]) courseData[target] = { logs: [], tombstones: new Set() };
+            const groupsThere = parseAvailableSections(courseInfoMap[target]?.availableSections || '');
+            const hasGroup = session => {
+                const [category, group = ''] = String(session || '').split(' ');
+                return !!groupsThere[category] && (!group || groupsThere[category].includes(group));
+            };
+            const [year, month, day] = dayInput.value.split('-').map(Number);
+            const already = new Set(courseData[target].logs.map(log => `${log.uid}|${log.timestamp}`));
+            let copied = 0;
+            let skipped = 0;
+            logs.forEach(log => {
+                const time = new Date(log.timestamp);
+                if (!keepDays) time.setFullYear(year, month - 1, day);
+                const key = `${log.uid}|${time.getTime()}`;
+                if (already.has(key)) {
+                    skipped++;
+                    return;
+                }
+                already.add(key);
+                courseData[target].logs.unshift(touchLogForEdit({
+                    uid: log.uid,
+                    timestamp: time.getTime(),
+                    id: Date.now() + Math.random().toString(36).substring(2, 11),
+                    manual: log.manual === true || log.manual === 'true',
+                    session: hasGroup(log.session) ? log.session : 'Default'
+                }, currentUser?.email));
+                copied++;
+            });
+            if (copied) saveAndMarkChanges(target);
+            const label = getCourseLabel(target);
+            showNotification(copied ? 'success' : 'info', copied ? 'Copied' : 'Nothing Copied',
+                copied ? `${copied} ${copied === 1 ? 'time' : 'times'} copied to ${label}${skipped ? ` (${skipped} already there)` : ''}.`
+                    : `${label} already has these times.`);
+            toggleBulkMode();
+        }
+    });
+
+    // Several days: the day field opens when "keep their own day" is turned off.
+    const keep = document.getElementById('bulk-copy-keep-days');
+    keep?.addEventListener('change', () => {
+        document.getElementById('bulk-copy-date').disabled = keep.checked;
+    });
 }
 
 // Selecting by touch and keyboard: while selecting, a tap anywhere on a row (not on
@@ -11286,7 +11480,7 @@ function setupLogSelectionGestures() {
 
 async function performBulkAction(action) {
     if (selectedLogIds.size === 0) return;
-    if (action === 'copy') return copySelectedRecords();
+    if (action === 'copy') return copySelectedToCourse();
 
     let confirmMsg = "", confirmTitle = "";
     let extraHtml = "";
@@ -11301,8 +11495,8 @@ async function performBulkAction(action) {
         confirmTitle = `Delete ${rowsText}?`;
         confirmMsg = "Every time in the selected rows is deleted. This cannot be undone.";
     } else if (action === 'session') {
-        confirmTitle = `Change the session of ${rowsText}`;
-        confirmMsg = 'Every time in the selected rows moves to this session.';
+        confirmTitle = `Change the group of ${rowsText}`;
+        confirmMsg = 'Every time in the selected rows moves to this group.';
         extraHtml = `<div style="margin-top:15px; text-align:left;">${renderSessionSelectorHTML('bulk', false)}</div>`;
     } else if (action === 'date') {
         const first = selectedLogGroups()[0]?.originalLogs.find(log => selectedLogIds.has(log.id));
@@ -11312,7 +11506,7 @@ async function performBulkAction(action) {
     } else if (action === 'add1h') {
         confirmTitle = `Add +1 Hour?`;
         confirmMsg = `Create a new log 1 hour later for every selected student.`;
-        if (sessionHtml) extraHtml = `<div style="margin-top:15px; text-align:left;"><label class="inline-field-label">Target Session</label>${sessionHtml}</div>`;
+        if (sessionHtml) extraHtml = `<div style="margin-top:15px; text-align:left;"><label class="inline-field-label">Group</label>${sessionHtml}</div>`;
     } else if (action === 'sub1h') {
         confirmTitle = `Delete Latest Hour?`;
         // Shorter message as requested
@@ -11332,7 +11526,7 @@ async function performBulkAction(action) {
     showConfirmationDialog({
         title: confirmTitle,
         message: confirmMsg + extraHtml,
-        confirmText: { delete: 'Delete', session: 'Change Session', date: 'Move' }[action] || "Confirm",
+        confirmText: { delete: 'Delete', session: 'Change Group', date: 'Move' }[action] || "Confirm",
         isDestructive: action === 'delete' || action === 'sub1h',
         onConfirm: async () => {
             let targetSession = 'INHERIT';
@@ -14710,7 +14904,7 @@ function watchButtonRows(container, update = updateButtonRows) {
 
 function updateButtonRows(container) {
     if (!container) return;
-    const items = Array.from(container.children).filter(el => el.style.display !== 'none' && el.offsetParent !== null);
+    const items = Array.from(container.children).filter(el => !el.classList.contains('segment-thumb') && el.style.display !== 'none' && el.offsetParent !== null);
 
     // Wipe existing row classes
     items.forEach(el => el.classList.remove('first-in-row', 'last-in-row', 'only-in-row', 'middle-in-row'));
@@ -14792,11 +14986,17 @@ function populateCourseButtons() {
             // Mark guest courses visually
             if (guest) button.classList.add('btn-orange');
 
-            button.innerHTML = `<i class="fa-solid fa-table-list fa-fw course-button-icon" aria-hidden="true"></i><span class="course-button-label">${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span>`;
+            const full = title && title.toLowerCase() !== code.toLowerCase() ? title : '';
+            button.classList.toggle('has-full-name', !!full);
+            button.innerHTML = `<i class="fa-solid fa-table-list fa-fw course-button-icon" aria-hidden="true"></i><span class="course-button-label">` +
+                `<span class="course-button-swap course-button-code"><span>${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span></span>` +
+                (full ? `<span class="course-button-swap course-button-full"><span>${escapeHtml(full)}</span></span>` : '') + '</span>';
             button.title = title ? `${code} ${title}` : course.replace(/_/g, ' ');
             button.addEventListener('click', () => {
                 if (button.classList.contains('is-duplicate')) {
-                    showToast(`${code} is already selected`);
+                    const where = document.querySelector('#course-buttons-container .course-button.active')
+                        ?.closest('.course-group')?.querySelector('.course-group-label')?.textContent.trim();
+                    showCourseBubble(button, where ? `Already selected under ${where}` : 'Already selected');
                     return;
                 }
                 selectedCourseCopy = button.dataset.copy || '';
@@ -14810,7 +15010,7 @@ function populateCourseButtons() {
                 const section = document.createElement('section');
                 section.className = 'course-group';
                 section.setAttribute('aria-label', group.programme ? programmeOptionLabel(group.programme) : 'Other courses');
-                section.innerHTML = `<div class="course-group-label">${programmeHeadingHtml(group.programme)}</div><div class="course-group-buttons"></div>`;
+                section.innerHTML = `<span class="course-group-label"${group.programme?.name ? ` title="${escapeHtml(programmeOptionLabel(group.programme))}"` : ''}><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>${escapeHtml(group.programme ? group.programme.code : 'Other courses')}</span><div class="course-group-buttons"></div>`;
                 const row = section.querySelector('.course-group-buttons');
                 group.courses.forEach(course => row.appendChild(makeButton(byCourse.get(course), group.programme ? `p${group.programme.id}` : 'other')));
                 courseButtonsContainer.appendChild(section);
@@ -14831,9 +15031,12 @@ function populateCourseButtons() {
     // Rows re-compute whenever the container reflows.
     if (!courseButtonsContainer._rowObserver) {
         watchButtonRows(courseButtonsContainer, updateCourseButtonRows);
-        // The selected tab changes width as its icon closes; re-tag the rows once it settles.
+        // The selected tab changes width as its icon closes and its name grows; re-tag
+        // the rows once that settles.
         courseButtonsContainer.addEventListener('transitionend', (event) => {
-            if (event.propertyName !== 'width' || !event.target.classList?.contains('course-button-icon')) return;
+            const grew = event.propertyName === 'grid-template-columns' && event.target.classList?.contains('course-button-full');
+            const closed = event.propertyName === 'width' && event.target.classList?.contains('course-button-icon');
+            if (!grew && !closed) return;
             updateCourseButtonRows(courseButtonsContainer);
             const active = courseButtonsContainer.querySelector('.course-button.active');
             if (active && courseButtonsContainer.scrollWidth > courseButtonsContainer.clientWidth) {
@@ -14875,26 +15078,89 @@ function markCourseButtons(course, pressNow = false) {
     }
 }
 
-// A short message in the corner, as Syllabase shows them: green when done, red for a
-// problem, the app's colour otherwise.
-let toastTimer = null;
-function showToast(message, type = 'info') {
-    let toast = document.getElementById('stando-toast');
-    if (!toast) {
-        toast = document.createElement('div');
-        toast.id = 'stando-toast';
-        toast.setAttribute('role', 'status');
-        toast.setAttribute('aria-live', 'polite');
-        document.body.appendChild(toast);
+// A small dark note by a course button, as in Syllabase: below it, or above it when the
+// button is too near the bottom of the screen to fit it there. It goes by itself, when
+// the page scrolls, or when swiped sideways (it follows the finger or mouse and fades;
+// let go early and it springs back).
+let bubbleTimer = null;
+function showCourseBubble(anchor, message) {
+    let bubble = document.getElementById('course-bubble');
+    if (!bubble) {
+        bubble = document.createElement('div');
+        bubble.id = 'course-bubble';
+        bubble.className = 'course-bubble';
+        bubble.setAttribute('role', 'status');
+        bubble.setAttribute('aria-live', 'polite');
+        document.body.appendChild(bubble);
+        bindBubbleDrag(bubble);
+        window.addEventListener('scroll', () => {
+            if (!bubble.classList.contains('is-dragging')) hideCourseBubble();
+        }, { passive: true, capture: true });
     }
-    const icon = type === 'ok' ? 'fa-circle-check' : type === 'err' ? 'fa-circle-exclamation' : 'fa-circle-info';
-    toast.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span></span>`;
-    toast.querySelector('span').textContent = message;
-    toast.className = `toast ${type}`;
-    void toast.offsetWidth;
-    toast.classList.add('show');
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => toast.classList.remove('show'), type === 'err' ? 6000 : 3000);
+    bubble.textContent = message;
+    bubble.classList.remove('show', 'is-leaving', 'below');
+    bubble.style.removeProperty('--drag-x');
+    bubble.style.removeProperty('--drag-fade');
+    bubble.style.left = '0px';
+    bubble.style.top = '0px';
+    const at = anchor.getBoundingClientRect();
+    const size = bubble.getBoundingClientRect();
+    const gap = 8;
+    const below = at.bottom + gap + size.height <= window.innerHeight - 8 || at.top - size.height - gap < 8;
+    const left = Math.min(Math.max(8, at.left + at.width / 2 - size.width / 2), window.innerWidth - size.width - 8);
+    bubble.style.left = `${left}px`;
+    bubble.style.top = `${below ? at.bottom + gap : at.top - size.height - gap}px`;
+    // Its arrow points at the button's middle, even when the note is kept on screen.
+    bubble.style.setProperty('--arrow-x', `${Math.min(Math.max(12, at.left + at.width / 2 - left), size.width - 12)}px`);
+    bubble.classList.toggle('below', below);
+    void bubble.offsetWidth;
+    bubble.classList.add('show');
+    clearTimeout(bubbleTimer);
+    bubbleTimer = setTimeout(hideCourseBubble, 2200);
+}
+
+function hideCourseBubble() {
+    clearTimeout(bubbleTimer);
+    document.getElementById('course-bubble')?.classList.remove('show');
+}
+
+function bindBubbleDrag(bubble) {
+    let drag = null;
+    const move = x => {
+        bubble.style.setProperty('--drag-x', `${x}px`);
+        bubble.style.setProperty('--drag-fade', String(Math.max(0.15, 1 - Math.abs(x) / 160)));
+    };
+    bubble.addEventListener('pointerdown', (event) => {
+        if (!bubble.classList.contains('show')) return;
+        drag = { id: event.pointerId, x: event.clientX };
+        bubble.setPointerCapture(event.pointerId);
+        bubble.classList.add('is-dragging');
+        clearTimeout(bubbleTimer);
+    });
+    bubble.addEventListener('pointermove', (event) => {
+        if (drag?.id === event.pointerId) move(event.clientX - drag.x);
+    });
+    const release = (event) => {
+        if (drag?.id !== event.pointerId) return;
+        const dx = event.clientX - drag.x;
+        drag = null;
+        bubble.classList.remove('is-dragging');
+        if (Math.abs(dx) > 50) {
+            // Off it goes, the way it was pushed.
+            bubble.classList.add('is-leaving');
+            move(Math.sign(dx) * 260);
+            bubble.style.setProperty('--drag-fade', '0');
+            bubbleTimer = setTimeout(() => bubble.classList.remove('show', 'is-leaving'), 260);
+        } else {
+            // Back with a bounce; a tap just closes it.
+            move(0);
+            bubble.style.removeProperty('--drag-fade');
+            if (Math.abs(dx) < 4) hideCourseBubble();
+            else bubbleTimer = setTimeout(hideCourseBubble, 1600);
+        }
+    };
+    bubble.addEventListener('pointerup', release);
+    bubble.addEventListener('pointercancel', release);
 }
 
 function selectCourseButton(course) {

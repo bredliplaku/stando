@@ -37,12 +37,15 @@ on any other device, **Start scanning** opens **Settings → Trusted Devices**
 instead, where you register it. Each card tap records the student's
 attendance. A card that is not in the student list still records attendance,
 but plays the failure sound and turns the scan result orange. You can search
-records by name, card, date or session to find an entry or make a correction.
+records by name, card, date or group to find an entry or make a correction.
+In a record's **Edit**, **Select** ticks several of its times to change their
+group or delete them together.
 
 To change many records at once, choose **⋯ → Select records** (or hold a row
 on a phone), then tap the rows or **Select all**. The bar at the bottom copies
-them as a table to paste into Excel, adds or removes an hour, moves them to
-another session or day, or deletes them. **×** or Escape stops selecting.
+them to another of your active courses (a global administrator: any course),
+on a day you choose or their own days, adds or removes an hour, moves them to
+another group or day, or deletes them. **×** or Escape stops selecting.
 
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
 records attendance, showing each student's name in large type under the clock
@@ -179,10 +182,11 @@ degrees): add them under **Programmes** in the course's settings. Wherever
 someone's courses span two or more programmes, Stando groups them by programme,
 and a shared course shows under each: the course buttons, **Settings → Courses**
 (with a Programme filter) and the course list of an absence request. Someone
-whose courses are all in one programme sees no grouping. Among the course
-buttons, the copy of a shared course you choose is pressed and its other copy
-dims (tapping it says the course is already selected); the session buttons get
-their own **Session** heading. This needs
+whose courses are all in one programme sees no grouping. The course buttons
+show each programme's code before its courses, and the chosen course shows its
+full name. The copy of a shared course you choose is selected and its other copy
+is outlined (tapping it says where it is already selected); the group buttons
+(Theory, Lab, A, B) get their own **Group** label. This needs
 [supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql),
 then [course_programmes_multiple.sql](supabase/migrations/course_programmes_multiple.sql)
 for more than one programme per course.
