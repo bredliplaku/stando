@@ -4444,10 +4444,13 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
     const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog');
+    dialog.setAttribute('class', 'dialog eis-export-dialog');
     dialog.setAttribute('role', 'dialog');
 
     const formattedCourseName = getCourseLabel(currentCourse);
+    const categoryIcons = { theory: 'fa-book', lab: 'fa-desktop', practice: 'fa-pen-to-square' };
+    const trackButtonHtml = (attrs, icon, label) =>
+        `<div class="course-button" role="button" tabindex="0" ${attrs}>${icon ? `<i class="fa-solid ${icon} tab-icon" aria-hidden="true"></i>` : ''}<span class="tab-label" data-label="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`;
 
     dialog.innerHTML = `
         <h3 class="dialog-title"><i class="fa-solid fa-list-check"></i> Add to EIS</h3>
@@ -4455,9 +4458,9 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
             <div class="dialog-loader" style="display:flex; justify-content:center; align-items:center; padding: 50px 0;">
                 <div class="loading-spinner"></div>
             </div>
-            
+
             <div class="dialog-main-content" style="display:none; opacity:0; transition: opacity 0.3s ease;">
-                
+
                 <div class="form-group">
                     <label class="dialog-label-fixed"><i class="fa-solid fa-book"></i> Course</label>
                     <input id="export-course-display" class="form-control" value="${escapeHtml(formattedCourseName)}" disabled>
@@ -4473,48 +4476,41 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
                     <input type="date" id="export-date" class="form-control">
                 </div>
 
+                <div class="form-group" id="export-group-field">
+                    <label class="dialog-label-fixed"><i class="fa-solid fa-users"></i> Group</label>
+                    <div class="eis-group-rows">
+                        <div id="export-cat-group" class="eis-track"></div>
+                        <div id="export-subgroup-group" class="eis-track is-letters"></div>
+                    </div>
+                </div>
+
                 <div class="form-group">
-                    <label class="dialog-label-fixed"><i class="fa-solid fa-quote-left"></i> Topic</label>
-                    <input type="text" id="export-topic" class="form-control" value="Lecture">
+                    <label class="dialog-label-fixed" for="export-topic"><i class="fa-solid fa-quote-left"></i> Topic</label>
+                    <input type="text" id="export-topic" class="form-control" autocomplete="off">
                 </div>
 
-                <div class="form-group" style="align-items:flex-start;">
-                    <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-users"></i> Group</label>
-                    <div style="flex-grow:1; display:flex; flex-direction:column; gap:8px;">
-                        <div id="export-cat-group" class="course-buttons-container" style="margin-bottom:0; justify-content:flex-start;"></div>
-                        <div id="export-subgroup-group" class="course-buttons-container" style="margin-bottom:0; justify-content:flex-start; display:none;"></div>
-                    </div>
-                </div>
-
-                <div class="form-group" style="align-items:flex-start;">
-                    <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-tag"></i> Category</label>
-                    <div id="export-section-group" class="course-buttons-container" style="margin-bottom:0; width:100%; display:flex; gap:8px;">
-                        <div class="course-button active" data-value="theory" style="flex:1; text-align:center; padding: 8px 5px; font-size: 0.9em; min-width: 0;"><i class="fa-solid fa-book"></i>&nbsp; Theory</div>
-                        <div class="course-button" data-value="lab" style="flex:1; text-align:center; padding: 8px 5px; font-size: 0.9em; min-width: 0;"><i class="fa-solid fa-desktop"></i>&nbsp; Lab</div>
-                        <div class="course-button" data-value="practice" style="flex:1; text-align:center; padding: 8px 5px; font-size: 0.9em; min-width: 0;"><i class="fa-solid fa-pen-to-square"></i>&nbsp; Practice</div>
-                    </div>
-                </div>
-
-                <div class="collapsible-trigger" style="width: fit-content; margin-left: auto; display:flex; align-items:center; margin-top:15px; margin-bottom:0; cursor:pointer;">
-                    <span style="margin-right:5px;">More Options</span> <i class="fa-solid fa-chevron-down" style="font-size:0.8em;"></i>
-                </div>
-                
-                <div class="collapsible-content">
-                    
-                    <div class="custom-hours-container">
-                        <div style="display:flex; align-items:center;">
-                            <input type="checkbox" id="manual-hours-check" style="margin-right:8px; width:16px; height:16px;">
-                            <label for="manual-hours-check" style="margin:0; font-weight:500; cursor:pointer;">Set Custom Hours</label>
+                <details class="more-settings eis-more-options">
+                    <summary>More options<span class="eis-more-peek" id="export-options-peek"></span></summary>
+                    <div class="eis-more-body">
+                        <div class="form-group">
+                            <label class="dialog-label-fixed">Category</label>
+                            <div id="export-section-group" class="eis-track">
+                                ${trackButtonHtml('data-value="theory"', categoryIcons.theory, 'Theory')}
+                                ${trackButtonHtml('data-value="lab"', categoryIcons.lab, 'Lab')}
+                                ${trackButtonHtml('data-value="practice"', categoryIcons.practice, 'Practice')}
+                            </div>
                         </div>
-                        <input type="number" id="hours-custom-input" class="form-control" style="width:30px; height:15px; padding:2px 5px; text-align: right; display:none;" value="2" min="1" max="25">
+                        ${switchRowHtml('manual-hours-check', false, 'Set the hours', 'Otherwise EIS fills in the hours of the section.')}
+                        <div class="form-group" id="export-hours-field" hidden>
+                            <label class="dialog-label-fixed" for="hours-custom-input">Hours</label>
+                            <input type="number" id="hours-custom-input" class="form-control" value="2" min="1" max="25">
+                        </div>
+                        ${switchRowHtml('mark-exempted-option', false, 'Mark exempted students absent', 'Students marked R EX in EIS, even if they scanned.')}
+                        ${switchRowHtml('mark-missing-option', false, 'Mark students not in Stando absent', 'Students in EIS who are not in the Student List.')}
+                        ${switchRowHtml('new-tab-option', false, 'Open EIS in a new tab', 'Stando stays open in this tab.')}
+                        <button type="button" id="save-export-btn" class="btn-secondary btn-sm eis-export-file-btn"><i class="fa-solid fa-file-export"></i> Export to file</button>
                     </div>
-
-                    <label><input type="checkbox" id="mark-exempted-option"> Always mark exempted students as absent</label>
-                    <label><input type="checkbox" id="new-tab-option"> Open EIS in new tab</label>
-                    <label><input type="checkbox" id="mark-missing-option"> Mark students without UID as absent</label>
-                    <hr>
-                    <button id="save-export-btn" class="btn-blue btn-sm" style="width:100%; justify-content:center;"><i class="fa-solid fa-file-export"></i> Export to File</button>
-                </div>
+                </details>
             </div>
         </div>
         <div class="dialog-actions">
@@ -4531,74 +4527,11 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         document.body.removeChild(dialogBackdrop); closeDialogMode();
         showNotification('error', 'EIS ID Missing', `ID for "${currentCourse}" is not set.`); return;
     }
-    document.getElementById('export-course-display').value = `${formattedCourseName} (ID: ${eisId})`;
 
     const closeDialog = () => { document.body.removeChild(dialogBackdrop); closeDialogMode(); };
     const courseMetadata = getCourseMetadata(currentCourse);
-    const rawSections = courseMetadata?.availableSections || '';
-    const sectionsMap = parseAvailableSections(rawSections);
+    const sectionsMap = parseAvailableSections(courseMetadata?.availableSections || '');
     const categories = Object.keys(sectionsMap);
-
-    let defaultCategory = categories.length > 0 ? categories[0] : 'Theory';
-    let defaultSubgroup = (categories.length > 0 && sectionsMap[defaultCategory].length > 0) ? sectionsMap[defaultCategory][0] : null;
-
-    let selectedCategory = defaultCategory;
-    let selectedSubgroup = defaultSubgroup;
-    let selectedSection = selectedCategory.toLowerCase();
-
-    const catContainer = document.getElementById('export-cat-group');
-    const subContainer = document.getElementById('export-subgroup-group');
-    const sectionContainer = document.getElementById('export-section-group');
-
-    const updateSectionToggle = () => {
-        sectionContainer.querySelectorAll('.course-button').forEach(btn => {
-            if (btn.dataset.value === selectedSection.toLowerCase()) btn.classList.add('active');
-            else btn.classList.remove('active');
-        });
-    };
-
-    const renderSubgroups = () => {
-        const groups = sectionsMap[selectedCategory] || [];
-        subContainer.innerHTML = '';
-        if (groups.length > 0 && !selectedSubgroup) selectedSubgroup = groups[0];
-        subContainer.style.display = groups.length > 0 ? 'flex' : 'none';
-
-        groups.forEach(grp => {
-            const btn = document.createElement('div');
-            btn.setAttribute('class', `course-button ${selectedSubgroup === grp ? 'active' : ''}`);
-            btn.innerHTML = `<b>${grp}</b>`;
-            btn.style.padding = "8px 15px"; btn.style.minWidth = "35px";
-            btn.onclick = () => { selectedSubgroup = grp; renderSubgroups(); };
-            subContainer.appendChild(btn);
-        });
-    };
-
-    const renderCategories = () => {
-        catContainer.innerHTML = '';
-        const icons = { 'theory': 'fa-book', 'lab': 'fa-desktop', 'practice': 'fa-pen-to-square' };
-        categories.forEach(cat => {
-            const lowerCat = cat.toLowerCase();
-            const iconClass = icons[lowerCat] || 'fa-tag';
-            const btn = document.createElement('div');
-            btn.setAttribute('class', `course-button ${selectedCategory === cat ? 'active' : ''}`);
-            btn.innerHTML = `<i class="fa-solid ${iconClass}"></i>&nbsp; ${cat}`;
-            btn.style.padding = "8px 12px"; btn.style.fontSize = "0.9em"; btn.style.minWidth = "auto";
-            btn.onclick = () => {
-                selectedCategory = cat; selectedSubgroup = null; selectedSection = cat.toLowerCase();
-                updateSectionToggle(); renderCategories(); renderSubgroups();
-            };
-            catContainer.appendChild(btn);
-        });
-    };
-
-    renderCategories(); renderSubgroups(); updateSectionToggle();
-
-    sectionContainer.addEventListener('click', (e) => {
-        const btn = e.target.closest('.course-button');
-        if (!btn) return;
-        selectedSection = btn.dataset.value;
-        updateSectionToggle();
-    });
 
     // Date & Week
     const weekSelect = document.getElementById('export-week');
@@ -4614,18 +4547,120 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         dateInput.value = courseMetadata ? getSuggestedDate(courseMetadata) : localDateString();
         setWeek(courseMetadata ? calculateCurrentWeek(courseMetadata) : 1);
     }
-    // Picking another date moves the week with it.
+
+    // --- Group, Category and Topic ---
+    // Group is the course's sections, Category what EIS calls the class. A row with a
+    // single choice is not shown; that choice is still the one sent.
+    let selectedCategory = null;
+    let selectedSubgroup = null;
+    let selectedSection = 'theory';
+
+    const groupField = document.getElementById('export-group-field');
+    const catContainer = document.getElementById('export-cat-group');
+    const subContainer = document.getElementById('export-subgroup-group');
+    const sectionContainer = document.getElementById('export-section-group');
+    const topicInput = document.getElementById('export-topic');
+    const optionsPeek = document.getElementById('export-options-peek');
+
+    catContainer.innerHTML = categories.map(cat =>
+        trackButtonHtml(`data-category="${escapeHtml(cat)}"`, categoryIcons[cat.toLowerCase()] || 'fa-tag', cat)).join('');
+    catContainer.hidden = categories.length <= 1;
+
+    const markActive = (track, isActive, animate) => {
+        track.querySelectorAll(':scope > .course-button').forEach(btn => btn.classList.toggle('active', isActive(btn)));
+        updateSegmentThumb(track, animate);
+    };
+
+    // The topic follows the category and week (Lecture 2, Practice 2, Laboratory 2)
+    // until it is edited; emptying it lets it follow again.
+    const topicNames = { theory: 'Lecture', practice: 'Practice', lab: 'Laboratory' };
+    let autoTopic = '';
+    const fillTopic = () => {
+        if (topicInput.value.trim() && topicInput.value !== autoTopic) return;
+        autoTopic = `${topicNames[selectedSection] || 'Lecture'} ${weekSelect.value}`;
+        topicInput.value = autoTopic;
+    };
+
+    // Closed, More options still names the Category it sends.
+    const selectSection = (section, animate = true) => {
+        selectedSection = section;
+        markActive(sectionContainer, btn => btn.dataset.value === section, animate);
+        const chosen = [...sectionContainer.children].find(btn => btn.dataset.value === section);
+        optionsPeek.textContent = chosen?.querySelector('.tab-label')?.textContent || '';
+        fillTopic();
+    };
+
+    // Picking a category also sets the Category; picking a letter leaves it.
+    const selectGroup = (category, subgroup, animate = true) => {
+        const groups = sectionsMap[category] || [];
+        const categoryChanged = category !== selectedCategory;
+        selectedCategory = category;
+        selectedSubgroup = groups.includes(subgroup) ? subgroup : (groups[0] || null);
+        markActive(catContainer, btn => btn.dataset.category === category, animate);
+        if (categoryChanged) {
+            subContainer.innerHTML = groups.map(grp => trackButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
+            subContainer.hidden = groups.length <= 1;
+            groupField.hidden = catContainer.hidden && subContainer.hidden;
+        }
+        markActive(subContainer, btn => btn.dataset.group === selectedSubgroup, animate && !categoryChanged);
+        if (categoryChanged) selectSection(category.toLowerCase(), animate);
+    };
+
+    // The group to start on: the first one, in the course's order, that has scans on
+    // the chosen date (only Practice that day → Practice). With none, the course's first.
+    const defaultGroup = (onlyCategory = null) => {
+        const sessions = new Set();
+        (courseData[currentCourse]?.logs || []).forEach(log => {
+            if (log.session && localDateString(new Date(log.timestamp)) === dateInput.value) sessions.add(log.session);
+        });
+        for (const category of onlyCategory ? [onlyCategory] : categories) {
+            const groups = sectionsMap[category] || [];
+            const scanned = groups.length
+                ? groups.find(grp => sessions.has(`${category} ${grp}`))
+                : [...sessions].some(session => session.split(' ')[0] === category);
+            if (scanned) return { category, subgroup: groups.length ? scanned : null };
+        }
+        const category = onlyCategory || categories[0] || 'Theory';
+        return { category, subgroup: sectionsMap[category]?.[0] || null };
+    };
+
+    const startGroup = defaultGroup();
+    selectGroup(startGroup.category, startGroup.subgroup, false);
+
+    catContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
+        if (!btn || btn.dataset.category === selectedCategory) return;
+        selectGroup(btn.dataset.category, defaultGroup(btn.dataset.category).subgroup);
+    });
+    subContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
+        if (btn) selectGroup(selectedCategory, btn.dataset.group);
+    });
+    sectionContainer.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
+        if (btn) selectSection(btn.dataset.value);
+    });
+    // A track that was hidden (the closed More options, the loader) places its thumb once shown.
+    [catContainer, subContainer, sectionContainer].forEach(track => watchButtonRows(track, t => updateSegmentThumb(t, false)));
+
+    // Picking another date moves the week with it, and the group to that day's.
     dateInput.addEventListener('change', () => {
         if (courseMetadata && dateInput.value) setWeek(calculateWeekForDate(courseMetadata, new Date(dateInput.value)));
+        const { category, subgroup } = defaultGroup();
+        selectGroup(category, subgroup);
+        fillTopic();
     });
+    weekSelect.addEventListener('change', fillTopic);
 
-    // --- HOURS LOGIC (Custom Toggle) ---
+    // --- More options ---
     const hoursInput = document.getElementById('hours-custom-input');
     const manualCheck = document.getElementById('manual-hours-check');
+    const hoursField = document.getElementById('export-hours-field');
 
     hoursInput.value = parseInt(courseMetadata?.defaultHours || 2);
-    manualCheck.addEventListener('change', (e) => {
-        hoursInput.style.display = e.target.checked ? 'block' : 'none';
+    manualCheck.addEventListener('change', () => {
+        hoursField.hidden = !manualCheck.checked;
+        if (manualCheck.checked) hoursInput.focus({ preventScroll: true });
     });
 
     // Prefs
@@ -4637,18 +4672,11 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         cb.addEventListener('change', () => localStorage.setItem(`eis_pref_${id}`, cb.checked));
     });
 
-    dialog.querySelector('.collapsible-trigger').onclick = (e) => {
-        const content = e.currentTarget.nextElementSibling;
-        content.classList.toggle('is-open');
-        const chevronEl = e.currentTarget.querySelector('i, svg');
-        if (chevronEl) {
-            const i = document.createElement('i');
-            i.className = content.classList.contains('is-open') ? 'fa-solid fa-chevron-up' : 'fa-solid fa-chevron-down';
-            i.style.fontSize = '0.8em';
-            chevronEl.replaceWith(i);
-        }
-        content.style.marginTop = content.classList.contains('is-open') ? '10px' : '0';
-    };
+    const moreOptions = dialog.querySelector('.eis-more-options');
+    try { moreOptions.open = localStorage.getItem('eis_pref_more-options') === '1'; } catch { /* Closed. */ }
+    moreOptions.addEventListener('toggle', () => {
+        try { localStorage.setItem('eis_pref_more-options', moreOptions.open ? '1' : '0'); } catch { /* Not remembered. */ }
+    });
 
     const prepareData = () => {
         let targetSession = selectedCategory;
@@ -4680,7 +4708,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
                 hours: hoursInput.value,
                 category: selectedSection,
                 date: dateInput.value,
-                topic: document.getElementById('export-topic').value,
+                topic: topicInput.value,
                 course: currentCourse,
                 section: sectionParam
             },

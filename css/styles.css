@@ -1827,26 +1827,6 @@
             letter-spacing: 1px;
         }
 
-        /* --- EIS Export Custom Hours Toggle --- */
-        .custom-hours-container {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 10px;
-            background: #fff;
-            padding: 8px;
-            border-radius: 6px;
-            border: 1px solid #ddd;
-            transition: background-color 0.3s, border-color 0.3s;
-        }
-
-        .dark-mode .custom-hours-container {
-            background: #2c2c2e;
-            /* Dark grey */
-            border-color: #444;
-            color: #e0e0e0;
-        }
-
         /* Request Cards */
         .req-card {
             background-color: var(--card-background);
@@ -3126,75 +3106,6 @@
             justify-content: flex-end;
             border-top: 1px solid rgba(0, 0, 0, 0.06);
             background-color: var(--card-background);
-        }
-
-        /* --- Collapsible Section for Dialogs --- */
-        .collapsible-trigger {
-            cursor: pointer;
-            color: var(--primary-color);
-            font-weight: 500;
-            margin-left: 5%;
-            padding: 5px;
-            display: inline-block;
-            border-radius: 5px;
-            transition: background-color 0.3s ease;
-        }
-
-        .collapsible-trigger:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-        }
-
-        .collapsible-trigger i,
-        .collapsible-trigger svg {
-            margin-left: 5px;
-            transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-        }
-
-        .collapsible-content {
-            background-color: #f0f0f0;
-            border-radius: 8px;
-            max-height: 0;
-            overflow: hidden;
-            padding: 0 15px;
-            margin-top: 10px;
-            transition: max-height 0.4s ease-out, padding 0.4s ease-out;
-        }
-
-        .collapsible-content.is-open {
-            max-height: 500px;
-            /* Should be larger than the content's height */
-            padding: 15px;
-            transition: max-height 0.5s ease-in, padding 0.5s ease-in;
-        }
-
-        .collapsible-content hr {
-            border: none;
-            border-top: 1px solid #ddd;
-            margin: 15px 0;
-        }
-
-        .collapsible-content label {
-            display: block;
-            /* Ensures checkboxes stack vertically */
-            margin-bottom: 10px;
-        }
-
-        .collapsible-content p {
-            margin: 0 0 10px 0;
-            opacity: 1.0;
-        }
-
-        /* Dark Mode Styles */
-        .dark-mode .collapsible-trigger:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-        }
-
-        .dark-mode .collapsible-content {
-            background-color: #333;
-        }
-
-        .dark-mode .collapsible-content hr {
-            border-top-color: #555;
         }
 
         /* ===== Group layout ===== */
@@ -4583,8 +4494,7 @@
 .dialog-content > p,
 .dialog-disclaimer,
 .req-note,
-.website-download .website-download-copy p,
-.collapsible-content p {
+.website-download .website-download-copy p {
     text-wrap: pretty;
 }
 
@@ -4592,8 +4502,7 @@
 @media (min-width: 600px) {
     .dialog-content > p:not(.form-hint),
     .dialog-disclaimer,
-    .website-download .website-download-copy p,
-    .collapsible-content p {
+    .website-download .website-download-copy p {
         text-align: justify;
         -webkit-hyphens: auto;
         hyphens: auto;
@@ -13496,11 +13405,14 @@ body.on-student-list:not(.signed-out) #session-label {
     color: #212121;
 }
 
-/* One height for course tabs and group buttons, with the same type: the groups'
-   text matches the tabs', and on phones both are 32px tall. */
+/* One height for course tabs and groups, with the same type: a group track, its
+   padding included, is as tall as a course tab (38px, and 32px on phones), so
+   its buttons are that less the padding. */
 #session-controls .course-button,
 #session-controls .course-button:hover,
 #session-controls .course-button:active {
+    height: 30px;
+    min-height: 30px;
     font-size: 0.9rem;
     font-weight: 500;
 }
@@ -13509,8 +13421,8 @@ body.on-student-list:not(.signed-out) #session-label {
     #session-controls .course-button,
     #session-controls .course-button:hover,
     #session-controls .course-button:active {
-        height: 32px;
-        min-height: 32px;
+        height: 26px;
+        min-height: 26px;
         font-size: 0.8rem;
     }
 
@@ -13524,4 +13436,127 @@ body.on-student-list:not(.signed-out) #session-label {
     .segment-thumb {
         border-radius: 11px !important;
     }
+}
+
+/* =========================================================================
+   Add to EIS
+   Group and Category are the main screen's group tracks: a soft track, the
+   chosen part raised on a thumb that slides to it (updateSegmentThumb). More
+   options holds the Category and the switches; closed, it names the Category.
+   ========================================================================= */
+.eis-export-dialog [hidden] {
+    display: none !important;
+}
+
+.eis-group-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.eis-export-dialog .eis-track {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 16px;
+    background: rgba(15, 23, 42, 0.06);
+}
+
+.eis-export-dialog .eis-track > .course-button,
+.eis-export-dialog .eis-track > .course-button:hover,
+.eis-export-dialog .eis-track > .course-button:active,
+.eis-export-dialog .eis-track > .course-button.active,
+.eis-export-dialog .eis-track > .course-button.active:hover {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #546e7a;
+    font-size: 0.875rem;
+    font-weight: 500;
+    box-shadow: none;
+    transform: none;
+}
+
+.eis-export-dialog .eis-track > .course-button:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--primary-color);
+}
+
+.eis-export-dialog .eis-track > .course-button.active,
+.eis-export-dialog .eis-track > .course-button.active:hover {
+    color: var(--primary-color);
+}
+
+.dark-mode .eis-export-dialog .eis-track {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .eis-export-dialog .eis-track > .course-button {
+    color: #b0bec5;
+}
+
+.dark-mode .eis-export-dialog .eis-track > .course-button:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.06);
+    color: #eceff1;
+}
+
+.dark-mode .eis-export-dialog .eis-track > .course-button.active,
+.dark-mode .eis-export-dialog .eis-track > .course-button.active:hover {
+    color: #fff;
+}
+
+.eis-more-options {
+    margin: 2px 0 0;
+}
+
+.eis-more-peek {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-color) 10%, transparent);
+    color: var(--primary-color);
+    font-size: 0.75rem;
+    font-weight: 600;
+}
+
+.eis-more-peek:empty,
+.eis-more-options[open] .eis-more-peek {
+    display: none;
+}
+
+.dark-mode .eis-more-peek {
+    background: color-mix(in srgb, var(--primary-300) 18%, transparent);
+    color: var(--primary-300);
+}
+
+.eis-more-body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-top: 6px;
+}
+
+.eis-export-dialog .eis-more-body > .form-group {
+    margin: 0 0 4px;
+}
+
+.eis-export-dialog .eis-more-options .switch-row {
+    margin: 0;
+    padding: 10px 14px;
+}
+
+.eis-export-dialog #hours-custom-input {
+    max-width: 120px;
+}
+
+.eis-export-dialog .eis-export-file-btn {
+    align-self: flex-start;
+    margin-top: 4px;
 }
