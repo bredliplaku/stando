@@ -153,7 +153,6 @@
                     <span class="sk-tab"><span class="sk sk-on-primary"></span></span>
                 </span>
             </div>
-            <div class="sk-requests sk-staff"><span class="sk sk-chip sk-chip-request"></span></div>
             <div class="sk-courses">
                 <span class="sk-course"><span class="sk"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
@@ -194,6 +193,8 @@
                 <div id="sync-status" class="sync-status offline" aria-live="polite">
                     <i class="fa-solid fa-circle"></i> <span id="sync-text">Offline</span>
                 </div>
+                <!-- Pending requests, only while there are some (updateAdminDashboardBar). -->
+                <div id="admin-dashboard-bar" class="request-chips" hidden></div>
             </div>
             <div class="auth-container">
                 <div id="user-container" style="display: none">
@@ -269,75 +270,6 @@
             </section>
         </div>
 
-        <div id="admin-dashboard-bar" class="admin-action-bar admin-only" style="display:none;">
-            <div class="action-chip loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking requests...</div>
-        </div>
-
-        <div id="admin-views-container" class="admin-only">
-
-            <div id="pending-absences-view" class="collapsible-module">
-                <div class="module-content">
-                    <div class="panel-header">
-                        <div class="panel-title"><i class="fa-solid fa-hand-point-up" aria-hidden="true"></i> Absences
-                        </div>
-                        <div class="panel-actions">
-                            <!-- Choosing the other option calls toggleAbsenceFilter(). -->
-                            <div id="absence-filter-btn" class="scope-switch" role="group" aria-label="Requests shown"
-                                data-active="mine" style="display:none;">
-                                <button type="button" data-scope="mine" aria-pressed="true">My courses</button>
-                                <button type="button" data-scope="all" aria-pressed="false">All courses</button>
-                            </div>
-                            <button type="button" id="absence-history-btn" class="quiet-btn" title="View all history">
-                                <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>History</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="table-container">
-                        <table class="database-table">
-                            <thead>
-                                <tr>
-                                    <th>Student</th>
-                                    <th class="programme-column">Programme</th>
-                                    <th>Course</th>
-                                    <th>Date</th>
-                                    <th>Hours</th>
-                                    <th>Reason</th>
-                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
-                                </tr>
-                            </thead>
-                            <tbody id="absences-tbody"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div id="pending-registrations-view" class="collapsible-module">
-                <div class="module-content">
-                    <div class="panel-header">
-                        <div class="panel-title"><i class="fa-solid fa-address-card" aria-hidden="true"></i> New
-                            Registrations</div>
-                    </div>
-
-                    <div class="table-container">
-                        <table class="database-table">
-                            <thead>
-                                <tr>
-                                    <th>Student</th>
-                                    <th class="programme-column">Programme</th>
-                                    <th class="uid-column">Card ID</th>
-                                    <th>Sent</th>
-                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
-                                </tr>
-                            </thead>
-                            <tbody id="registrations-tbody"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-
         <div id="course-buttons-container" class="course-buttons-container"></div>
 
         <div id="session-label" class="session-label" hidden><i class="fa-solid fa-layer-group" aria-hidden="true"></i>Group</div>
@@ -358,6 +290,85 @@
             <!-- Shown while scanning and unlocked; see the scan lock in scripts.js. -->
             <button type="button" id="scan-lock-btn" class="scan-lock-btn" title="Lock" aria-label="Lock Stando"
                 hidden><i class="fa-solid fa-lock" aria-hidden="true"></i></button>
+        </div>
+
+        <!-- Pending requests open here, above the records; their chips sit in the top bar. -->
+        <div id="admin-views-container" class="admin-only">
+
+            <section id="pending-absences-view" class="collapsible-module list-panel request-panel"
+                aria-labelledby="absences-title">
+                <div class="module-header list-panel-head">
+                    <div class="list-panel-heading">
+                        <h2 class="module-title" id="absences-title">Permission requests</h2>
+                        <p class="list-panel-count" id="absences-count" aria-live="polite">0 pending</p>
+                    </div>
+                    <div class="module-header-actions">
+                        <button type="button" id="absence-history-btn" class="quiet-btn" title="All requests, decided ones too">
+                            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>History</span>
+                        </button>
+                        <button type="button" class="btn-icon panel-close-btn" title="Close"
+                            aria-label="Close permission requests" onclick="toggleAdminView('pending-absences-view', false)"><i
+                                class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+                    </div>
+                </div>
+                <div class="module-content">
+                    <!-- Choosing the other option calls toggleAbsenceFilter(). -->
+                    <div id="absence-filter-btn" class="scope-switch" role="group" aria-label="Requests shown"
+                        data-active="mine" style="display:none;">
+                        <button type="button" data-scope="mine" aria-pressed="true">My courses</button>
+                        <button type="button" data-scope="all" aria-pressed="false">All courses</button>
+                    </div>
+
+                    <div class="table-container">
+                        <table class="database-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th class="programme-column">Programme</th>
+                                    <th>Course</th>
+                                    <th>Date</th>
+                                    <th>Hours</th>
+                                    <th>Reason</th>
+                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="absences-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section id="pending-registrations-view" class="collapsible-module list-panel request-panel"
+                aria-labelledby="registrations-title">
+                <div class="module-header list-panel-head">
+                    <div class="list-panel-heading">
+                        <h2 class="module-title" id="registrations-title">New cards</h2>
+                        <p class="list-panel-count" id="registrations-count" aria-live="polite">0 pending</p>
+                    </div>
+                    <div class="module-header-actions">
+                        <button type="button" class="btn-icon panel-close-btn" title="Close" aria-label="Close new cards"
+                            onclick="toggleAdminView('pending-registrations-view', false)"><i class="fa-solid fa-xmark"
+                                aria-hidden="true"></i></button>
+                    </div>
+                </div>
+                <div class="module-content">
+                    <div class="table-container">
+                        <table class="database-table">
+                            <thead>
+                                <tr>
+                                    <th>Student</th>
+                                    <th class="programme-column">Programme</th>
+                                    <th class="uid-column">Card ID</th>
+                                    <th>Sent</th>
+                                    <th class="actions-header"><span class="visually-hidden">Actions</span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="registrations-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
         </div>
 
         <!-- Scanner & History Tab -->

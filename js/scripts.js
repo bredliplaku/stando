@@ -87,6 +87,11 @@ let cachedAbsences = [];
 let lastCheckedLogId = null; // For Shift+Click logic
 let activeSessionCategory = null;
 let activeSessionGroup = null;
+// The letter last picked (A, B…): another category that has it keeps it.
+let preferredSessionGroup = null;
+let sessionControlsCourse = null; // The course the group buttons were last drawn for
+// Each course's last group ("Theory B"), so coming back to a course returns to it.
+const COURSE_SESSIONS_KEY = 'stando_course_sessions';
 let currentCourseSections = {}; // Parsed structure
 
 // Pagination State
@@ -657,6 +662,8 @@ function renderSessionControls(courseName) {
     const rawSections = courseInfoMap[courseName].availableSections || '';
     currentCourseSections = parseAvailableSections(rawSections);
     const categories = Object.keys(currentCourseSections);
+    const courseChanged = courseName !== sessionControlsCourse;
+    sessionControlsCourse = courseName;
 
     if (categories.length === 0) {
         controls.style.display = 'none';
@@ -664,6 +671,16 @@ function renderSessionControls(courseName) {
         activeSessionCategory = null;
         activeSessionGroup = null;
         return;
+    }
+
+    // Coming back to a course returns to the group last used in it.
+    if (courseChanged) {
+        const [savedCategory, savedGroup] = String(readCourseSessions()[courseName] || '').split(' ');
+        if (categories.includes(savedCategory)) {
+            activeSessionCategory = savedCategory;
+            activeSessionGroup = currentCourseSections[savedCategory].includes(savedGroup) ? savedGroup : null;
+            if (activeSessionGroup) preferredSessionGroup = activeSessionGroup;
+        }
     }
 
     // 1. Auto-select Category Logic
@@ -731,8 +748,8 @@ function renderSessionControls(courseName) {
 }
 
 function selectSessionCategory(category) {
+    // The letter stays when this category has it too (Theory B → Practice B).
     activeSessionCategory = category;
-    activeSessionGroup = null; // Reset group
 
     // Visual Update
     const catGroup = document.getElementById('session-category-group');
@@ -750,17 +767,17 @@ function selectSessionCategory(category) {
     const showGroups = grpContainer.style.display !== 'none';
 
     document.getElementById('session-controls').style.display = (showCategories || showGroups) ? 'flex' : 'none';
+    rememberCourseSession();
 }
 
 function renderGroupsForCategory(category) {
     const groups = currentCourseSections[category] || [];
     const grpContainer = document.getElementById('session-group-container');
 
-    // 1. Auto-select Group Logic
+    // 1. Auto-select Group Logic: the letter last picked, else the one in use, else the first.
     if (groups.length > 0) {
-        if (!activeSessionGroup || !groups.includes(activeSessionGroup)) {
-            activeSessionGroup = groups[0];
-        }
+        if (groups.includes(preferredSessionGroup)) activeSessionGroup = preferredSessionGroup;
+        else if (!groups.includes(activeSessionGroup)) activeSessionGroup = groups[0];
     } else {
         activeSessionGroup = null;
     }
@@ -796,6 +813,14 @@ function renderGroupsForCategory(category) {
     });
 }
 
+const SESSION_ICONS = { theory: 'fa-book', lab: 'fa-desktop', practice: 'fa-pen-to-square' };
+
+// One option of a group track in a dialog (.segment-track): an icon that closes away
+// when chosen, and a label that keeps its bold width.
+function segmentButtonHtml(attrs, icon, label) {
+    return `<div class="course-button" role="button" tabindex="0" ${attrs}>${icon ? `<i class="fa-solid ${icon} tab-icon" aria-hidden="true"></i>` : ''}<span class="tab-label" data-label="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`;
+}
+
 // A group track's raised part (the thumb) slides to the chosen option, matching its
 // size; animate false just places it (first drawing, a resize).
 function updateSegmentThumb(track, animate = true) {
@@ -826,12 +851,25 @@ function updateSegmentThumb(track, animate = true) {
 
 function selectSessionGroup(group) {
     activeSessionGroup = group;
+    preferredSessionGroup = group;
     const grpContainer = document.getElementById('session-group-container');
     Array.from(grpContainer.children).forEach(btn => {
         if (btn.innerText.trim() === group) btn.classList.add('active');
         else btn.classList.remove('active');
     });
     updateSegmentThumb(grpContainer, true);
+    rememberCourseSession();
+}
+
+function readCourseSessions() {
+    try { return JSON.parse(localStorage.getItem(COURSE_SESSIONS_KEY)) || {}; } catch { return {}; }
+}
+
+function rememberCourseSession() {
+    if (!sessionControlsCourse || !activeSessionCategory) return;
+    const sessions = readCourseSessions();
+    sessions[sessionControlsCourse] = getCurrentActiveSession();
+    try { localStorage.setItem(COURSE_SESSIONS_KEY, JSON.stringify(sessions)); } catch { /* Not remembered. */ }
 }
 
 // --- Absence History Logic ---
@@ -1113,7 +1151,7 @@ function clearAllAppData() {
     // Find all keys used by this application.
     for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
-        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || key.startsWith(SCAN_LOCK_KEY) || [KIOSK_MODE_KEY, COLOUR_THEME_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course', 'stando_view'].includes(key)) {
+        if (key.startsWith('attendance_') || key.startsWith('sb-') || key.startsWith('eis_pref_') || key.startsWith(SCAN_LOCK_KEY) || [KIOSK_MODE_KEY, COLOUR_THEME_KEY, COURSE_SESSIONS_KEY, 'theme', 'logs_sort', 'db_sort', 'last_active_course', 'stando_view'].includes(key)) {
             keysToRemove.push(key);
         }
     }
@@ -1221,17 +1259,21 @@ function renderScanButton() {
     }
 }
 
-// Signed out, the scan button moves into the sign-in card; signed in, it goes back above Scan History.
+// Signed out, the scan button moves into the sign-in card; signed in, it goes back above
+// Scan History, and above the requests lists that open there.
 function placeScanButtons() {
     const scanButtons = document.querySelector('.scan-buttons');
     const signinNote = document.querySelector('#login-container .signin-note');
-    const scannerTab = document.getElementById('scanner-tab');
-    if (!scanButtons || !signinNote || !scannerTab) return;
+    const anchor = document.getElementById('admin-views-container') || document.getElementById('scanner-tab');
+    if (!scanButtons || !signinNote || !anchor) return;
     if (!isSignedIn && scanButtons.nextElementSibling !== signinNote) signinNote.before(scanButtons);
-    else if (isSignedIn && scanButtons.nextElementSibling !== scannerTab) scannerTab.before(scanButtons);
+    else if (isSignedIn && scanButtons.nextElementSibling !== anchor) anchor.before(scanButtons);
     renderScanButton();
 }
 
+// Pending requests sit in the top bar after the sync status, and only while there are
+// some: Permissions (amber) and New cards (blue), each with its count. A chip opens its
+// list above the course's records (toggleAdminView).
 function updateAdminDashboardBar(absencesCount, registrationsCount, isLoading = false, myAbsencesCount = absencesCount) {
     const bar = document.getElementById('admin-dashboard-bar');
 
@@ -1241,17 +1283,15 @@ function updateAdminDashboardBar(absencesCount, registrationsCount, isLoading = 
         if (regView) regView.classList.remove('expanded');
     }
 
-    if (!isAdmin || !bar) {
-        if (bar) bar.style.display = 'none';
+    if (!bar) return;
+    if (!isAdmin) {
+        bar.hidden = true;
+        bar.innerHTML = bar._html = '';
         return;
     }
 
-    bar.style.display = 'flex';
-
-    if (isLoading) {
-        bar.innerHTML = `<div class="action-chip loading"><i class="fa-solid fa-circle-notch fa-spin"></i> Checking requests...</div>`;
-        return;
-    }
+    // While the counts are fetched, the chips stay as they are.
+    if (isLoading) return;
 
     // Auto-drive filter state based on counts
     if (isGlobalAdmin && adminCourses.length > 0) {
@@ -1263,78 +1303,44 @@ function updateAdminDashboardBar(absencesCount, registrationsCount, isLoading = 
         }
     }
 
+    const chip = (id, viewId, icon, label, title, count, tone) => {
+        const open = !!document.getElementById(viewId)?.classList.contains('expanded');
+        return `<button type="button" id="${id}" class="request-chip ${tone}${open ? ' active' : ''}" aria-controls="${viewId}" aria-expanded="${open}" title="${title}" aria-label="${title}: ${count}" onclick="toggleAdminView('${viewId}')">` +
+            `<i class="fa-solid ${icon}" aria-hidden="true"></i><span class="request-chip-label">${label}</span><span class="request-chip-count">${count}</span></button>`;
+    };
+
     let html = '';
-
-    // 2. Generate Chips
     if (absencesCount > 0) {
-        const isAbsExpanded = document.getElementById('pending-absences-view')?.classList.contains('expanded') ? 'active' : '';
-        if (myAbsencesCount > 0) {
-            html += `
-            <div class="action-chip has-items ${isAbsExpanded}" id="chip-absences" onclick="toggleAdminView('pending-absences-view', this)">
-                <i class="fa-solid fa-hand-point-up"></i>
-                <span>Requests for Permission</span>
-                <span class="badge">${myAbsencesCount}</span>
-            </div>`;
-        } else {
-            html += `
-            <div class="action-chip ${isAbsExpanded}" id="chip-absences" onclick="toggleAdminView('pending-absences-view', this)">
-                <i class="fa-solid fa-hand-point-up"></i>
-                <span>Requests for Permission</span>
-            </div>`;
-        }
+        // Requests only in other lecturers' courses show quietly, with their count.
+        html += myAbsencesCount > 0
+            ? chip('chip-absences', 'pending-absences-view', 'fa-hand-point-up', 'Permissions', 'Permission requests', myAbsencesCount, 'is-permission')
+            : chip('chip-absences', 'pending-absences-view', 'fa-hand-point-up', 'Permissions', 'Permission requests in other courses', absencesCount, 'is-quiet');
     }
-
     if (registrationsCount > 0 && isGlobalAdmin) {
-        const isRegExpanded = document.getElementById('pending-registrations-view')?.classList.contains('expanded') ? 'active' : '';
-        html += `
-        <div class="action-chip has-items ${isRegExpanded}" id="chip-registrations" onclick="toggleAdminView('pending-registrations-view', this)">
-            <i class="fa-solid fa-id-card"></i> 
-            <span>Pending Registrations</span>
-            <span class="badge">${registrationsCount}</span>
-        </div>`;
+        html += chip('chip-registrations', 'pending-registrations-view', 'fa-id-card', 'New cards', 'New cards to approve', registrationsCount, 'is-card');
     }
 
-    // 3. "All Clean" State with Fade Out
-    if (html === '') {
-        // Only show if it wasn't already showing "All caught up" to prevent loop
-        if (!bar.querySelector('.clean')) {
-            html = `<div class="action-chip clean"><i class="fa-solid fa-check-circle"></i> All caught up</div>`;
-            bar.innerHTML = html;
-
-            // Trigger Fade Out after 2.5 seconds
-            setTimeout(() => {
-                const cleanChip = bar.querySelector('.clean');
-                if (cleanChip) {
-                    cleanChip.classList.add('fading-out'); // Add CSS animation class
-                    // Remove from DOM after animation finishes (0.5s)
-                    setTimeout(() => {
-                        if (bar.contains(cleanChip)) bar.removeChild(cleanChip);
-                    }, 500);
-                }
-            }, 2500);
-        }
-    } else {
+    // Redrawn only when something changed, so a refresh does not replay the chips' entrance.
+    if (bar._html !== html) {
+        bar._html = html;
         bar.innerHTML = html;
     }
+    bar.hidden = !html;
 }
 
-function toggleAdminView(viewId, chipElement) {
+// Opens or closes a requests list (open: true/false, or toggles), and its chip with it.
+function toggleAdminView(viewId, open) {
     const view = document.getElementById(viewId);
     if (!view) return;
 
-    const isExpanded = view.classList.contains('expanded');
-
-    if (isExpanded) {
-        view.classList.remove('expanded');
-        if (chipElement) chipElement.classList.remove('active');
-    } else {
-        view.classList.add('expanded');
-        if (chipElement) chipElement.classList.add('active');
-
-        setTimeout(() => {
-            view.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }, 300);
+    const expand = typeof open === 'boolean' ? open : !view.classList.contains('expanded');
+    view.classList.toggle('expanded', expand);
+    const chip = document.querySelector(`#admin-dashboard-bar [aria-controls="${viewId}"]`);
+    if (chip) {
+        chip.classList.toggle('active', expand);
+        chip.setAttribute('aria-expanded', String(expand));
     }
+    if (expand) setTimeout(() => view.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 300);
 }
 
 
@@ -1639,7 +1645,7 @@ function setupEventListeners() {
 
     logsTbody.addEventListener('click', (event) => {
         const targetRow = event.target.closest('tr[data-key]');
-        if (!targetRow || !event.target.closest('.add-time-btn, .delete-log-btn, .edit-log-btn')) return;
+        if (!targetRow || !event.target.closest('.add-time-btn, .delete-log-btn, .delete-all-log-btn, .edit-log-btn')) return;
 
         const key = targetRow.dataset.key;
 
@@ -1691,6 +1697,8 @@ function setupEventListeners() {
             addPlusOneHourLog(group);
         } else if (event.target.closest('.delete-log-btn')) {
             confirmDeleteLog(group);
+        } else if (event.target.closest('.delete-all-log-btn')) {
+            confirmDeleteAllLogs(group);
         } else if (event.target.closest('.edit-log-btn')) {
             showEditLogDialog(group);
         }
@@ -2076,6 +2084,8 @@ function enhanceSearchSelect(select) {
     const label = select.id && document.querySelector(`label[for="${CSS.escape(select.id)}"]`);
     if (label) label.htmlFor = input.id;
     wrapper.prepend(input);
+    // A magnifier says it can be typed in; the chevron that it opens.
+    wrapper.insertAdjacentHTML('afterbegin', '<i class="fa-solid fa-magnifying-glass combo-search-icon" aria-hidden="true"></i>');
     wrapper.insertAdjacentHTML('beforeend', '<i class="fa-solid fa-chevron-down combo-chevron" aria-hidden="true"></i>');
     // Code that focuses the field (after a validation error) reaches the search box.
     select.focus = (options) => input.focus(options);
@@ -2097,7 +2107,15 @@ function enhanceSearchSelect(select) {
     const codeHtml = (text, code) => code && text.startsWith(code)
         ? `<strong>${escapeHtml(code)}</strong>${escapeHtml(text.slice(code.length))}`
         : escapeHtml(text);
-    const optionHtml = option => codeHtml(option.textContent, option.dataset.code);
+    // An option: its code as a chip, its name beside it, a tick when chosen.
+    const optionHtml = option => {
+        const text = option.textContent;
+        const code = option.dataset.code;
+        const label = code && text.startsWith(code)
+            ? `<span class="combo-code">${escapeHtml(code)}</span><span class="combo-name">${escapeHtml(text.slice(code.length).trim())}</span>`
+            : `<span class="combo-name">${escapeHtml(text)}</span>`;
+        return `${label}<i class="fa-solid fa-check combo-check" aria-hidden="true"></i>`;
+    };
     const groupHtml = option => codeHtml(groupOf(option), groupCodeOf(option));
 
     // How well an option answers the search, 5 to 0. Only the best tier shows, so
@@ -4448,9 +4466,6 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
     dialog.setAttribute('role', 'dialog');
 
     const formattedCourseName = getCourseLabel(currentCourse);
-    const categoryIcons = { theory: 'fa-book', lab: 'fa-desktop', practice: 'fa-pen-to-square' };
-    const trackButtonHtml = (attrs, icon, label) =>
-        `<div class="course-button" role="button" tabindex="0" ${attrs}>${icon ? `<i class="fa-solid ${icon} tab-icon" aria-hidden="true"></i>` : ''}<span class="tab-label" data-label="${escapeHtml(label)}">${escapeHtml(label)}</span></div>`;
 
     dialog.innerHTML = `
         <h3 class="dialog-title"><i class="fa-solid fa-list-check"></i> Add to EIS</h3>
@@ -4478,9 +4493,9 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
 
                 <div class="form-group" id="export-group-field">
                     <label class="dialog-label-fixed"><i class="fa-solid fa-users"></i> Group</label>
-                    <div class="eis-group-rows">
-                        <div id="export-cat-group" class="eis-track"></div>
-                        <div id="export-subgroup-group" class="eis-track is-letters"></div>
+                    <div class="segment-rows">
+                        <div id="export-cat-group" class="segment-track"></div>
+                        <div id="export-subgroup-group" class="segment-track"></div>
                     </div>
                 </div>
 
@@ -4494,10 +4509,10 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
                     <div class="eis-more-body">
                         <div class="form-group">
                             <label class="dialog-label-fixed">Category</label>
-                            <div id="export-section-group" class="eis-track">
-                                ${trackButtonHtml('data-value="theory"', categoryIcons.theory, 'Theory')}
-                                ${trackButtonHtml('data-value="lab"', categoryIcons.lab, 'Lab')}
-                                ${trackButtonHtml('data-value="practice"', categoryIcons.practice, 'Practice')}
+                            <div id="export-section-group" class="segment-track">
+                                ${segmentButtonHtml('data-value="theory"', SESSION_ICONS.theory, 'Theory')}
+                                ${segmentButtonHtml('data-value="lab"', SESSION_ICONS.lab, 'Lab')}
+                                ${segmentButtonHtml('data-value="practice"', SESSION_ICONS.practice, 'Practice')}
                             </div>
                         </div>
                         ${switchRowHtml('manual-hours-check', false, 'Set the hours', 'Otherwise EIS fills in the hours of the section.')}
@@ -4563,7 +4578,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
     const optionsPeek = document.getElementById('export-options-peek');
 
     catContainer.innerHTML = categories.map(cat =>
-        trackButtonHtml(`data-category="${escapeHtml(cat)}"`, categoryIcons[cat.toLowerCase()] || 'fa-tag', cat)).join('');
+        segmentButtonHtml(`data-category="${escapeHtml(cat)}"`, SESSION_ICONS[cat.toLowerCase()] || 'fa-tag', cat)).join('');
     catContainer.hidden = categories.length <= 1;
 
     const markActive = (track, isActive, animate) => {
@@ -4598,7 +4613,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         selectedSubgroup = groups.includes(subgroup) ? subgroup : (groups[0] || null);
         markActive(catContainer, btn => btn.dataset.category === category, animate);
         if (categoryChanged) {
-            subContainer.innerHTML = groups.map(grp => trackButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
+            subContainer.innerHTML = groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
             subContainer.hidden = groups.length <= 1;
             groupField.hidden = catContainer.hidden && subContainer.hidden;
         }
@@ -6638,10 +6653,17 @@ function stopAdminAutoRefresh() {
     }
 }
 
+// "3 pending" under a requests list's title.
+function setPendingCount(id, count) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = `${count} pending`;
+}
+
 function renderRegistrationsTable(registrations) {
     const tbody = document.getElementById('registrations-tbody');
     if (!tbody) return;
     tbody.innerHTML = '';
+    setPendingCount('registrations-count', registrations?.length || 0);
 
     if (!registrations || registrations.length === 0) return;
 
@@ -6709,6 +6731,7 @@ function renderAbsencesTable(requests) {
     const displayRequests = isFiltering
         ? cachedAbsences.filter(r => adminCourses.includes(r.course))
         : cachedAbsences;
+    setPendingCount('absences-count', displayRequests.length);
 
     if (!displayRequests || displayRequests.length === 0) return;
 
@@ -6946,12 +6969,19 @@ function showRequestPermissionDialog() {
     const userEmailNorm = norm(currentUser.email);
     const userNameNorm = norm(currentUser.name);
 
-    // 2. Filter active (non-archived) courses where student has at least 1 entry
+    // 2. The courses offered: the active ones in the student's programme. A student
+    // without one on their record (or whose programme has none active) gets the courses
+    // they have scans in, and failing that every active course, so none is left without.
     const allActiveCourses = Object.keys(courseInfoMap)
         .sort((a, b) => compareCoursesForDisplay([a, courseInfoMap[a]], [b, courseInfoMap[b]]))
         .filter(courseName => !courseInfoMap[courseName]?.archived);
 
-    const enrolledCourses = allActiveCourses.filter(courseName => {
+    const programme = programmeById(studentProgrammeId(currentUser.email));
+    const programmeCourses = programme
+        ? allActiveCourses.filter(courseName => courseProgrammes(courseInfoMap[courseName]).some(p => p.id === programme.id))
+        : [];
+
+    const scannedCourses = allActiveCourses.filter(courseName => {
         const logs = (courseData[courseName]?.logs || studentLogCache[courseName] || []);
         if (logs.length === 0) return false;
         return logs.some(log => {
@@ -6967,69 +6997,63 @@ function showRequestPermissionDialog() {
         });
     });
 
-    // "CE 121 Civil Engineering Drawing", searchable, under their programmes when there are two or more.
+    const enrolledCourses = programmeCourses.length ? programmeCourses
+        : scannedCourses.length ? scannedCourses : allActiveCourses;
+
+    // "CE 121 Civil Engineering Drawing", searchable. The student's own programme needs
+    // no headings (a course shared with another programme would add one); the wider
+    // lists show their programmes when there are two or more.
     const isEnrolledEmpty = enrolledCourses.length === 0;
     const courseOption = courseName => `<option value="${escapeHtml(courseName)}" data-code="${escapeHtml(getCleanCourseCode(courseName))}">${escapeHtml(getCourseLabel(courseName))}</option>`;
-    const courseGroups = groupCoursesByProgramme(enrolledCourses);
+    const courseGroups = programmeCourses.length ? null : groupCoursesByProgramme(enrolledCourses);
     const courseOptions = isEnrolledEmpty
-        ? '<option value="">No enrolled courses available</option>'
+        ? '<option value="">No courses open for requests</option>'
         : '<option value="">Search or choose a course</option>' + (courseGroups
             ? courseGroups.map(group => `<optgroup label="${escapeHtml(group.programme ? programmeOptionLabel(group.programme) : 'Other courses')}"${group.programme ? ` data-code="${escapeHtml(group.programme.code)}"` : ''}>${group.courses.map(courseOption).join('')}</optgroup>`).join('')
             : enrolledCourses.map(courseOption).join(''));
 
     const emptyCourseExplanation = isEnrolledEmpty
-        ? `<small id="no-enrolled-courses-msg" style="color:var(--text-muted, #777); font-size:0.8em; display:block; margin-top:4px;"><i class="fa-solid fa-circle-info"></i> No enrolled courses found with your attendance records yet.</small>`
+        ? '<p class="form-hint" id="no-enrolled-courses-msg">There are no active courses right now.</p>'
         : '';
 
     const hoursList = ['8:40–9:30', '9:40–10:30', '10:40–11:30', '11:40–12:30', '12:40–13:30', '13:40–14:30', '14:40–15:30', '15:40–16:30', '16:00–16:50', '17:00–17:50', '18:00–18:50', '19:00–19:50'];
-    const hourButtons = hoursList.map(h => `<button type="button" class="toggle-button" data-value="${h}" style="font-family:'Google Sans Flex', sans-serif; overflow:visible; text-overflow:clip; font-size:0.8em; padding:10px 2px;">${h}</button>`).join('');
+    const hourButtons = hoursList.map(h => `<button type="button" class="toggle-button" data-value="${h}">${h}</button>`).join('');
 
+    dialog.classList.add('request-dialog');
     dialog.innerHTML = `
 <h3 class="dialog-title"><i class="fa-solid fa-hand-point-up"></i> Request for Permission</h3>
 <div class="dialog-content">
 
-<div class="dialog-disclaimer">
-        <i class="fa-solid fa-circle-info"></i> Per university regulations, absences are unexcused by default. Although missing a few classes is normal, this form is provided as a professional courtesy.
-    </div>
-    
-    <div class="form-section-title" style="margin-top:0;">Details</div>
-    
+    <div class="dialog-callout is-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>Per university regulations, absences are unexcused by default. Missing a few classes is normal; this form is a professional courtesy.</span></div>
+
     <div class="form-group required">
-        <label class="dialog-label-fixed"><i class="fa-solid fa-book"></i> Course</label>
-        <div class="form-group-control">
-            <select id="request-course" class="form-control search-select" data-empty="No course matches" ${isEnrolledEmpty ? 'disabled' : ''}>
-                ${courseOptions}
-            </select>
-            ${emptyCourseExplanation}
+        <label class="dialog-label-fixed" for="request-course">Course</label>
+        <select id="request-course" class="form-control search-select" data-empty="No course matches" ${isEnrolledEmpty ? 'disabled' : ''}>
+            ${courseOptions}
+        </select>
+        ${emptyCourseExplanation}
+    </div>
+
+    <div class="form-group required" id="request-session-field" hidden>
+        <label class="dialog-label-fixed">Group</label>
+        <div class="segment-rows">
+            <div id="req-cat-row" class="segment-track"></div>
+            <div id="req-grp-row" class="segment-track"></div>
         </div>
     </div>
 
-    <div id="request-session-container" style="display:none; margin-bottom:15px;">
-        <div class="form-group required" style="align-items:flex-start;">
-            <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-users"></i> Group</label>
-            <div style="flex-grow:1;">
-                <div id="req-session-wrapper"></div>
-            </div>
-        </div>
+    <div class="form-group required">
+        <label class="dialog-label-fixed" for="request-date">Date</label>
+        <input type="date" id="request-date" class="form-control" value="" min="${minDateStr}" max="${maxDateStr}" required>
+        <p class="form-hint">The day you were, or will be, absent: up to 2 working days ago or 7 ahead.</p>
     </div>
 
-    <div class="form-group required" style="align-items:flex-start;">
-        <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-regular fa-calendar-days"></i> Date</label>
-        <div class="form-group-control">
-            <input type="date" id="request-date" class="form-control" value="" min="${minDateStr}" max="${maxDateStr}" required>
-            <small style="color:#666; font-size:0.8em; display:block; margin-top:4px;">
-                <i class="fa-solid fa-circle-info"></i> Select the date you were (or will be) absent.
-            </small>
-        </div>
-    </div>
-
-    <div class="form-group required" style="align-items:flex-start;">
-        <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-regular fa-clock"></i> Hours</label>
-        <div id="request-hours-group" class="form-group-control" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
+    <div class="form-group required">
+        <label class="dialog-label-fixed">Hours</label>
+        <div id="request-hours-group" class="request-hours">
             ${hourButtons}
         </div>
     </div>
-
 
     <div class="form-section-title">Reason</div>
 
@@ -7059,36 +7083,28 @@ function showRequestPermissionDialog() {
             <span>Personal Matter</span>
         </div>
     </div>
-    
-    <div id="reason-help-text" style="display:none; background-color:var(--tertiary-50); color:var(--tertiary-900); padding:12px; border-radius:8px; margin-bottom:15px; font-size:0.9em; line-height:1.4; border-left:4px solid var(--tertiary-500);"></div>
 
-    <div class="form-group" id="request-file-group" style="display:none; align-items:flex-start;">
-        <label class="dialog-label-fixed" id="request-file-label" style="margin-top:10px;">Document</label>
-        <div class="form-group-control">
-           <input type="file" id="request-file-upload" class="form-control" accept=".pdf,image/*">
-           <small style="opacity:0.7;">Max 5 MB</small>
+    <div id="reason-help-text" class="dialog-callout" aria-live="polite" hidden></div>
+
+    <div class="form-group" id="request-file-group" hidden>
+        <label class="dialog-label-fixed" id="request-file-label">Document</label>
+        <div class="file-field">
+            <input type="file" id="request-file-upload" accept=".pdf,image/*" tabindex="-1" aria-hidden="true">
+            <button type="button" class="file-field-btn" id="request-file-btn"><i class="fa-solid fa-paperclip" aria-hidden="true"></i><span>Choose file</span></button>
+            <span class="file-field-name" id="request-file-name">No file chosen</span>
         </div>
+        <p class="form-hint">A PDF or an image, up to 5 MB.</p>
     </div>
 
-    <div class="form-group" id="request-expl-group" style="display:none; align-items:flex-start;">
-        <label class="dialog-label-fixed" id="request-expl-label" style="margin-top:10px;">Details</label>
-        <textarea id="request-explanation" class="form-control form-group-control" rows="3"></textarea>
+    <div class="form-group" id="request-expl-group" hidden>
+        <label class="dialog-label-fixed" id="request-expl-label" for="request-explanation">Details</label>
+        <textarea id="request-explanation" class="form-control" rows="3"></textarea>
     </div>
 
-    <div class="form-section-title" style="margin-top:20px;">Verification</div>
-    <div class="form-group" style="align-items:flex-start;">
-        <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-calculator"></i> Solve</label>
-        <div class="form-group-control">
-            <div id="captcha-question" style="font-size:1.2em; font-weight:600; margin-bottom:10px; font-family:'Google Sans Code', monospace; background:var(--card-background); color:var(--text-color); padding:10px 15px; border-radius:8px; text-align:center; border:1px solid var(--border-color, #ddd);-webkit-user-select: none;
-            /* Safari */
-            -moz-user-select: none;
-            /* Firefox */
-            -ms-user-select: none;
-            /* IE10+/Edge */
-            user-select: none;
-            /* Standard */"></div>
-            <div id="captcha-choices" class="course-buttons-container" style="margin-bottom:0; gap:8px; flex-wrap:nowrap;"></div>
-        </div>
+    <div class="form-section-title">Verification</div>
+    <div class="captcha">
+        <div id="captcha-question" class="captcha-question" aria-live="polite"></div>
+        <div id="captcha-choices" class="captcha-choices" role="group" aria-label="Answers"></div>
     </div>
 
 </div>
@@ -7102,8 +7118,9 @@ function showRequestPermissionDialog() {
 
     // --- Variables ---
     const courseSelect = document.getElementById('request-course');
-    const sessionContainer = document.getElementById('request-session-container');
-    const sessionWrapper = document.getElementById('req-session-wrapper');
+    const sessionField = document.getElementById('request-session-field');
+    const catRow = document.getElementById('req-cat-row');
+    const grpRow = document.getElementById('req-grp-row');
     const reasonGrid = document.getElementById('reason-grid');
     const helpText = document.getElementById('reason-help-text');
     const fileGroup = document.getElementById('request-file-group');
@@ -7120,6 +7137,8 @@ function showRequestPermissionDialog() {
 
     // --- CAPTCHA LOGIC ---
     function generateCaptcha() {
+        // A wrong answer asks again after a pause; the dialog may have closed by then.
+        if (!dialog.isConnected) return;
         captchaSolved = false;
         const captchaChoices = document.getElementById('captcha-choices');
         const captchaQuestion = document.getElementById('captcha-question');
@@ -7212,135 +7231,87 @@ function showRequestPermissionDialog() {
         }
 
         captchaChoices.innerHTML = allChoices.map(val =>
-            `<div class="course-button captcha-choice" data-value="${val}" style="flex:1; min-width:0; padding:10px 8px; justify-content:center;">${val}</div>`
+            `<button type="button" class="toggle-button captcha-choice" data-value="${val}">${val}</button>`
         ).join('');
-
-
-        // Reset visual state
-        captchaChoices.querySelectorAll('.captcha-choice').forEach(btn => {
-            btn.classList.remove('active', 'correct', 'incorrect');
-        });
     }
 
     // Initialize captcha
     generateCaptcha();
 
-    // Handle captcha choice clicks
+    // The right answer turns green and stays; a wrong one turns red, and a new sum follows.
     document.getElementById('captcha-choices').addEventListener('click', (e) => {
         const btn = e.target.closest('.captcha-choice');
-        if (!btn || captchaSolved) return;
+        if (!btn || btn.disabled || captchaSolved) return;
+        const choices = btn.parentElement.querySelectorAll('.captcha-choice');
 
-        const chosen = parseInt(btn.dataset.value, 10);
-
-        // Reset all buttons
-        document.querySelectorAll('.captcha-choice').forEach(b => b.classList.remove('active', 'correct', 'incorrect'));
-
-        if (chosen === captchaAnswer) {
-            btn.classList.add('active', 'correct');
-            btn.style.background = '#4caf50';
-            btn.style.color = '#fff';
+        if (Number(btn.dataset.value) === captchaAnswer) {
+            btn.classList.add('is-correct');
             captchaSolved = true;
+            choices.forEach(b => { if (b !== btn) b.disabled = true; });
         } else {
-            btn.classList.add('incorrect');
-            btn.style.background = 'var(--danger-color)';
-            btn.style.color = '#fff';
-            // Generate new captcha after wrong answer
-            setTimeout(() => {
-                generateCaptcha();
-            }, 1500);
+            btn.classList.add('is-wrong');
+            choices.forEach(b => { b.disabled = true; });
+            setTimeout(generateCaptcha, 1500);
         }
     });
 
-    // --- SESSION SELECTOR LOGIC ---
+    // --- Group ---
+    // As on the main screen: a row with a single choice is not shown, and that choice
+    // is still sent. Switching category keeps the letter last picked when it has it.
+    let requestSections = {};
+    let requestCategory = null;
+    let requestLetter = null;
+    let preferredLetter = null;
+    let selectedSession = null;
+
+    const markTrack = (track, isActive, animate) => {
+        track.querySelectorAll(':scope > .course-button').forEach(btn => btn.classList.toggle('active', isActive(btn)));
+        updateSegmentThumb(track, animate);
+    };
+
+    const selectRequestGroup = (category, letter, animate = true) => {
+        const groups = requestSections[category] || [];
+        const categoryChanged = category !== requestCategory;
+        requestCategory = category;
+        requestLetter = [preferredLetter, letter].find(l => groups.includes(l)) || groups[0] || null;
+        markTrack(catRow, btn => btn.dataset.category === category, animate);
+        if (categoryChanged) {
+            grpRow.innerHTML = groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
+            grpRow.hidden = groups.length <= 1;
+            sessionField.hidden = catRow.hidden && grpRow.hidden;
+        }
+        markTrack(grpRow, btn => btn.dataset.group === requestLetter, animate && !categoryChanged);
+        selectedSession = requestLetter ? `${category} ${requestLetter}` : category;
+    };
+
     courseSelect.addEventListener('change', () => {
-        const courseName = courseSelect.value;
-        if (!courseName) return;
-
-        const rawSections = courseInfoMap[courseName]?.availableSections || '';
-        const sectionsMap = parseAvailableSections(rawSections);
-        const categories = Object.keys(sectionsMap);
-
-        if (categories.length > 0) {
-            sessionContainer.style.display = 'block';
-
-            let html = `<div id="req-session-controls" style="margin-top:5px;">`;
-            html += `<input type="hidden" id="req-selected-session" value="">`;
-
-            const icons = { 'theory': 'fa-book', 'lab': 'fa-desktop', 'practice': 'fa-pen-to-square' };
-            let catHtml = '';
-            categories.forEach((cat, idx) => {
-                const icon = icons[cat.toLowerCase()] || 'fa-tag';
-                catHtml += `<div class="course-button ${idx === 0 ? 'active' : ''}" data-type="cat" data-val="${cat}" style="flex:1; padding:8px 5px; font-size:0.9em; min-width:0;"><i class="fa-solid ${icon}"></i>&nbsp;${cat}</div>`;
-            });
-            html += `<div class="course-buttons-container" id="req-cat-row" style="display:flex; margin-bottom:8px; gap:5px; flex-wrap:nowrap;">${catHtml}</div>`;
-
-            categories.forEach((cat, idx) => {
-                const groups = sectionsMap[cat] || [];
-                if (groups.length > 0) {
-                    let grpHtml = '';
-                    groups.forEach((grp, gIdx) => {
-                        grpHtml += `<div class="course-button ${gIdx === 0 ? 'active' : ''}" data-type="grp" data-val="${grp}" style="min-width:35px; padding:8px 0; justify-content:center;"><b>${grp}</b></div>`;
-                    });
-
-                    const isInitialActive = (idx === 0);
-                    const hasMultipleGroups = (groups.length > 1);
-                    const grpDisplay = (isInitialActive && hasMultipleGroups) ? 'flex' : 'none';
-
-                    html += `<div class="course-buttons-container req-grp-row" id="req-grp-${cat}" data-has-multiple="${hasMultipleGroups}" style="display:${grpDisplay}; gap:5px; margin-bottom:0;">${grpHtml}</div>`;
-                }
-            });
-            html += `</div>`;
-            sessionWrapper.innerHTML = html;
-
-            updateRequestSessionValue();
-
-            const catRow = document.getElementById('req-cat-row');
-            catRow.addEventListener('click', (e) => {
-                const btn = e.target.closest('.course-button');
-                if (!btn) return;
-                catRow.querySelectorAll('.course-button').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                const cat = btn.dataset.val;
-
-                sessionWrapper.querySelectorAll('.req-grp-row').forEach(row => row.style.display = 'none');
-                const targetRow = document.getElementById(`req-grp-${cat}`);
-
-                if (targetRow && targetRow.dataset.hasMultiple === 'true') {
-                    targetRow.style.display = 'flex';
-                }
-                updateRequestSessionValue();
-            });
-
-            sessionWrapper.querySelectorAll('.req-grp-row').forEach(row => {
-                row.addEventListener('click', (e) => {
-                    const btn = e.target.closest('.course-button');
-                    if (!btn) return;
-                    row.querySelectorAll('.course-button').forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    updateRequestSessionValue();
-                });
-            });
-
-        } else {
-            sessionContainer.style.display = 'none';
-            sessionWrapper.innerHTML = '';
+        requestSections = parseAvailableSections(courseInfoMap[courseSelect.value]?.availableSections || '');
+        const categories = Object.keys(requestSections);
+        requestCategory = null;
+        catRow.innerHTML = categories.map(cat =>
+            segmentButtonHtml(`data-category="${escapeHtml(cat)}"`, SESSION_ICONS[cat.toLowerCase()] || 'fa-tag', cat)).join('');
+        catRow.hidden = categories.length <= 1;
+        if (!categories.length) {
+            grpRow.innerHTML = '';
+            sessionField.hidden = true;
+            selectedSession = null;
+            return;
         }
+        selectRequestGroup(categories[0], requestLetter, false);
     });
 
-    function updateRequestSessionValue() {
-        const catBtn = document.querySelector('#req-cat-row .active');
-        if (!catBtn) return;
-        const cat = catBtn.dataset.val;
-
-        const grpRow = document.getElementById(`req-grp-${cat}`);
-        let session = cat;
-
-        if (grpRow) {
-            const grpBtn = grpRow.querySelector('.active');
-            if (grpBtn) session += ' ' + grpBtn.dataset.val;
-        }
-        document.getElementById('req-selected-session').value = session;
-    }
+    catRow.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
+        if (btn && btn.dataset.category !== requestCategory) selectRequestGroup(btn.dataset.category, requestLetter);
+    });
+    grpRow.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
+        if (!btn) return;
+        preferredLetter = btn.dataset.group;
+        selectRequestGroup(requestCategory, btn.dataset.group);
+    });
+    // A track drawn while hidden places its thumb once shown.
+    [catRow, grpRow].forEach(track => watchButtonRows(track, t => updateSegmentThumb(t, false)));
 
     // --- Hours Logic ---
     courseSelect.addEventListener('change', () => {
@@ -7366,94 +7337,83 @@ function showRequestPermissionDialog() {
         card.classList.add('active');
         selectedReason = card.dataset.value;
 
-        // 1. RESET EVERYTHING
-        helpText.style.display = 'none';
-        helpText.style.background = '#e3f2fd'; // Reset info blue
-        helpText.style.color = '#0d47a1';
-        helpText.style.borderLeftColor = 'var(--tertiary-500)';
-
-        fileGroup.style.display = 'none';
-        explGroup.style.display = 'none';
+        // 1. Start from nothing shown
+        helpText.hidden = true;
+        fileGroup.hidden = true;
+        explGroup.hidden = true;
+        fileGroup.classList.remove('required');
+        explGroup.classList.remove('required');
         submitBtn.disabled = false;
         explInput.value = '';
         explInput.removeAttribute('minlength');
-        explInput.placeholder = "";
+        explInput.placeholder = '';
+        fileLabel.textContent = 'Document';
+        explLabel.textContent = 'Details';
 
-        // Reset Labels
-        fileLabel.innerHTML = 'Document';
-        explLabel.innerHTML = 'Details';
+        // A note under the reasons: information, or a warning (amber).
+        const showHelp = (icon, html, tone = 'is-info') => {
+            helpText.className = `dialog-callout ${tone}`;
+            helpText.innerHTML = `<i class="fa-solid ${icon}" aria-hidden="true"></i><span>${html}</span>`;
+            helpText.hidden = false;
+        };
+        const askFile = (label, required) => {
+            fileGroup.hidden = false;
+            fileGroup.classList.toggle('required', required);
+            fileLabel.textContent = label;
+        };
+        const askExplanation = (required, minLength = 0) => {
+            explGroup.hidden = false;
+            explGroup.classList.toggle('required', required);
+            explLabel.textContent = 'Explanation';
+            if (minLength) explInput.setAttribute('minlength', String(minLength));
+        };
 
-        // 2. APPLY LOGIC
+        // 2. What this reason needs
         switch (selectedReason) {
-            case 'Medical': // Calling Sick
-                // File Required, Expl Optional
-                fileGroup.style.display = 'flex';
-                fileLabel.innerHTML = 'Medical Report <span style="color:red">*</span>';
-
-                explGroup.style.display = 'flex';
-                explLabel.innerHTML = 'Explanation';
-
-                helpText.innerHTML = `Please attach your Medical Report (Raporti Mjekësor) or any other documentation.`;
-                helpText.style.display = 'block';
+            case 'Medical': // Calling Sick: a report, and an explanation if wanted
+                askFile('Medical report', true);
+                askExplanation(false);
+                showHelp('fa-circle-info', 'Please attach your medical report (Raporti Mjekësor) or any other documentation.');
                 break;
 
             case 'Conference':
-                fileGroup.style.display = 'flex';
-                fileLabel.innerHTML = 'Invitation <span style="color:red">*</span>';
-                helpText.innerHTML = `Please attach your invitation letter.`;
-                helpText.style.display = 'block';
+                askFile('Invitation', true);
+                showHelp('fa-circle-info', 'Please attach your invitation letter.');
                 break;
 
-            case 'Official': // Official Appointment
-                // File Required, Expl Optional
-                fileGroup.style.display = 'flex';
-                fileLabel.innerHTML = 'Document <span style="color:red">*</span>';
-
-                explGroup.style.display = 'flex';
-                explLabel.innerHTML = 'Explanation';
-
-                helpText.innerHTML = `Please attach your official summon (Court, Embassy, Police).`;
-                helpText.style.display = 'block';
+            case 'Official': // Official Appointment: a document, and an explanation if wanted
+                askFile('Document', true);
+                askExplanation(false);
+                showHelp('fa-circle-info', 'Please attach your official summons (court, embassy, police).');
                 break;
 
             case 'Bus':
-                explGroup.style.display = 'flex';
-                explInput.setAttribute('minlength', '20');
-                explLabel.innerHTML = 'Explanation <span style="color:red">*</span>';
-
-                fileGroup.style.display = 'flex';
-                fileLabel.innerHTML = 'Attachment';
-                helpText.innerHTML = `<strong>Note:</strong> Only applies to the university's bus line.`;
-                helpText.style.display = 'block';
+                askExplanation(true, 20);
+                askFile('Attachment', false);
+                showHelp('fa-circle-info', "<strong>Note:</strong> Only applies to the university's bus line.");
                 break;
 
             case 'Club':
-                submitBtn.disabled = true; // Disabled - Dean must email
-                helpText.style.background = '#fff3e0';
-                helpText.style.color = 'var(--secondary-800)';
-                helpText.style.borderLeftColor = '#ff9800';
-                helpText.innerHTML = `<i class="fa-solid fa-envelope"></i> The Dean of Students Office must email the lecturer to request permission on your behalf.`;
-                helpText.style.display = 'block';
+                submitBtn.disabled = true; // The Dean of Students Office asks instead
+                showHelp('fa-envelope', 'The Dean of Students Office must email the lecturer to request permission on your behalf.', 'is-warning');
                 break;
 
-            case 'Confidential': // Personal Matter
-                // Enabled, REQUIRED Explanation
-                submitBtn.disabled = false;
-
-                explGroup.style.display = 'flex';
-                explLabel.innerHTML = 'Explanation <span style="color:red">*</span>';
-                explInput.placeholder = "Please explain the situation in detail...";
-
-                // Set min length for validation later
-                explInput.setAttribute('minlength', '50');
-
-                helpText.style.background = '#fff3e0';
-                helpText.style.color = 'var(--secondary-800)';
-                helpText.style.borderLeftColor = '#ff9800';
-                helpText.innerHTML = `<i class="fa-solid fa-lock"></i> If you cannot write it here, please visit the lecturer's office to discuss in person.`;
-                helpText.style.display = 'block';
+            case 'Confidential': // Personal Matter: an explanation is required
+                askExplanation(true, 50);
+                explInput.placeholder = 'Please explain the situation in detail...';
+                showHelp('fa-lock', "If you cannot write it here, please visit the lecturer's office to discuss it in person.", 'is-warning');
                 break;
         }
+    });
+
+    // The file button opens the picker; the chosen file's name shows beside it.
+    const fileInput = document.getElementById('request-file-upload');
+    const fileName = document.getElementById('request-file-name');
+    document.getElementById('request-file-btn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', () => {
+        const file = fileInput.files[0];
+        fileName.textContent = file ? file.name : 'No file chosen';
+        fileName.classList.toggle('has-file', !!file);
     });
 
     // --- SUBMIT LOGIC ---
@@ -7464,8 +7424,7 @@ function showRequestPermissionDialog() {
         const file = document.getElementById('request-file-upload').files[0];
         const explanation = explInput.value.trim();
 
-        const sessionInput = document.getElementById('req-selected-session');
-        const session = sessionInput ? sessionInput.value : 'Default';
+        const session = selectedSession || 'Default';
 
         // 1. General Validation
         let errors = [];
@@ -10841,6 +10800,44 @@ function isValidEmail(email) {
 * Show dialog to edit a log entry group.
 * @param {Object} group - The log group to edit.
 */
+// Deletes every time of one student on one date, after asking. From the row's ⋯ menu
+// and from Edit Log Entry (which passes onDeleted to close itself).
+function confirmDeleteAllLogs(group, onDeleted = null) {
+    const count = group.originalLogs.length;
+    showConfirmationDialog({
+        title: 'Delete All Times?',
+        message: `Delete <strong>all ${count} ${count === 1 ? 'time' : 'times'}</strong> of ${escapeHtml(group.name || 'this student')} on ${escapeHtml(group.date || 'this date')}? This cannot be undone.`,
+        confirmText: 'Delete All',
+        isDestructive: true,
+        onConfirm: () => {
+            const idsToRemove = group.originalLogs.map(log => log.id);
+            const removeLocally = () => {
+                courseData[currentCourse].logs = courseData[currentCourse].logs.filter(log => !idsToRemove.includes(log.id));
+            };
+            const done = () => {
+                updateUI();
+                showNotification('delete', 'Deleted', `${count === 1 ? 'The time was' : `All ${count} times were`} deleted.`);
+            };
+
+            if (isGlobalAdmin) {
+                idsToRemove.forEach(id => addToTombstones(id));
+                removeLocally();
+                saveAndMarkChanges(currentCourse);
+                done();
+                if (isOnline && isSignedIn) syncLogsWithSheet();
+            } else {
+                Promise.all(idsToRemove.map(id => deleteLogViaBackend(id)))
+                    .then(() => { removeLocally(); done(); })
+                    .catch(err => {
+                        showNotification('error', 'Error', 'Failed to delete some logs.');
+                        console.error(err);
+                    });
+            }
+            if (onDeleted) onDeleted();
+        }
+    });
+}
+
 function showEditLogDialog(group) {
     if (!isAdmin) return;
     openDialogMode();
@@ -11057,38 +11054,7 @@ function showEditLogDialog(group) {
     numberTimes();
 
     // --- Delete All Logic ---
-    document.getElementById('delete-all-logs-btn').addEventListener('click', () => {
-        showConfirmationDialog({
-            title: 'Delete Entire Entry?',
-            message: `Are you sure you want to delete <strong>ALL ${group.originalLogs.length} timestamps</strong> for this date? This cannot be undone.`,
-            confirmText: 'Delete All',
-            isDestructive: true,
-            onConfirm: () => {
-                const idsToRemove = group.originalLogs.map(log => log.id);
-
-                if (isGlobalAdmin) {
-                    idsToRemove.forEach(id => addToTombstones(id));
-                    courseData[currentCourse].logs = courseData[currentCourse].logs.filter(log => !idsToRemove.includes(log.id));
-                    saveAndMarkChanges(currentCourse);
-                    updateUI();
-                    showNotification('delete', 'Deleted', 'All timestamps were deleted.');
-                    if (isOnline && isSignedIn) syncLogsWithSheet();
-                } else {
-                    Promise.all(idsToRemove.map(id => deleteLogViaBackend(id)))
-                        .then(() => {
-                            courseData[currentCourse].logs = courseData[currentCourse].logs.filter(log => !idsToRemove.includes(log.id));
-                            updateUI();
-                            showNotification('delete', 'Deleted', 'All timestamps were deleted.');
-                        })
-                        .catch(err => {
-                            showNotification('error', 'Error', 'Failed to delete some logs.');
-                            console.error(err);
-                        });
-                }
-                closeDialog();
-            }
-        });
-    });
+    document.getElementById('delete-all-logs-btn').addEventListener('click', () => confirmDeleteAllLogs(group, closeDialog));
 
     // SAVE LOGIC
     document.getElementById('save-edit-log-btn').addEventListener('click', () => {
@@ -12513,6 +12479,10 @@ function updateLogsList() {
                 { label: 'Add 1 hour', icon: 'fa-solid fa-plus', className: 'add-time-btn' },
                 { label: 'Delete latest time', icon: 'fa-solid fa-minus', className: 'delete-log-btn', danger: true }
             );
+            // With one time, "Delete latest time" already deletes them all.
+            if (group.originalLogs.length > 1) {
+                menuItems.push({ label: 'Delete all times', icon: 'fa-solid fa-trash', className: 'delete-all-log-btn', danger: true });
+            }
             actionsWrapper.innerHTML = rowEditButtonHtml(`Edit entry for ${group.name}`, 'edit-log-btn') +
                 rowMenuHtml(menuItems, `More actions for ${group.name}`);
 

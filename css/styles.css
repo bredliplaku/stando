@@ -454,124 +454,6 @@
             color: var(--primary-100);
         }
 
-        /* --- Admin Action Bar (The Fix for Layout Shift) --- */
-        .admin-action-bar {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: wrap;
-            gap: 10px;
-            margin-bottom: 5px;
-            width: 100%;
-        }
-
-        .action-chip {
-            flex-grow: 1;
-            min-width: 140px;
-            display: inline-flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-
-            background-color: #f5f5f5;
-            color: #888;
-
-            border: 1px solid #ddd;
-            padding: 8px 16px;
-            border-radius: 12px;
-
-            margin-bottom: 10px;
-
-            font-size: 0.95em;
-            font-weight: 600;
-
-            cursor: pointer;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
-
-            transition: background-color 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s, transform 0.1s;
-            transform: scale(1);
-        }
-
-        .action-chip.has-items {
-            background-color: #fff8e1;
-            color: var(--secondary-900);
-            border: 1px solid var(--secondary-300);
-        }
-
-        /* Hover: grey chip */
-        .action-chip:hover {
-            border-color: var(--primary-color);
-            color: var(--primary-color);
-            background-color: #f9f9f9;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.08);
-        }
-
-        /* Hover: orange chip */
-        .action-chip.has-items:hover {
-            background-color: var(--secondary-50);
-            border-color: var(--secondary-700);
-            color: var(--secondary-900);
-            box-shadow: 0 4px 8px color-mix(in srgb, var(--secondary-300) 20%, transparent);
-            transform: none;
-        }
-
-        .action-chip.has-items:active {
-            transform: scale(0.96);
-            background-color: var(--secondary-200);
-        }
-
-        /* ACTIVE: This is the ONLY "Pressed" state */
-        .action-chip.active,
-        .action-chip.active:hover {
-            background-color: var(--secondary-50) !important;
-            /* Light Orange Background */
-            color: var(--secondary-900) !important;
-            border-color: var(--secondary-300);
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-            /* Inner Shadow = Pressed Look */
-            transform: scale(0.98);
-            /* Subtle shrink */
-        }
-
-        /* Badges */
-        .action-chip .badge {
-            background: var(--secondary-900);
-            color: white;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 0.8em;
-        }
-
-        .action-chip.active .badge {
-            background: white;
-            color: var(--secondary-900);
-        }
-
-        /* Loading State */
-        .action-chip.loading {
-            background: #f5f5f5;
-            color: #666;
-            cursor: wait;
-            border-style: dashed;
-            box-shadow: none;
-        }
-
-        /* Clean State */
-        .action-chip.clean {
-            background: var(--success-50);
-            color: var(--success-800);
-            border-color: var(--success-200);
-            cursor: default;
-            box-shadow: none;
-        }
-
-        .action-chip.clean:hover {
-            transform: none;
-            box-shadow: none;
-            background: var(--success-50);
-            color: var(--success-800);
-            border-color: var(--success-200);
-        }
-
         /* --- Collapsible Module (Clean container) --- */
         .collapsible-module {
             background: var(--card-background);
@@ -606,10 +488,6 @@
             visibility: visible;
         }
 
-        .action-chip.fading-out {
-            animation: fadeOutAndSlide 0.5s ease-out forwards;
-        }
-
         @keyframes floatOnWater {
             0% {
                 transform: translateY(0);
@@ -632,18 +510,6 @@
             animation: floatOnWater 4s ease-in-out infinite;
         }
 
-
-        @keyframes fadeOutAndSlide {
-            0% {
-                opacity: 1;
-                transform: translateY(0);
-            }
-
-            100% {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-        }
 
         .collapsible-module .module-content {
             padding: 15px;
@@ -679,35 +545,6 @@
 
         .dark-mode .collapsible-module.expanded {
             border-color: #444;
-        }
-
-        .dark-mode .action-chip {
-            background: #2c2c2e;
-            border-color: #444;
-            color: #888;
-        }
-
-        .dark-mode .action-chip:hover {
-            background: #333;
-            border-color: var(--primary-light);
-            color: var(--primary-light);
-        }
-
-        .dark-mode .action-chip.has-items {
-            background: #4a2c0f;
-            color: var(--secondary-200);
-            border-color: var(--secondary-300);
-        }
-
-        .dark-mode .action-chip.has-items:hover {
-            background: #5a3510;
-            border-color: var(--secondary-700);
-            color: var(--secondary-200);
-        }
-
-        .dark-mode .action-chip.active {
-            background: #3e2723;
-            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         /* --- Modern Course Editor Inputs --- */
@@ -1765,21 +1602,6 @@
 
         /* Font-variation-settings removed from dark-mode body, h1, and h2 to keep typography weights identical to light mode, preventing layout reflow and width shifts. */
 
-        /* --- Admin View Grid Layout --- */
-        #admin-views-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(450px, 1fr));
-            gap: 20px;
-            margin-bottom: 0px;
-            width: 100%;
-        }
-
-        /* Fix for when only one item is visible to prevent it stretching strangely */
-        #admin-views-container:has(> .collapsible-module.expanded:only-child),
-        #admin-views-container:has(> .collapsible-module:only-child) {
-            grid-template-columns: 1fr;
-        }
-
         /* --- Student Profile Revamp --- */
         .profile-header-section {
             display: flex;
@@ -2568,29 +2390,6 @@
         }
 
 
-        /* Fixes for Absence Request Dialog */
-        #request-hours-group {
-            grid-template-columns: repeat(3, 1fr) !important;
-            gap: 6px !important;
-        }
-
-        #request-hours-group .toggle-button {
-            flex-grow: 1;
-            flex-basis: 15%;
-            /* Allow more buttons per row */
-            padding-left: 3px;
-            /* Make buttons thinner */
-            padding-right: 3px;
-            /* Make buttons thinner */
-            padding-top: 10px;
-            /* Keep a good tap height */
-            padding-bottom: 10px;
-            /* Keep a good tap height */
-            min-width: 45px;
-            /* Set a smaller minimum width */
-            font-size: 0.85em;
-            /* Slightly smaller font */
-        }
 
         .actions-cell .btn-icon {
             width: 30px;
@@ -3918,18 +3717,6 @@
                 flex: 1 !important;
                 /* Slightly larger for touch */
                 width: 50px !important;
-            }
-
-            #admin-views-container {
-                grid-template-columns: 1fr !important;
-            }
-
-            /* Smaller action-chip buttons on mobile */
-            .action-chip,
-            .action-chip.has-items {
-                padding: 6px 6px;
-                font-size: 0.8em;
-                min-width: auto;
             }
 
             /* Fix table horizontal scroll - ensure last column fills remaining space */
@@ -6191,37 +5978,6 @@ body.signed-out #main-container {
     transform: none;
 }
 
-/* --- Panel headers (Absences, New Registrations) --- */
-.panel-header {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px 12px;
-    margin-bottom: 10px;
-    padding-bottom: 8px;
-    border-bottom: 2px solid #f0f0f0;
-}
-
-.panel-title {
-    font-weight: 700;
-    color: var(--warning-color);
-    white-space: nowrap;
-    user-select: none;
-}
-
-.panel-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 6px;
-}
-
-.dark-mode .panel-header {
-    border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
 .session-badge {
     display: inline-block;
     margin-left: 6px;
@@ -7111,7 +6867,6 @@ button.settings-group-label:active:not(:disabled) {
 .cat-label,
 .day-separator-date,
 .req-status-pill,
-.action-chip,
 .logs-count,
 .entry-count,
 .course-group-label,
@@ -7131,7 +6886,6 @@ button.settings-group-label:active:not(:disabled) {
 .uid-badge,
 .time-tag,
 .day-separator-date,
-.action-chip span,
 .btn-text,
 .action-label {
     white-space: nowrap;
@@ -7175,15 +6929,6 @@ button.settings-group-label:active:not(:disabled) {
     #request-permission-btn > i,
     #request-permission-btn > svg {
         margin: 0 !important;
-    }
-
-    /* Panel actions move to their own line instead of crushing the title. */
-    .panel-header {
-        row-gap: 10px;
-    }
-
-    .panel-actions {
-        flex-basis: 100%;
     }
 
     /* Settings toolbar: the add button drops its label and becomes a circle. */
@@ -7522,8 +7267,11 @@ button.settings-group-label:active:not(:disabled) {
     opacity: 1;
 }
 
+/* Stronger than ".dialog p", which would make it body text. */
 .dialog p.form-hint {
     margin-bottom: 12px;
+    color: #78909c;
+    font-size: 0.8125rem;
 }
 
 .dark-mode .form-hint,
@@ -8147,30 +7895,6 @@ button.settings-group-label:active:not(:disabled) {
     background: rgba(255, 255, 255, 0.1);
 }
 
-/* The verification answers read as option chips. */
-.dialog #captcha-choices > .course-button {
-    border: 1px solid #dfe3ea;
-    border-radius: 10px;
-    box-shadow: none;
-    font-family: inherit;
-}
-
-.dialog #captcha-choices > .course-button:hover {
-    border-color: color-mix(in srgb, var(--primary-600) 35%, transparent);
-    background-color: color-mix(in srgb, var(--primary-600) 5%, transparent);
-}
-
-.dialog #captcha-choices > .course-button.active {
-    border-color: var(--primary-color);
-    background-color: color-mix(in srgb, var(--primary-600) 10%, transparent);
-    box-shadow: none;
-    transform: none;
-}
-
-.dark-mode .dialog #captcha-choices > .course-button {
-    border-color: rgba(255, 255, 255, 0.14);
-}
-
 .student-item-check {
     flex-shrink: 0;
     color: var(--primary-color);
@@ -8293,6 +8017,11 @@ button.settings-group-label:active:not(:disabled) {
 
 .dialog-button-group > button:last-child {
     border-radius: 8px 18px 18px 8px;
+}
+
+/* The middle ones stay squared; without this the dialog's pill buttons would round them. */
+.dialog-button-group > button:not(:first-child):not(:last-child) {
+    border-radius: 8px;
 }
 
 .dialog-button-group > button:only-child,
@@ -9859,17 +9588,6 @@ html:not([data-stando-nfc]) .sk-nfc {
     height: 16px;
 }
 
-.sk-requests {
-    --sk-delay: 0.2s;
-    display: flex;
-    margin-bottom: 16px;
-}
-
-.sk-chip-request {
-    width: 235px;
-    background: var(--sk-bone-page);
-}
-
 .sk-courses {
     --sk-delay: 0.24s;
     display: grid;
@@ -10079,15 +9797,6 @@ html:not([data-stando-nfc]) .sk-nfc {
 
     .sk-tab .sk {
         width: 50%;
-    }
-
-    .sk-requests {
-        margin-bottom: 15px;
-    }
-
-    .sk-chip-request {
-        width: 209px;
-        height: 31px;
     }
 
     .sk-courses {
@@ -11596,6 +11305,87 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 
 .combo-list .combo-option strong {
     font-weight: 700;
+}
+
+/* The box: a magnifier at the start says it can be typed in. */
+.combo-search-icon {
+    position: absolute;
+    top: 50%;
+    left: 16px;
+    z-index: 1;
+    color: #90a4ae;
+    font-size: 0.8125rem;
+    pointer-events: none;
+    transform: translateY(-50%);
+    transition: color 0.18s ease;
+}
+
+.combo:focus-within > .combo-search-icon {
+    color: var(--primary-color);
+}
+
+.dialog .combo > .combo-input,
+.combo > .combo-input {
+    padding-left: 40px !important;
+}
+
+/* An option: its code as a chip, its name, a tick when it is the one chosen. */
+.combo-list .combo-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+}
+
+.combo-code {
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--primary-600) 8%, transparent);
+    color: var(--primary-color);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.combo-name {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.combo-check {
+    flex-shrink: 0;
+    color: var(--primary-color);
+    font-size: 0.8125rem;
+    visibility: hidden;
+}
+
+.combo-option.is-selected .combo-check {
+    visibility: visible;
+}
+
+.combo-option.is-selected .combo-code {
+    background: var(--primary-color);
+    color: #fff;
+}
+
+.dark-mode .combo-search-icon {
+    color: #78909c;
+}
+
+.dark-mode .combo-code {
+    background: color-mix(in srgb, var(--primary-300) 18%, transparent);
+    color: var(--primary-100);
+}
+
+.dark-mode .combo-option.is-selected .combo-code {
+    background: var(--primary-300);
+    color: #121212;
+}
+
+.dark-mode .combo-check {
+    color: var(--primary-light);
 }
 
 /* =========================================================================
@@ -13284,22 +13074,18 @@ body.on-student-list:not(.signed-out) #session-label {
     }
 }
 
-/* Programmes inline: the label, then its courses, wrapping as one line of text would. */
+/* Programmes in one flow: each label, then its courses, all wrapping together as
+   one line of text would, so a programme never starts a line of its own. The label,
+   with a hairline before every programme after the first, separates them; each
+   programme's run of tabs keeps its own rounded ends (updateCourseButtonRows). */
 #course-buttons-container.is-grouped {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px 14px;
-}
-
-#course-buttons-container.is-grouped .course-group {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     gap: 6px 2px;
-    min-width: 0;
 }
 
+#course-buttons-container.is-grouped .course-group,
 #course-buttons-container.is-grouped .course-group-buttons {
     display: contents;
 }
@@ -13316,8 +13102,25 @@ body.on-student-list:not(.signed-out) #session-label {
     white-space: nowrap;
 }
 
+#course-buttons-container .course-group + .course-group > .course-group-label {
+    margin-left: 10px;
+}
+
+#course-buttons-container .course-group + .course-group > .course-group-label::before {
+    content: '';
+    align-self: stretch;
+    width: 1px;
+    min-height: 20px;
+    margin-right: 6px;
+    background: rgba(15, 23, 42, 0.15);
+}
+
 .dark-mode #course-buttons-container .course-group-label {
     color: var(--primary-200);
+}
+
+.dark-mode #course-buttons-container .course-group + .course-group > .course-group-label::before {
+    background: rgba(255, 255, 255, 0.18);
 }
 
 @media (max-width: 768px) {
@@ -13328,14 +13131,6 @@ body.on-student-list:not(.signed-out) #session-label {
         font-size: 0.8em;
     }
 
-    /* Each programme takes whole lines, its tabs filling them after the label. */
-    #course-buttons-container.is-grouped .course-group {
-        flex: 1 1 100%;
-    }
-
-    #course-buttons-container.is-grouped {
-        gap: 6px 10px;
-    }
 }
 
 /* The note by a course button. */
@@ -13439,22 +13234,24 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 /* =========================================================================
-   Add to EIS
-   Group and Category are the main screen's group tracks: a soft track, the
-   chosen part raised on a thumb that slides to it (updateSegmentThumb). More
-   options holds the Category and the switches; closed, it names the Category.
+   Group tracks in dialogs (Add to EIS, Request for Permission)
+   The main screen's group tracks: a soft track, the chosen part raised on a
+   thumb that slides to it (updateSegmentThumb, segmentButtonHtml). A row with
+   a single choice is hidden; so is the field when both rows are.
    ========================================================================= */
-.eis-export-dialog [hidden] {
+.eis-export-dialog [hidden],
+.dialog .form-group[hidden],
+.dialog .segment-track[hidden] {
     display: none !important;
 }
 
-.eis-group-rows {
+.segment-rows {
     display: flex;
     flex-direction: column;
     gap: 8px;
 }
 
-.eis-export-dialog .eis-track {
+.dialog .segment-track {
     position: relative;
     display: flex;
     flex-wrap: wrap;
@@ -13464,11 +13261,11 @@ body.on-student-list:not(.signed-out) #session-label {
     background: rgba(15, 23, 42, 0.06);
 }
 
-.eis-export-dialog .eis-track > .course-button,
-.eis-export-dialog .eis-track > .course-button:hover,
-.eis-export-dialog .eis-track > .course-button:active,
-.eis-export-dialog .eis-track > .course-button.active,
-.eis-export-dialog .eis-track > .course-button.active:hover {
+.dialog .segment-track > .course-button,
+.dialog .segment-track > .course-button:hover,
+.dialog .segment-track > .course-button:active,
+.dialog .segment-track > .course-button.active,
+.dialog .segment-track > .course-button.active:hover {
     position: relative;
     z-index: 1;
     flex: 1 1 0;
@@ -13485,34 +13282,36 @@ body.on-student-list:not(.signed-out) #session-label {
     transform: none;
 }
 
-.eis-export-dialog .eis-track > .course-button:hover:not(.active) {
+.dialog .segment-track > .course-button:hover:not(.active) {
     background: rgba(255, 255, 255, 0.55);
     color: var(--primary-color);
 }
 
-.eis-export-dialog .eis-track > .course-button.active,
-.eis-export-dialog .eis-track > .course-button.active:hover {
+.dialog .segment-track > .course-button.active,
+.dialog .segment-track > .course-button.active:hover {
     color: var(--primary-color);
 }
 
-.dark-mode .eis-export-dialog .eis-track {
+.dark-mode .dialog .segment-track {
     background: rgba(255, 255, 255, 0.08);
 }
 
-.dark-mode .eis-export-dialog .eis-track > .course-button {
+.dark-mode .dialog .segment-track > .course-button {
     color: #b0bec5;
 }
 
-.dark-mode .eis-export-dialog .eis-track > .course-button:hover:not(.active) {
+.dark-mode .dialog .segment-track > .course-button:hover:not(.active) {
     background: rgba(255, 255, 255, 0.06);
     color: #eceff1;
 }
 
-.dark-mode .eis-export-dialog .eis-track > .course-button.active,
-.dark-mode .eis-export-dialog .eis-track > .course-button.active:hover {
+.dark-mode .dialog .segment-track > .course-button.active,
+.dark-mode .dialog .segment-track > .course-button.active:hover {
     color: #fff;
 }
 
+/* --- Add to EIS: More options holds the Category and the switches; closed,
+   it names the Category. --- */
 .eis-more-options {
     margin: 2px 0 0;
 }
@@ -13559,4 +13358,435 @@ body.on-student-list:not(.signed-out) #session-label {
 .eis-export-dialog .eis-export-file-btn {
     align-self: flex-start;
     margin-top: 4px;
+}
+
+/* =========================================================================
+   Pending requests
+   Chips in the top bar after the sync status, only while something waits:
+   Permissions amber, New cards blue, tinted like the other top-bar actions,
+   each with its count. On phones a chip is its icon and count. A chip opens
+   its list above the records: a card like Attendance, with a close button.
+   ========================================================================= */
+.request-chips {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.request-chips[hidden] {
+    display: none;
+}
+
+.request-chip {
+    --chip: var(--secondary-600);
+    --chip-text: var(--secondary-900);
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 36px;
+    padding: 0 6px 0 13px;
+    border: 1px solid color-mix(in srgb, var(--chip) 35%, transparent);
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--chip) 8%, transparent);
+    color: var(--chip-text);
+    font-family: inherit;
+    font-size: 0.82em;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow: none;
+    cursor: pointer;
+    animation: request-chip-in 0.36s cubic-bezier(.34, 1.4, .64, 1);
+    transition: background-color 0.18s ease, border-color 0.18s ease, transform 0.12s ease;
+}
+
+.request-chip.is-card {
+    --chip: var(--primary-600);
+    --chip-text: var(--primary-color);
+}
+
+/* Requests only in other lecturers' courses. */
+.request-chip.is-quiet {
+    --chip: #78909c;
+    --chip-text: #546e7a;
+}
+
+.request-chip:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--chip) 16%, transparent);
+    border-color: color-mix(in srgb, var(--chip) 50%, transparent);
+    box-shadow: none;
+    filter: none;
+    font-weight: 500;
+}
+
+.request-chip:active:not(:disabled) {
+    transform: scale(0.97);
+    box-shadow: none;
+    filter: none;
+}
+
+/* Its list is open. */
+.request-chip.active,
+.request-chip.active:hover {
+    background: color-mix(in srgb, var(--chip) 20%, transparent);
+    border-color: var(--chip);
+}
+
+.request-chip:focus-visible {
+    outline: 2px solid var(--chip);
+    outline-offset: 2px;
+}
+
+.request-chip > i,
+.request-chip > svg {
+    font-size: 0.95em;
+}
+
+.request-chip-count {
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    min-width: 24px;
+    height: 24px;
+    padding: 0 7px;
+    border-radius: 12px;
+    background: var(--chip);
+    color: #fff;
+    font-size: 0.85em;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.dark-mode .request-chip {
+    --chip: var(--secondary-300);
+    --chip-text: var(--secondary-200);
+}
+
+.dark-mode .request-chip.is-card {
+    --chip: var(--primary-300);
+    --chip-text: var(--primary-100);
+}
+
+.dark-mode .request-chip.is-quiet {
+    --chip: #90a4ae;
+    --chip-text: #cfd8dc;
+}
+
+.dark-mode .request-chip-count {
+    color: #121212;
+}
+
+@keyframes request-chip-in {
+    from {
+        opacity: 0;
+        transform: scale(0.85);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .request-chip {
+        animation: none;
+    }
+}
+
+/* The lists: cards like Attendance, outlined by their shadow alone. */
+.request-panel.collapsible-module,
+.request-panel.collapsible-module.expanded,
+.dark-mode .request-panel.collapsible-module,
+.dark-mode .request-panel.collapsible-module.expanded {
+    border: 0;
+    background: var(--card-background);
+}
+
+.request-panel .module-header-actions {
+    gap: 6px;
+}
+
+.request-panel .module-header-actions .quiet-btn {
+    margin-top: -2px;
+}
+
+.request-panel .panel-close-btn,
+.request-panel .panel-close-btn:hover:not(:disabled),
+.request-panel .panel-close-btn:active:not(:disabled) {
+    width: 40px;
+    height: 40px;
+    margin: -6px -8px 0 0;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: #78909c;
+    box-shadow: none;
+    filter: none;
+    transform: none;
+}
+
+.request-panel .panel-close-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-600) 8%, transparent);
+    color: var(--primary-color);
+}
+
+.dark-mode .request-panel .panel-close-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-300) 14%, transparent);
+    color: var(--primary-light);
+}
+
+.request-panel .scope-switch {
+    margin: 0 0 12px;
+}
+
+@media (max-width: 768px) {
+    .request-chip {
+        gap: 6px;
+        padding: 0 5px 0 11px;
+    }
+
+    .request-chip-label {
+        display: none;
+    }
+
+    .request-panel .module-header-actions .quiet-btn > span {
+        display: none;
+    }
+
+    .request-panel .module-header-actions .quiet-btn {
+        width: 32px;
+        padding: 0;
+    }
+}
+
+/* =========================================================================
+   Request for Permission
+   Notes are soft tinted callouts without a stripe: fine print grey,
+   information blue, warnings amber. Hours are a grid of chips, four to a row
+   (three on phones). The file picker is a button and the file's name, shaped
+   like the other fields. The sum sits in a quiet box above its four answers;
+   the right one turns green, a wrong one red.
+   ========================================================================= */
+.dialog-callout {
+    --callout: var(--primary-600);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0 0 14px;
+    padding: 11px 14px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--callout) 8%, transparent);
+    color: var(--text-color);
+    font-size: 0.875rem;
+    line-height: 1.45;
+}
+
+.dialog-callout[hidden] {
+    display: none;
+}
+
+.dialog-callout > i,
+.dialog-callout > svg {
+    flex-shrink: 0;
+    margin-top: 3px;
+    color: var(--callout);
+}
+
+.dialog-callout.is-note {
+    --callout: #78909c;
+    color: #546e7a;
+}
+
+.dialog-callout.is-warning {
+    --callout: var(--secondary-600);
+}
+
+.dark-mode .dialog-callout {
+    --callout: var(--primary-300);
+}
+
+.dark-mode .dialog-callout.is-note {
+    --callout: #90a4ae;
+    color: #b0bec5;
+}
+
+.dark-mode .dialog-callout.is-warning {
+    --callout: var(--secondary-300);
+}
+
+.request-dialog .reason-grid {
+    margin-bottom: 12px;
+}
+
+/* A hint inside its field's group: the group's gap and margin space it. */
+.dialog .form-group > p.form-hint {
+    margin: 0 0 0 2px;
+}
+
+.request-hours {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.dialog .request-hours > .toggle-button {
+    min-width: 0;
+    padding: 9px 2px;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* --- The file picker --- */
+.file-field {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 42px;
+    padding: 4px 16px 4px 4px;
+    border: 1px solid #e0e0e0;
+    border-radius: 21px;
+    background: var(--card-background);
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.file-field input[type="file"] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.file-field-btn,
+.file-field-btn:hover:not(:disabled),
+.file-field-btn:active:not(:disabled) {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 6px;
+    height: 32px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 16px;
+    background: color-mix(in srgb, var(--primary-600) 10%, transparent);
+    color: var(--primary-color);
+    font-family: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    box-shadow: none;
+    filter: none;
+    transform: none;
+}
+
+.file-field-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-600) 18%, transparent);
+}
+
+.file-field-btn:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: 2px;
+}
+
+.file-field-name {
+    min-width: 0;
+    overflow: hidden;
+    color: #90a4ae;
+    font-size: 0.875rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.file-field-name.has-file {
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.dark-mode .file-field {
+    border-color: rgba(255, 255, 255, 0.14);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: none;
+}
+
+.dark-mode .file-field-btn,
+.dark-mode .file-field-btn:active:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-300) 18%, transparent);
+    color: var(--primary-100);
+}
+
+.dark-mode .file-field-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--primary-300) 28%, transparent);
+}
+
+/* --- Verification --- */
+.captcha {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.captcha-question {
+    padding: 12px 16px;
+    border-radius: 14px;
+    background: rgba(15, 23, 42, 0.05);
+    color: var(--text-color);
+    font-family: 'Google Sans Code', ui-monospace, monospace;
+    font-size: 1.125rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-align: center;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.dark-mode .captcha-question {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.captcha-choices {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.dialog .captcha-choice {
+    min-width: 0;
+    padding: 10px 4px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.dialog .captcha-choice:disabled {
+    cursor: default;
+}
+
+.dialog .captcha-choice.is-correct,
+.dialog .captcha-choice.is-correct:hover {
+    border-color: var(--success-600);
+    background-color: color-mix(in srgb, var(--success-600) 14%, transparent) !important;
+    color: var(--success-800) !important;
+}
+
+.dialog .captcha-choice.is-wrong,
+.dialog .captcha-choice.is-wrong:hover {
+    border-color: var(--danger-600);
+    background-color: color-mix(in srgb, var(--danger-600) 12%, transparent) !important;
+    color: var(--danger-800) !important;
+    opacity: 1;
+}
+
+.dark-mode .dialog .captcha-choice.is-correct {
+    color: var(--success-200) !important;
+}
+
+.dark-mode .dialog .captcha-choice.is-wrong {
+    color: var(--danger-200) !important;
+}
+
+@media (max-width: 600px) {
+    .request-hours {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
 }
