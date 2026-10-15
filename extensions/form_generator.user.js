@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EIS Attendance Sheet Generator
 // @namespace    https://bredliplaku.com/
-// @version      2.6
+// @version      3.0
 // @description  Generates attendance sheet that perfectly matches the original template with customizable fields
 // @author       Bredli Plaku
 // @match        https://eis.epoka.edu.al/courseattendance/*/editcl
@@ -15,256 +15,321 @@
 (function () {
     "use strict";
 
+    // Five hour columns, as on the paper template.
+    const DATE_COLUMNS = 5;
+
+    // Titles in the order they are offered. A lecturer's EIS name may begin with
+    // one; TITLE_PATTERNS recognise it so it is not printed twice.
+    const TITLES = [
+        "Lecturer Prof. Dr.",
+        "Lecturer Assoc. Prof. Dr.",
+        "Lecturer Dr.",
+        "Lecturer",
+        "Assistant Lecturer",
+    ];
+    const TITLE_PATTERNS = [
+        [/^(?:Lecturer\s+)?Assoc\.?\s*Prof\.?\s*Dr\.?\s*/i, "Lecturer Assoc. Prof. Dr."],
+        [/^(?:Lecturer\s+)?Prof\.?\s*Dr\.?\s*/i, "Lecturer Prof. Dr."],
+        [/^(?:Lecturer\s+)?Dr\.?\s+/i, "Lecturer Dr."],
+        [/^Assistant\s+Lecturer(?:\s+M\.?\s?Sc\.?)?\s*/i, "Assistant Lecturer"],
+        [/^Lecturer(?:\s+M\.?\s?Sc\.?)?\s+/i, "Lecturer"],
+    ];
+
+    const MARKS = [
+        { value: "checkmarks", label: "Checkmarks (✓)", symbol: "✓" },
+        { value: "pluses", label: "Pluses (+)", symbol: "+" },
+        { value: "crosses", label: "Crosses (✗)", symbol: "✗" },
+        { value: "filled_circles", label: "Filled circles (●)", symbol: "●" },
+        { value: "names", label: "Student names", symbol: "" },
+    ];
+
+    const SIGNATURE_FONTS = [
+        { name: "Great Vibes", value: "font-great-vibes", family: "Great Vibes" },
+        { name: "Courgette", value: "font-courgette", family: "Courgette" },
+        { name: "Playball", value: "font-playball", family: "Playball" },
+        { name: "Dancing Script", value: "font-dancing-script", family: "Dancing Script" },
+        { name: "Pacifico", value: "font-pacifico", family: "Pacifico" },
+        { name: "Satisfy", value: "font-satisfy", family: "Satisfy" },
+        { name: "Sacramento", value: "font-sacramento", family: "Sacramento" },
+        { name: "Yellowtail", value: "font-yellowtail", family: "Yellowtail" },
+        { name: "Homemade Apple", value: "font-homemade-apple", family: "Homemade Apple" },
+        { name: "Caveat", value: "font-caveat", family: "Caveat" },
+        { name: "Indie Flower", value: "font-indie-flower", family: "Indie Flower" },
+        { name: "Kalam", value: "font-kalam", family: "Kalam" },
+        { name: "Shadows Into Light", value: "font-shadows-into-light", family: "Shadows Into Light" },
+    ];
+
+    const STORE = {
+        display: "EIS_attendance_display_type",
+        font: "EIS_attendance_font_type",
+        // Lecturers per course, in the order they sign. The older key was printed
+        // sorted by title; it is read once and kept in that order.
+        signers: key => `EIS_attendance_signers_${key}`,
+        legacySigners: key => `EIS_attendance_sigs_${key}`,
+    };
+
+    const store = {
+        get(key, fallback = null) {
+            try {
+                const value = localStorage.getItem(key);
+                return value === null ? fallback : value;
+            } catch {
+                return fallback;
+            }
+        },
+        getJson(key, fallback = null) {
+            try {
+                return JSON.parse(store.get(key)) ?? fallback;
+            } catch {
+                return fallback;
+            }
+        },
+        set(key, value) {
+            try {
+                localStorage.setItem(key, typeof value === "string" ? value : JSON.stringify(value));
+            } catch { /* Not remembered. */ }
+        },
+    };
+
+    const escapeHtml = value => String(value ?? "")
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
     function isPresentCellText(text) {
         return /^(?:✓|✔|P|Present)$/i.test(String(text).trim());
     }
 
-    // Import additional formal/official document signing fonts
-    const fontLink = document.createElement("link");
-    fontLink.rel = "stylesheet";
-    fontLink.href =
-        "https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Dancing+Script&family=Caveat&family=Pacifico&family=Satisfy&family=Indie+Flower&family=Kalam&family=Shadows+Into+Light&family=Great+Vibes&family=Yellowtail&family=Sacramento&family=Courgette&family=Playball&display=swap";
-    document.head.appendChild(fontLink);
-
-    // Import Font Awesome 7 and v4 shims
-    const faLink = document.createElement("link");
-    faLink.rel = "stylesheet";
-    faLink.href =
-        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7/css/all.min.css";
-    document.head.appendChild(faLink);
-
-    const faShimLink = document.createElement("link");
-    faShimLink.rel = "stylesheet";
-    faShimLink.href =
-        "https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@7/css/v4-shims.min.css";
-    document.head.appendChild(faShimLink);
-
-    // Add necessary styles
     GM_addStyle(`
-        /* Import signature fonts - keeping reliable cursive variations */
-        @import url('https://fonts.googleapis.com/css2?family=Homemade+Apple&family=Dancing+Script&family=Caveat&family=Pacifico&family=Satisfy&family=Indie+Flower&family=Kalam&family=Shadows+Into+Light&family=Great+Vibes&family=Yellowtail&family=Sacramento&family=Courgette&family=Playball&display=swap');
-
+        /* ---------- The window around the sheet ----------
+           Like the importer's notices and EIS itself: white, a straight coloured
+           edge on the left with only the other corners rounded, EIS's own buttons
+           (btn) and fields (form-control), and chevrons on what folds. */
         #attendance-sheet-container {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(15, 23, 42, 0.6); /* Modern dark overlay with blur backdrop if supported */
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
+            inset: 0;
             z-index: 9999;
             display: flex;
-            flex-direction: column;
             justify-content: center;
             align-items: center;
             padding: 20px;
             box-sizing: border-box;
-        }
-
-        #attendance-sheet-container *:not(.student-signature) {
-            font-family: Verdana, Geneva, sans-serif !important;
-        }
-
-        /* Protect FontAwesome Icons from the aggressive Arial/Verdana override */
-        #attendance-sheet-container .fa, 
-        #attendance-sheet-container .fas,
-        #attendance-sheet-container .fab,
-        #attendance-sheet-container .far,
-        #attendance-sheet-container .fal,
-        #attendance-sheet-container .fad,
-        #attendance-sheet-container .fat {
-            font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands", "FontAwesome" !important;
-            font-weight: 900 !important;
-        }
-
-        /* Protect FontAwesome inside the table if any exist */
-        #attendance-sheet-content .fa,
-        #attendance-sheet-content .fas,
-        #attendance-sheet-content .fab,
-        #attendance-sheet-content .far,
-        #attendance-sheet-content .fal,
-        #attendance-sheet-content .fad,
-        #attendance-sheet-content .fat {
-            font-family: "Font Awesome 6 Free", "Font Awesome 6 Brands", "FontAwesome" !important;
-            font-weight: 900 !important;
-        }
-
-        #attendance-sheet-content *:not(.student-signature):not(.fa):not(.fas):not(.fab):not(.far):not(.fal):not(.fad):not(.fat) {
-            font-family: Verdana, Geneva, sans-serif !important; /* Force explicit vector sans-serif over EIS defaults */
+            background-color: rgba(15, 23, 42, 0.55);
         }
 
         #attendance-sheet-content {
-            background-color: #ffffff;
-            padding: 24px;
-            border-radius: 24px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-            max-width: 95%;
-            max-height: 90vh;
-            overflow: auto;
             position: relative;
-            width: 800px;
+            width: 860px;
+            max-width: 100%;
+            max-height: calc(100vh - 40px);
+            overflow: auto;
+            box-sizing: border-box;
+            padding: 0 24px 24px;
+            border-left: 4px solid #3949ab;
+            border-radius: 0 6px 6px 0;
+            background-color: #ffffff;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+            color: #263238;
             font-size: 13px;
+            line-height: 1.45;
+        }
+
+        #attendance-sheet-content *,
+        #attendance-sheet-content *::before,
+        #attendance-sheet-content *::after {
+            box-sizing: border-box;
         }
 
         #sheet-controls {
+            position: sticky;
+            top: 0;
+            z-index: 2;
             display: flex;
-            justify-content: space-between;
             align-items: center;
-            margin-bottom: 24px;
+            gap: 8px;
+            margin: 0 -24px 14px;
+            padding: 12px 14px 12px 24px;
+            border-bottom: 1px solid #e5e9ec;
+            background: #fff;
+            user-select: none;
         }
 
-        .attendance-btn {
-            border: none;
-            border-radius: 12px; /* Rounded buttons */
-            padding: 8px 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            color: white;
+        #sheet-controls h2 {
+            flex: 1;
+            margin: 0;
+            color: #263238;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+
+        #sheet-controls .btn {
+            margin: 0;
+        }
+
+        .asg-icon-btn {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            justify-content: center;
+            flex: none;
+            width: 28px;
+            height: 28px;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            border-radius: 4px;
+            background: transparent;
+            color: #78909c;
+            font-size: 13px;
+            line-height: 1;
+            cursor: pointer;
         }
 
-        #print-sheet-btn, #save-sheet-btn {
-            background-color: #428bca; /* Modern Blue */
-        }
-        
-        #print-sheet-btn:hover, #save-sheet-btn:hover {
-            background-color: #00458c;
-            transform: translateY(-1px);
-            box-shadow: 0 4px 6px rgba(0, 69, 140, 0.2);
-        }
+        .asg-icon-btn:hover:not(:disabled) { background: #eceff1; color: #263238; }
+        .asg-icon-btn.is-danger:hover:not(:disabled) { background: #ffebee; color: #c62828; }
+        .asg-icon-btn:disabled { opacity: 0.3; cursor: default; }
+        .asg-icon-btn:focus-visible { outline: 2px solid #3949ab; outline-offset: 1px; }
+        #close-sheet-btn { width: 32px; height: 32px; font-size: 20px; }
 
+        /* ---------- Settings ---------- */
         #config-panel {
-            background-color: #f8fafc; /* Lighter, modern slate gray background */
-            padding: 12px;
-            border-radius: 12px; /* Rounded panel */
-            border: 1px solid #e2e8f0;
-            margin-bottom: 12px;
-            box-shadow: inset 0 2px 4px 0 rgba(0, 0, 0, 0.02);
+            margin: 0 0 22px;
+            user-select: none;
         }
 
-        .config-row {
+        /* Folding sections: a chevron, right when closed and down when open. */
+        #config-panel details > summary {
             display: flex;
-            gap: 10px;
-            margin-bottom: 8px;
             align-items: center;
+            gap: 8px;
+            width: max-content;
+            margin: 0;
+            list-style: none;
+            color: #546e7a;
+            font-weight: 600;
+            cursor: pointer;
         }
 
-        .config-row label {
-            width: 140px;
-            font-weight: 700;
-            color: #334155; /* Slate 700 text */
-            font-size: 13px;
+        #config-panel details > summary::-webkit-details-marker { display: none; }
+
+        #config-panel details > summary::before {
+            content: "";
+            width: 6px;
+            height: 6px;
+            margin-top: -1px;
+            border-right: 1.5px solid currentColor;
+            border-bottom: 1.5px solid currentColor;
+            transform: rotate(-45deg);
+            transition: transform 0.15s ease;
         }
 
-        .config-row input, .config-row select {
-            flex: 1;
-            padding: 4px 8px;
-            border-radius: 6px; /* Slightly rounded inputs */
-            border: 1px solid #cbd5e1; /* Slate 300 border */
-            background-color: #ffffff;
-            color: #0f172a;
-            transition: border-color 0.15s ease, box-shadow 0.15s ease;
-            font-size: 13px;
-            font-family: inherit;
+        #config-panel details[open] > summary::before {
+            margin-top: -4px;
+            transform: rotate(45deg);
         }
 
-        .config-row input:focus, .config-row select:focus {
-            outline: none;
-            border-color: #428bca;
-            box-shadow: 0 0 0 3px rgba(66, 139, 202, 0.1);
+        #config-panel details > summary:hover { color: #263238; }
+
+        .asg-section + .asg-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #eef1f3;
+        }
+
+        .asg-section > summary + * {
+            margin-top: 10px;
+        }
+
+        .asg-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+            gap: 10px 12px;
+        }
+
+        .asg-grid + details {
+            margin-top: 10px;
+        }
+
+        details > .asg-grid {
+            margin-top: 8px;
+        }
+
+        #config-panel .asg-field {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+            min-width: 0;
+            max-width: none;
+            margin: 0;
+            font-weight: normal;
+        }
+
+        #config-panel .asg-field[hidden] {
+            display: none;
+        }
+
+        #config-panel .asg-field > span {
+            color: #546e7a;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        #config-panel .form-control {
+            width: 100%;
+            margin: 0;
+        }
+
+        #signatures-container {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 0;
+            padding: 0;
+            list-style: none;
         }
 
         .signature-item {
             display: flex;
-            gap: 10px;
-            margin-bottom: 8px;
-            align-items: center;
-        }
-
-        .signature-item input, .signature-item select {
-            padding: 4px 8px;
-            border-radius: 6px;
-            border: 1px solid #cbd5e1;
-            background-color: #ffffff;
-            color: #0f172a;
-            transition: all 0.15s;
-            font-size: 13px;
-            font-family: inherit;
-        }
-
-        .signature-item input:focus, .signature-item select:focus {
-             outline: none;
-             border-color: #428bca;
-             box-shadow: 0 0 0 3px rgba(66, 139, 202, 0.1);
-        }
-
-        .signature-item button {
-            background-color: #ef4444; /* Modern red */
-            color: white;
-            border: none;
-            border-radius: 6px;
-            padding: 4px 10px;
-            cursor: pointer;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 2px rgba(239, 68, 68, 0.2);
-        }
-        
-        .signature-item button:hover {
-            background-color: #dc2626;
-            transform: translateY(-1px);
-        }
-
-        #add-signature-btn {
-            background-color: #10b981; /* Modern Emerald */
-            color: white;
-            border: none;
-            border-radius: 8px;
-            padding: 8px 16px;
-            cursor: pointer;
-            font-weight: 500;
-            margin-top: 8px;
-            transition: all 0.2s ease;
-            box-shadow: 0 1px 2px rgba(16, 185, 129, 0.2);
-            display: inline-flex;
             align-items: center;
             gap: 6px;
-        }
-        
-        #add-signature-btn:hover {
-             background-color: #059669;
-             transform: translateY(-1px);
-        }
-
-        #close-sheet-btn {
-            background-color: #f1f5f9; /* Slate 100 base */
-            color: #475569; /* Slate 600 text */
-            border: 1px solid #e2e8f0;
-            box-shadow: none;
-        }
-
-        #close-sheet-btn:hover {
-            background-color: #e2e8f0;
-            color: #0f172a;
-            transform: translateY(0);
-        }
-
-        /* Styling to match the screenshots exactly with BOLD text */
-        .sheet-header {
-            margin-bottom: 8px;  /* Closer to the table */
-        }
-
-        .sheet-header h1 {
-            font-size: 16px;
             margin: 0;
-            font-weight: 700 !important;
-            color: #000;
-            text-align: left;
+        }
+
+        .signature-item .asg-order {
+            flex: none;
+            width: 16px;
+            color: #90a4ae;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        #config-panel .signature-item select { flex: 0 0 190px; width: 190px; }
+        #config-panel .signature-item input { flex: 1 1 auto; width: auto; min-width: 0; }
+
+        #add-signature-btn {
+            margin: 8px 0 0 22px;
+        }
+
+        @media (max-width: 640px) {
+            #config-panel .signature-item { flex-wrap: wrap; }
+            #config-panel .signature-item select { flex: 1 1 calc(100% - 22px); width: auto; }
+        }
+
+        /* Stando's buttons join EIS's own bar: no gaps, and square corners where
+           two buttons meet (both scripts carry this rule, either may run alone). */
+        .record_actions > .stando-eis-btn { margin: 0 !important; }
+        .record_actions > .stando-eis-btn:not(:first-child) { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+        .record_actions > .stando-eis-btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+        .record_actions > .stando-eis-btn + :not(.stando-eis-btn) { margin-left: 0 !important; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+        /* ---------- The sheet: the paper template ---------- */
+        #attendance-sheet-page,
+        #attendance-sheet-page *:not(.student-signature) {
+            font-family: Verdana, Geneva, sans-serif !important;
+        }
+
+        .sheet-header {
+            margin-bottom: 8px;
         }
 
         .sheet-header h2 {
@@ -284,10 +349,6 @@
             text-transform: uppercase;
         }
 
-        #printed-date-display {
-            font-size: 11px !important;
-        }
-
         .sheet-header h4 {
             font-size: 12px;
             margin: 5px 0;
@@ -300,20 +361,24 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 0px; /* Reduced from 5px to be closer to table */
+            gap: 16px;
         }
 
         .sheet-header p {
-            font-size: 14px;  /* Reduced from 11px */
             margin: 0;
             text-align: right;
             color: #000;
+            white-space: nowrap;
+        }
+
+        #printed-date-display {
+            font-size: 11px !important;
         }
 
         .attendance-table {
             border-collapse: collapse;
             width: 100%;
-            margin-top: 4px;  /* Reduced from 8px to be closer to "Printed on" */
+            margin-top: 4px;
             table-layout: fixed;
         }
 
@@ -322,149 +387,85 @@
             padding: 5px 2px;
             text-align: center;
             vertical-align: middle;
-            height: 22px;  /* Increased for better readability */
-            font-size: 11px;  /* Increased from 11px for better readability */
+            height: 22px;
+            font-size: 11px;
             overflow: hidden;
-        }
-
-        .attendance-table th {
-            font-weight: bold; /* Revert to standard bold instead of 800 */
+            color: #000;
             background-color: #fff;
         }
 
-        .attendance-table th:nth-child(1) {
-            width: 30px; /* Nr. column */
-        }
+        .attendance-table th { font-weight: bold; }
+        .attendance-table th.date-column { font-weight: normal; }
+        .attendance-table th:nth-child(1) { width: 30px; }
+        .attendance-table th:nth-child(2) { width: 25px; }
+        .attendance-table th:nth-child(3) { width: 75px; }
+        .attendance-table th:nth-child(4) { width: 140px; }
+        .attendance-table th:nth-child(n+5):nth-child(-n+9) { width: 70px; }
+        .attendance-table th:nth-child(10) { width: 25px; }
 
         .attendance-table td:nth-child(1) {
             text-align: right;
             padding-right: 5px;
         }
 
-        .attendance-table th:nth-child(2) {
-            width: 25px; /* R column */
-        }
-
-        .attendance-table th:nth-child(3) {
-            width: 75px; /* Student ID column */
-        }
-
-        .attendance-table th:nth-child(4) {
-            width: 140px; /* Name column */
-        }
-
-        /* Increase width of date columns to prevent overlap */
-        .attendance-table th:nth-child(5),
-        .attendance-table th:nth-child(6),
-        .attendance-table th:nth-child(7),
-        .attendance-table th:nth-child(8),
-        .attendance-table th:nth-child(9) {
-            width: 70px; /* Date columns - wider to prevent overlap */
-        }
-
-        .attendance-table th:nth-child(10) {
-            width: 25px; /* Ex column */
-        }
-
-        .attendance-table td {
-            background-color: #fff;
-        }
-
-        .attendance-table .name-cell {
+        .attendance-table :is(.name-cell, .id-cell) {
             text-align: left;
             padding-left: 10px;
             font-weight: normal;
-            font-size: 11px;  /* Added explicit size */
         }
 
-        .attendance-table .id-cell {
-            text-align: left;
-            padding-left: 10px;
-            font-weight: normal;
-            font-size: 11px;  /* Added explicit size */
-        }
-
-        /* Student signature styling - darker blue, more signature-like */
         .student-signature {
-            font-size: 14px; /* Increased from 9px */
-            color: #00008B; /* Dark blue */
+            font-size: 14px;
+            color: #00008b;
             font-weight: 400;
             white-space: nowrap;
             overflow: hidden;
         }
 
-        /* Checkmark styling */
         .student-checkmark {
-            font-size: 12px; /* Increased from 12px */
-            color: #00008B; /* Dark blue */
+            font-size: 12px;
+            color: #00008b;
             font-weight: bold;
         }
 
-        /* Define reliable font classes */
-        .font-homemade-apple { font-family: 'Homemade Apple', cursive !important; }
-        .font-dancing-script { font-family: 'Dancing Script', cursive !important; }
-        .font-caveat { font-family: 'Caveat', cursive !important; }
-        .font-pacifico { font-family: 'Pacifico', cursive !important; }
-        .font-satisfy { font-family: 'Satisfy', cursive !important; }
-        .font-indie-flower { font-family: 'Indie Flower', cursive !important; }
-        .font-kalam { font-family: 'Kalam', cursive !important; }
-        .font-shadows-into-light { font-family: 'Shadows Into Light', cursive !important; }
-        .font-great-vibes { font-family: 'Great Vibes', cursive !important; }
-        .font-yellowtail { font-family: 'Yellowtail', cursive !important; }
-        .font-sacramento { font-family: 'Sacramento', cursive !important; }
-        .font-courgette { font-family: 'Courgette', cursive !important; }
-        .font-playball { font-family: 'Playball', cursive !important; }
+        ${SIGNATURE_FONTS.map(font => `.${font.value} { font-family: '${font.family}', cursive !important; }`).join("\n        ")}
 
         .footer-note {
-            margin-top: 12px;  /* Reduced from 15px */
-            font-size: 10px;  /* Reduced from 11px */
+            margin-top: 12px;
+            font-size: 10px;
             color: #000;
             text-align: left;
         }
 
         .footer-note p {
-            margin: 2px 0;  /* Reduced from 3px */
-        }
-
-        .footer-note p:first-child {
-            font-weight: 900;
+            margin: 0 0 10px;
         }
 
         .signature-line {
-            margin-top: 15px;  /* Reduced from 20px */
-            font-size: 14px;  /* Reduced from 13px */
+            margin-top: 15px;
             text-align: right;
             color: #000;
         }
 
-        .signature-line p {
-            margin: 2px 0;  /* Reduced from 3px */
-            font-weight: normal;
+        .signature-line .signer {
+            margin-bottom: 40px;
         }
 
-        .signature-line p:first-child {
-            font-weight: 800;
-            font-size: 13px;  /* Reduced from 14px */
+        .signature-line .signer p {
+            margin: 0 0 2px;
+            font-size: 14px;
+            font-weight: bold;
         }
 
-        .signature-line p:last-child {
+        .signature-line .signer small {
+            font-size: 11px;
             font-style: italic;
         }
 
-        .page-number {
-            text-align: center;
-            font-size: 9px;  /* Reduced from 10px */
-            margin-top: 15px;  /* Reduced from 20px */
-            color: #666;
-            font-style: italic;
-        }
-
-        /* Completely revised print styles to fix overlapping issues */
-        /* Completely revised print styles with better margins and centering */
         @media print {
             @page {
                 size: A4 portrait;
-                margin: 12mm 8mm 8mm 8mm; /* top right bottom left */
+                margin: 12mm 8mm 8mm 8mm;
             }
 
             *, *::before, *::after {
@@ -472,67 +473,49 @@
             }
 
             html, body {
-                width: 794px !important; /* Exact A4 width at standard DPI */
-                min-width: 794px !important;
-                max-width: 794px !important;
-                height: auto !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                background-color: white !important;
-            }
-
-            /* Hide everything in the body by default */
-            body > * {
-                display: none !important;
-            }
-
-            /* Only show the attendance container */
-            body > #attendance-sheet-container {
-                display: block !important;
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
                 width: 794px !important;
                 min-width: 794px !important;
                 max-width: 794px !important;
                 height: auto !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                background-color: transparent !important;
+                background-color: white !important;
+            }
+
+            body > * {
+                display: none !important;
+            }
+
+            body > #attendance-sheet-container {
+                display: block !important;
+                position: absolute !important;
+                inset: 0 auto auto 0 !important;
+                width: 794px !important;
+                height: auto !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                background: transparent !important;
+                backdrop-filter: none !important;
             }
 
             #attendance-sheet-content {
                 display: block !important;
-                position: relative !important;
-                left: 0 !important;
-                top: 0 !important;
-                transform: none !important;
-                width: 750px !important; /* Widen table to squeeze default side margins safely */
+                width: 750px !important;
                 min-width: 750px !important;
                 max-width: 750px !important;
                 height: auto !important;
-                max-height: none !important; /* Critical to unlock the 90vh limit */
-                background-color: white !important;
-                box-shadow: none !important;
-                padding: 15px 0 !important; /* Squeeze vertical padding slightly */
-                margin: 0 auto !important; /* Forces centering inside the 794px canvas */
+                max-height: none !important;
+                margin: 0 auto !important;
+                padding: 15px 0 !important;
                 border: none !important;
                 border-radius: 0 !important;
+                background-color: white !important;
+                box-shadow: none !important;
                 overflow: visible !important;
             }
 
-            /* Hide controls */
             #sheet-controls, #config-panel {
                 display: none !important;
-            }
-
-            /* Ensure table fits horizontally and paginates vertically */
-            .attendance-table {
-                width: 100% !important;
-                max-width: 100% !important;
-                table-layout: fixed !important;
-                border-collapse: collapse !important;
-                margin: 0 !important;
             }
 
             .attendance-table tr {
@@ -542,16 +525,23 @@
             .attendance-table thead {
                 display: table-header-group !important;
             }
-
-            .attendance-table tbody {
-                display: table-row-group !important;
-            }
-
-            .sheet-header, .footer-note, .signature-line {
-                width: 100% !important;
-            }
         }
     `);
+
+    // The signature fonts load the first time a sheet opens, not on every EIS page.
+    function loadSignatureFonts() {
+        if (document.getElementById("asg-signature-fonts")) return;
+        const link = document.createElement("link");
+        link.id = "asg-signature-fonts";
+        link.rel = "stylesheet";
+        link.href = "https://fonts.googleapis.com/css2?" +
+            SIGNATURE_FONTS.map(font => "family=" + font.family.replace(/ /g, "+")).join("&") + "&display=swap";
+        document.head.appendChild(link);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Reading EIS
+    // ---------------------------------------------------------------------------
 
     // Matches a standalone EIS status badge such as "Finalized" / "Finalised" /
     // "Not Finalized", optionally bracketed.
@@ -592,1133 +582,473 @@
         return stripFinalizedStatus(clone.textContent.replace(/\s+/g, " ").trim());
     }
 
-    // Improved logic to detect students with R or Ex labels (with careful name handling)
+    // The value beside one of these labels in the attendance details list.
+    function detailText(...labels) {
+        for (const li of document.querySelectorAll(".attendance-details li")) {
+            const label = li.querySelector(".label-cont")?.textContent?.trim();
+            if (labels.includes(label)) return li.querySelector(".text-cont")?.textContent?.trim() || "";
+        }
+        return "";
+    }
+
     function hasRLabel(studentNameCell, row) {
-        // Check for label element
         if (studentNameCell.querySelector(".label-warning") !== null) return true;
-
-        // Check for data attribute
         if (row.querySelector('td[data-repeated="R"]') !== null) return true;
-
-        // Check for specific R indicators in text without affecting names
         const text = studentNameCell.textContent.trim();
         return text.includes(" R ") || text.endsWith(" R") || text.includes("(R)");
     }
 
     function hasExLabel(studentNameCell, row) {
-        // Check for label element
         if (studentNameCell.querySelector(".label-info") !== null) return true;
-
-        // Check for data attribute
         if (row.querySelector('td[data-exempted="EX"]') !== null) return true;
-
-        // Check for specific EX indicators in text
         const text = studentNameCell.textContent.trim();
-        return (
-            text.includes(" EX ") || text.endsWith(" EX") || text.includes("(EX)")
-        );
+        return text.includes(" EX ") || text.endsWith(" EX") || text.includes("(EX)");
     }
 
-    // Add button to action bar
-    function addAttendanceButton() {
-        const actionBar = document.querySelector(".record_actions");
-        if (!actionBar) return;
-
-        const button = document.createElement("button");
-        button.id = "attendance-btn";
-        button.className = "btn btn-info";
-        button.innerHTML = '<i class="fa fa-table"></i> Generate Attendance Sheet';
-        button.onclick = generateAttendanceSheet;
-
-        actionBar.insertBefore(button, actionBar.firstChild);
+    // "2026-10-15" or "15.10.2026" → "2026-10-15"; anything else → "".
+    function toIsoDate(text) {
+        let match = String(text).match(/(\d{4})-(\d{2})-(\d{2})/);
+        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
+        match = String(text).match(/(\d{2})\.(\d{2})\.(\d{4})/);
+        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        return "";
     }
 
-    // Enhanced function to extract attendance data handling both editable and locked cases
-    // Enhanced function to extract attendance data handling both editable and locked cases
+    // The lecturer's EIS name as a title and a name, e.g.
+    // "Assistant Lecturer M.Sc. Bredli Plaku" → "Assistant Lecturer", "Bredli Plaku".
+    function splitTitle(fullName) {
+        const text = String(fullName || "").replace(/\s+/g, " ").trim();
+        for (const [pattern, title] of TITLE_PATTERNS) {
+            if (pattern.test(text)) return { title, name: text.replace(pattern, "").trim() };
+        }
+        return { title: "Assistant Lecturer", name: text };
+    }
+
     function extractAttendanceData() {
         const data = {
             courseTitle: "",
-            date: "",
+            storageKey: "",
+            isoDate: "",
             students: [],
-            attendance: {},
-            totalHours: 0,
-            username: "",
-            studentFonts: {}, // Store random fonts per student
+            totalHours: 1,
+            username: document.querySelector(".username")?.textContent?.trim() || "",
         };
 
-        // Get username from page
-        const usernameElement = document.querySelector(".username");
-        if (usernameElement) {
-            data.username = usernameElement.textContent
-                .trim()
-                .replace("Assistant Lecturer M.Sc.", "Assistant Lecturer");
-        }
+        // Course code, name, category and group.
+        const courseName = getCourseText(document.querySelector(".course h4")) || "Attendance Sheet";
+        // The caption carries the "Finalized" badge on closed courses; by design the
+        // title shows both the caption code and the full heading, e.g.
+        // "CEN / MTH 102 - MTH 102 CALCULUS II 2025".
+        const courseCode = getCourseText(document.querySelector(".course .caption"));
 
-        // Get course details for code, name, and category
-        const courseHeadingElem = document.querySelector(".course h4");
-        const headingText = getCourseText(courseHeadingElem);
-        let courseName = headingText || "Attendance Sheet";
-
-        const captionElem = document.querySelector(".course .caption");
-        let courseCode = "";
-        if (captionElem) {
-            // The caption carries the "Finalized" badge on closed courses - strip it
-            // here so the status word never reaches the title.
-            // The code itself is kept as-is: by design the title shows both the
-            // caption code and the full heading, e.g.
-            // "CEN / MTH 102 - MTH 102 CALCULUS II 2025".
-            courseCode = getCourseText(captionElem);
-        }
-
-        // Get category and group from list items
-        const ulItems = document.querySelectorAll(
-            ".attendance-details ul.list-unstyled li",
-        );
-        let category = "";
-        let group = "";
-
-        ulItems.forEach((li) => {
-            const label = li.querySelector(".label-cont")?.textContent?.trim();
-            const text = li.querySelector(".text-cont")?.textContent?.trim();
-            if (label === "Category" && text && text.toUpperCase() !== "ALL") {
-                category = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-            }
-            if (label === "Group" && text && text.toUpperCase() !== "ALL") {
-                group = text.trim();
-            }
-        });
-
+        const category = detailText("Category");
+        const group = detailText("Group");
         let formattedCategory = "";
-        if (category) {
-            formattedCategory = " - " + category;
-            if (group) {
-                formattedCategory += " " + group;
-            }
+        if (category && category.toUpperCase() !== "ALL") {
+            formattedCategory = " - " + category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
+            if (group && group.toUpperCase() !== "ALL") formattedCategory += " " + group;
         }
 
-        if (courseCode) {
-            data.courseTitle = courseCode + " - " + courseName + formattedCategory;
-            data.storageKey = (courseCode + "_" + courseName).replace(
-                /[^a-z0-9]/gi,
-                "_",
-            );
-        } else {
-            data.courseTitle = courseName + formattedCategory;
-            data.storageKey = courseName.replace(/[^a-z0-9]/gi, "_");
-        }
+        data.courseTitle = (courseCode ? courseCode + " - " : "") + courseName + formattedCategory;
+        data.storageKey = (courseCode ? courseCode + "_" + courseName : courseName).replace(/[^a-z0-9]/gi, "_");
 
-        // Get date from the form - specifically from the requested HTML element
-        const dateElements = document.querySelectorAll(".attendance-details li");
-        let dateFound = false;
+        data.isoDate = toIsoDate(detailText("Date")) || formatDate(new Date(), "iso");
 
-        for (const li of dateElements) {
-            const labelElem = li.querySelector(".label-cont");
-            if (labelElem && labelElem.textContent.trim() === "Date") {
-                const dateSpan = li.querySelector(".text-cont");
-                if (dateSpan) {
-                    // Store the original date string
-                    const dateText = dateSpan.textContent.trim();
-                    data.date = dateText;
-                    dateFound = true;
+        const hoursText = detailText("Nr. of Hours", "Num. of Hours") ||
+            document.querySelector(".attendance-details li:nth-child(5) .text-cont")?.textContent || "";
+        const hours = parseInt(hoursText, 10);
+        if (!isNaN(hours) && hours > 0) data.totalHours = hours;
 
-                    // Parse the date for formatting
-                    try {
-                        // Handle various date formats
-                        let year, month, day;
-
-                        // Try YYYY-MM-DD format
-                        const ymdMatch = dateText.match(/(\d{4})-(\d{2})-(\d{2})/);
-                        if (ymdMatch) {
-                            year = ymdMatch[1];
-                            month = ymdMatch[2];
-                            day = ymdMatch[3];
-                        }
-                        // Try DD.MM.YYYY format
-                        else {
-                            const dmyMatch = dateText.match(/(\d{2})\.(\d{2})\.(\d{4})/);
-                            if (dmyMatch) {
-                                day = dmyMatch[1];
-                                month = dmyMatch[2];
-                                year = dmyMatch[3];
-                            }
-                        }
-
-                        if (year && month && day) {
-                            data.formattedDate = `${day}.${month}.${year}`;
-                            data.isoDate = `${year}-${month}-${day}`;
-                        } else {
-                            // Default to the original text if not in expected format
-                            data.formattedDate = dateText;
-                            data.isoDate = dateText;
-                        }
-                    } catch (e) {
-                        console.error("Date parsing error:", e);
-                        data.formattedDate = dateText;
-                        data.isoDate = new Date().toISOString().split("T")[0];
-                    }
-                    break;
-                }
-            }
-        }
-
-        if (!dateFound) {
-            // Default to current date
-            const now = new Date();
-            const year = now.getFullYear();
-            const month = (now.getMonth() + 1).toString().padStart(2, "0");
-            const day = now.getDate().toString().padStart(2, "0");
-
-            data.date = `${year}-${month}-${day}`;
-            data.formattedDate = `${day}.${month}.${year}`;
-            data.isoDate = `${year}-${month}-${day}`;
-        }
-
-        // Get total hours for the session
-        const hoursElements = document.querySelectorAll(".attendance-details li");
-        let hoursFound = false;
-
-        for (const li of hoursElements) {
-            const labelElem = li.querySelector(".label-cont");
-            if (
-                labelElem &&
-                (labelElem.textContent.trim() === "Nr. of Hours" ||
-                    labelElem.textContent.trim() === "Num. of Hours")
-            ) {
-                const hoursSpan = li.querySelector(".text-cont");
-                if (hoursSpan) {
-                    const hoursText = hoursSpan.textContent.trim();
-                    const hoursMatch = parseInt(hoursText);
-                    if (!isNaN(hoursMatch)) {
-                        data.totalHours = hoursMatch;
-                        hoursFound = true;
-                    }
-                }
-            }
-        }
-
-        if (!hoursFound) {
-            // Try the standard method as fallback
-            const hoursElement = document.querySelector(
-                ".attendance-details li:nth-child(5) .text-cont",
-            );
-            if (hoursElement) {
-                const hoursText = hoursElement.textContent.trim();
-                const hoursMatch = parseInt(hoursText);
-                if (!isNaN(hoursMatch)) {
-                    data.totalHours = hoursMatch;
-                } else {
-                    data.totalHours = 1; // Default to 1 if not found
-                }
-            } else {
-                data.totalHours = 1; // Default to 1 if not found
-            }
-        }
-
-        // Array of available reliable font classes for random assignment
-        const fontClasses = [
-            "font-great-vibes",
-            "font-courgette",
-            "font-playball",
-            "font-dancing-script",
-            "font-pacifico",
-            "font-satisfy",
-            "font-sacramento",
-            "font-yellowtail",
-            "font-homemade-apple",
-            "font-caveat",
-            "font-indie-flower",
-            "font-kalam",
-            "font-shadows-into-light",
-        ];
-
-        // Extract student data and attendance with comprehensive handling for various cases
+        // Students and their hours, in editable and locked (view) pages alike.
         const rows = document.querySelectorAll("#student_list_table tbody tr");
         rows.forEach((row, index) => {
-            const studentId = row
-                .querySelector("td:nth-child(2)")
-                ?.textContent?.trim();
+            const studentId = row.querySelector("td:nth-child(2)")?.textContent?.trim();
             const studentNameCell = row.querySelector("td:nth-child(3)");
-
             if (!studentId || !studentNameCell) return;
 
-            const studentName = studentNameCell.textContent.trim();
-
-            // --- FIX START: More robust name cleaning ---
-            // This ensures we only remove the suffixes from the very end of the name,
-            // preventing accidental changes to names like "Alexander".
-            const cleanName = studentName
-                .replace(/\s+R\s+EX$/, "") // Remove ' R EX' from the end
-                .replace(/\s+\(EX\)$/, "") // Remove ' (EX)' from the end
-                .replace(/\s+EX$/, "") // Remove ' EX' from the end
-                .replace(/\s+R$/, "") // Remove ' R' from the end
-                .replace(/\s+\(R\)$/, "") // Remove ' (R)' from the end
+            // Only suffixes at the very end are removed, so names like "Alexander" stay whole.
+            const cleanName = studentNameCell.textContent.trim()
+                .replace(/\s+R\s+EX$/, "")
+                .replace(/\s+\(EX\)$/, "")
+                .replace(/\s+EX$/, "")
+                .replace(/\s+R$/, "")
+                .replace(/\s+\(R\)$/, "")
+                .replace(/\s+/g, " ")
                 .trim();
-            // --- FIX END ---
+            if (!cleanName) return;
 
-            // Check for actual R and Ex labels in the student name or specific cells
-            const hasRLbl = hasRLabel(studentNameCell, row);
-            const hasExLbl = hasExLabel(studentNameCell, row);
-
-            if (cleanName) {
-                // Assign a random font to this student
-                data.studentFonts[studentId] =
-                    fontClasses[Math.floor(Math.random() * fontClasses.length)];
-
-                // Add to students array
-                data.students.push({
-                    id: studentId,
-                    name: cleanName,
-                    repeated: hasRLbl,
-                    exempt: hasExLbl,
-                    index: index + 1, // 1-based index for display
-                    fontClass: data.studentFonts[studentId], // Store the assigned font
-                });
-
-                // Initialize student hours attendance
-                data.attendance[studentId] = Array(data.totalHours).fill(false);
-
-                // Get attendance checks - using the original working implementation, plus handle locked icons
-                const checkElements = row.querySelectorAll(
-                    '.checkboxes_row_td input[type="checkbox"], .checkboxes.pull-left, input.checkboxes, .checkboxes_row_td i.fa-check-square, .checkboxes_row_td i.fa-square, .checkboxes_row_td i.fa-check-square-o, .checkboxes_row_td i.fa-square-o',
-                );
-
-                // If no checkboxes found, try to find hidden inputs that might contain check state
-                if (
-                    checkElements.length === 0 ||
-                    checkElements.length < data.totalHours
-                ) {
-                    const hiddenCheckedInput = row.querySelector(
-                        'input[name^="stdabsences"][name$="[checked]"]',
-                    );
-                    if (hiddenCheckedInput) {
-                        const checkedValues = hiddenCheckedInput.value.split(",");
-                        checkedValues.forEach((val) => {
-                            const hourIndex = parseInt(val) - 1;
-                            if (
-                                !isNaN(hourIndex) &&
-                                hourIndex >= 0 &&
-                                hourIndex < data.totalHours
-                            ) {
-                                data.attendance[studentId][hourIndex] = true;
-                            }
-                        });
-                    } else {
-                        // If no hidden inputs found, check for Font Awesome icons (view mode)
-                        const attendanceCells = Array.from(
-                            row.querySelectorAll("td"),
-                        ).slice(4);
-
-                        for (
-                            let i = 0;
-                            i < data.totalHours && i < attendanceCells.length;
-                            i++
-                        ) {
-                            const cell = attendanceCells[i];
-
-                            // Check for FA check icons
-                            if (
-                                cell.querySelector(".fa-check-square-o") ||
-                                cell.querySelector(".fa-check-square") ||
-                                cell.querySelector(".fa-check")
-                            ) {
-                                data.attendance[studentId][i] = true;
-                                continue;
-                            }
-
-                            // Check for text content that indicates attendance
-                            const cellText = cell.textContent.trim();
-                            if (isPresentCellText(cellText)) {
-                                data.attendance[studentId][i] = true;
-                            }
-                        }
-                    }
-                } else {
-                    // Process each hour checkbox
-                    // Determine if the first checkbox is a "select all" checkbox
-                    const startIndex = checkElements.length > data.totalHours ? 1 : 0;
-
-                    for (let i = 0; i < data.totalHours; i++) {
-                        const checkIndex = startIndex + i;
-                        if (
-                            checkElements[checkIndex] &&
-                            (checkElements[checkIndex].checked ||
-                                checkElements[checkIndex].classList.contains(
-                                    "fa-check-square-o",
-                                ) ||
-                                checkElements[checkIndex].classList.contains(
-                                    "fa-check-square",
-                                ) ||
-                                checkElements[checkIndex].classList.contains("fa-check"))
-                        ) {
-                            // Mark this hour as attended
-                            data.attendance[studentId][i] = true;
-                        }
-                    }
-                }
-            }
+            data.students.push({
+                id: studentId,
+                name: cleanName,
+                repeated: hasRLabel(studentNameCell, row),
+                exempt: hasExLabel(studentNameCell, row),
+                index: index + 1,
+                fontClass: SIGNATURE_FONTS[Math.floor(Math.random() * SIGNATURE_FONTS.length)].value,
+                attendance: readRowAttendance(row, data.totalHours),
+            });
         });
 
         return data;
     }
 
-    // Update all date columns with a single value
-    function updateAllDates(dateString) {
-        // Update all date column headers
-        const dateColumns = document.querySelectorAll(".date-column");
-        dateColumns.forEach((column) => {
-            if (column.hasAttribute("data-index")) {
-                if (dateString) {
-                    const parts = dateString.split("-");
-                    if (parts.length === 3) {
-                        column.textContent = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                    }
-                } else {
-                    column.textContent = "__/__/2025";
-                }
-            } else {
-                column.textContent = "";
+    function readRowAttendance(row, totalHours) {
+        const attended = Array(totalHours).fill(false);
+        const checkElements = row.querySelectorAll(
+            '.checkboxes_row_td input[type="checkbox"], .checkboxes.pull-left, input.checkboxes, .checkboxes_row_td i.fa-check-square, .checkboxes_row_td i.fa-square, .checkboxes_row_td i.fa-check-square-o, .checkboxes_row_td i.fa-square-o',
+        );
+
+        if (checkElements.length >= totalHours) {
+            // The first checkbox ticks the whole row when there is one more than hours.
+            const start = checkElements.length > totalHours ? 1 : 0;
+            for (let i = 0; i < totalHours; i++) {
+                const el = checkElements[start + i];
+                attended[i] = !!el && (el.checked ||
+                    el.classList.contains("fa-check-square-o") ||
+                    el.classList.contains("fa-check-square") ||
+                    el.classList.contains("fa-check"));
             }
-        });
+            return attended;
+        }
+
+        const hiddenChecked = row.querySelector('input[name^="stdabsences"][name$="[checked]"]');
+        if (hiddenChecked) {
+            hiddenChecked.value.split(",").forEach(value => {
+                const hour = parseInt(value, 10) - 1;
+                if (hour >= 0 && hour < totalHours) attended[hour] = true;
+            });
+            return attended;
+        }
+
+        // View mode: icons or text in the hour cells.
+        const cells = Array.from(row.querySelectorAll("td")).slice(4);
+        for (let i = 0; i < totalHours && i < cells.length; i++) {
+            const cell = cells[i];
+            attended[i] = !!cell.querySelector(".fa-check-square-o, .fa-check-square, .fa-check") ||
+                isPresentCellText(cell.textContent);
+        }
+        return attended;
     }
 
-    // Generate and display the attendance sheet
+    // ---------------------------------------------------------------------------
+    // The sheet window
+    // ---------------------------------------------------------------------------
+
+    function addAttendanceButton() {
+        const actionBar = document.querySelector(".record_actions");
+        if (!actionBar || document.getElementById("attendance-btn")) return;
+
+        const button = document.createElement("button");
+        // type="button": inside EIS's form a plain <button> would submit it.
+        button.type = "button";
+        button.id = "attendance-btn";
+        button.className = "btn btn-info stando-eis-btn";
+        button.innerHTML = '<i class="fa fa-table" aria-hidden="true"></i> Generate Attendance Sheet';
+        button.addEventListener("click", event => {
+            event.preventDefault();
+            generateAttendanceSheet();
+        });
+
+        // Before the first button, not the first node: whitespace there would show as a gap.
+        actionBar.insertBefore(button, actionBar.firstElementChild);
+    }
+
+    function loadSigners(data) {
+        const saved = store.getJson(STORE.signers(data.storageKey));
+        if (Array.isArray(saved) && saved.length) return saved;
+
+        // The older list, printed sorted by title: keep that order.
+        const legacy = store.getJson(STORE.legacySigners(data.storageKey));
+        if (Array.isArray(legacy) && legacy.length) {
+            const rank = title => {
+                const i = TITLES.indexOf(title);
+                return i < 0 ? 99 : i;
+            };
+            return [...legacy].sort((a, b) => rank(a.title) - rank(b.title) || String(a.name).localeCompare(String(b.name)));
+        }
+
+        return [splitTitle(data.username)];
+    }
+
     function generateAttendanceSheet() {
-        // Extract data
         const data = extractAttendanceData();
-        if (!data || data.students.length === 0) {
-            alert(
-                "No attendance data found. Please ensure you are on an attendance page.",
-            );
+        if (data.students.length === 0) {
+            alert("No students found. Open an attendance page with its student list first.");
             return;
         }
+        console.log("[Attendance sheet] Extracted:", data);
+        loadSignatureFonts();
 
-        // For debugging only
-        console.log("Extracted attendance data:", data);
+        // Opening again replaces the open sheet.
+        document.getElementById("attendance-sheet-container")?.remove();
 
-        // Create container
+        const savedDisplay = store.get(STORE.display, "checkmarks");
+        const savedFont = store.get(STORE.font, "random");
+        const state = {
+            display: MARKS.some(m => m.value === savedDisplay) ? savedDisplay : "checkmarks",
+            font: savedFont === "random" || SIGNATURE_FONTS.some(f => f.value === savedFont) ? savedFont : "random",
+            printedDate: formatDate(new Date(), "iso"),
+            dates: Array(Math.min(data.totalHours, DATE_COLUMNS)).fill(data.isoDate),
+            signers: loadSigners(data).map(s => ({ title: TITLES.includes(s.title) ? s.title : "Lecturer", name: String(s.name || "") })),
+        };
+
         const container = document.createElement("div");
         container.id = "attendance-sheet-container";
-
-        // Create content div
-        const content = document.createElement("div");
-        content.id = "attendance-sheet-content";
-
-        // Add controls
-        const controls = document.createElement("div");
-        controls.id = "sheet-controls";
-        controls.innerHTML = `
-            <div>
-                <button id="print-sheet-btn" class="attendance-btn">
-                    <i class="fas fa-print"></i> Print PDF
-                </button>
-            </div>
-            <button id="close-sheet-btn" class="attendance-btn">
-                <i class="fas fa-times"></i> Close
-            </button>
-        `;
-
-        // Add configuration panel with font selection
-        const configPanel = document.createElement("div");
-        configPanel.id = "config-panel";
-
-        // Define highly compatible signature fonts
-        const signatureFonts = [
-            { name: "Random (Per Student)", value: "random" },
-            { name: "Great Vibes", value: "font-great-vibes" },
-            { name: "Courgette", value: "font-courgette" },
-            { name: "Playball", value: "font-playball" },
-            { name: "Dancing Script", value: "font-dancing-script" },
-            { name: "Pacifico", value: "font-pacifico" },
-            { name: "Satisfy", value: "font-satisfy" },
-            { name: "Sacramento", value: "font-sacramento" },
-            { name: "Yellowtail", value: "font-yellowtail" },
-            { name: "Homemade Apple", value: "font-homemade-apple" },
-            { name: "Caveat", value: "font-caveat" },
-            { name: "Indie Flower", value: "font-indie-flower" },
-            { name: "Kalam", value: "font-kalam" },
-            { name: "Shadows Into Light", value: "font-shadows-into-light" },
-        ];
-
-        let cachedFont = "random";
-        if (data.storageKey) {
-            try {
-                const storedFont = localStorage.getItem("EIS_attendance_font_type");
-                if (storedFont) cachedFont = storedFont;
-            } catch (e) { }
-        }
-
-        // Generate font options HTML
-        let fontOptionsHtml = "";
-        signatureFonts.forEach((font) => {
-            fontOptionsHtml += `<option value="${font.value}" ${font.value === cachedFont ? "selected" : ""}>${font.name}</option>`;
-        });
-
-        // Create date inputs for column headers
-        let dateInputsHtml = "";
-
-        // Add a single date input for all columns
-        dateInputsHtml = `
-            <div class="config-row">
-                <label>Set all dates at once:</label>
-                <input type="date" id="all-dates-input" value="${data.isoDate || ""}" class="date-input">
-            </div>
-        `;
-
-        // Add individual date inputs
-        for (let i = 0; i < data.totalHours; i++) {
-            dateInputsHtml += `
-                <div class="config-row">
-                    <label>Date for column ${i + 1}:</label>
-                    <input type="date" id="date-column-${i}" value="${data.isoDate || ""}" class="single-date-input">
+        container.innerHTML = `
+            <div id="attendance-sheet-content" role="dialog" aria-modal="true" aria-labelledby="asg-title">
+                <div id="sheet-controls">
+                    <h2 id="asg-title">Attendance sheet</h2>
+                    <button type="button" id="print-sheet-btn" class="btn btn-success btn-sm"><i class="fa fa-print" aria-hidden="true"></i> Print PDF</button>
+                    <button type="button" id="close-sheet-btn" class="asg-icon-btn" title="Close (Esc)" aria-label="Close">&times;</button>
                 </div>
-            `;
-        }
 
-        // Generate config panel HTML with signature font dropdown and use checkmarks option
-        let cachedSigs = null;
-        if (data.storageKey) {
-            try {
-                const stored = localStorage.getItem(
-                    `EIS_attendance_sigs_${data.storageKey}`,
-                );
-                if (stored) {
-                    cachedSigs = JSON.parse(stored);
-                }
-            } catch (e) { }
-        }
-
-        let signaturesConfigHtml = "";
-        if (cachedSigs && cachedSigs.length > 0) {
-            cachedSigs.forEach((sig, index) => {
-                const i = index + 1;
-                signaturesConfigHtml += `
-                    <div class="signature-item" id="signature-item-${i}">
-                        <select id="signature-title-${i}">
-                            <option value="Lecturer Prof. Dr." ${sig.title === "Lecturer Prof. Dr." ? "selected" : ""}>Lecturer Prof. Dr.</option>
-                            <option value="Lecturer Assoc. Prof. Dr." ${sig.title === "Lecturer Assoc. Prof. Dr." ? "selected" : ""}>Lecturer Assoc. Prof. Dr.</option>
-                            <option value="Lecturer Dr." ${sig.title === "Lecturer Dr." ? "selected" : ""}>Lecturer Dr.</option>
-                            <option value="Assistant Lecturer" ${sig.title === "Assistant Lecturer" ? "selected" : ""}>Assistant Lecturer</option>
-                        </select>
-                        <input type="text" id="signature-name-${i}" value="${sig.name}" style="flex: 1;">
-                        <button class="remove-signature-btn" data-id="${i}" ${i === 1 ? 'style="visibility: hidden;"' : ""}>Remove</button>
+                <div id="config-panel">
+                    <details class="asg-section" open>
+                    <summary>Sheet</summary>
+                    <div class="asg-grid">
+                        <label class="asg-field"><span>Marks</span>
+                            <select id="signature-display-select" class="form-control input-sm">
+                                ${MARKS.map(m => `<option value="${m.value}">${escapeHtml(m.label)}</option>`).join("")}
+                            </select>
+                        </label>
+                        <label class="asg-field" id="signature-font-row"><span>Signature font</span>
+                            <select id="signature-font-select" class="form-control input-sm">
+                                <option value="random">Random per student</option>
+                                ${SIGNATURE_FONTS.map(f => `<option value="${f.value}">${escapeHtml(f.name)}</option>`).join("")}
+                            </select>
+                        </label>
+                        <label class="asg-field"><span>Class date</span>
+                            <input type="date" id="all-dates-input" class="form-control input-sm">
+                        </label>
+                        <label class="asg-field"><span>Printed on</span>
+                            <input type="date" id="printed-date-input" class="form-control input-sm">
+                        </label>
                     </div>
-                `;
-            });
-        } else {
-            signaturesConfigHtml = `
-                <div class="signature-item" id="signature-item-1">
-                    <select id="signature-title-1">
-                        <option value="Lecturer Prof. Dr.">Lecturer Prof. Dr.</option>
-                        <option value="Lecturer Assoc. Prof. Dr.">Lecturer Assoc. Prof. Dr.</option>
-                        <option value="Lecturer Dr.">Lecturer Dr.</option>
-                        <option value="Assistant Lecturer" selected>Assistant Lecturer</option>
-                    </select>
-                    <input type="text" id="signature-name-1" value="${data.username}" style="flex: 1;">
-                    <button class="remove-signature-btn" data-id="1" style="visibility: hidden;">Remove</button>
+                    ${state.dates.length > 1 ? `
+                    <details>
+                        <summary>A different date for each hour</summary>
+                        <div class="asg-grid">
+                            ${state.dates.map((_, i) => `
+                            <label class="asg-field"><span>Hour ${i + 1}</span>
+                                <input type="date" class="form-control input-sm single-date-input" data-index="${i}">
+                            </label>`).join("")}
+                        </div>
+                    </details>` : ""}
+                    </details>
+
+                    <details class="asg-section" open>
+                    <summary>Lecturers, in the order they sign</summary>
+                    <div>
+                        <ol id="signatures-container"></ol>
+                        <button type="button" id="add-signature-btn" class="btn btn-default btn-sm"><i class="fa fa-plus" aria-hidden="true"></i> Add lecturer</button>
+                    </div>
+                    </details>
                 </div>
-            `;
-        }
 
-        let cachedDisplay = "checkmarks";
-        try {
-            const stored = localStorage.getItem("EIS_attendance_display_type");
-            if (stored) cachedDisplay = stored;
-        } catch (e) { }
-
-        configPanel.innerHTML = `
-            <h3 style="margin-top: 0;">Configuration</h3>
-            <div class="config-row">
-                <label>Signature Display:</label>
-                <select id="signature-display-select">
-                    <option value="checkmarks" ${cachedDisplay === "checkmarks" ? "selected" : ""}>Checkmarks (✓)</option>
-                    <option value="pluses" ${cachedDisplay === "pluses" ? "selected" : ""}>Pluses (+)</option>
-                    <option value="crosses" ${cachedDisplay === "crosses" ? "selected" : ""}>Crosses (✗)</option>
-                    <option value="filled_circles" ${cachedDisplay === "filled_circles" ? "selected" : ""}>Filled Circles (●)</option>
-                    <option value="names" ${cachedDisplay === "names" ? "selected" : ""}>Student Names</option>
-                </select>
-            </div>
-            <div class="config-row" id="signature-font-row">
-                <label>Signature Font:</label>
-                <select id="signature-font-select">
-                    ${fontOptionsHtml}
-                </select>
-            </div>
-            <div class="config-row">
-                <label>Print Date:</label>
-                <input type="date" id="printed-date-input" value="${formatDate(new Date(), "iso")}" class="date-input">
-            </div>
-            ${dateInputsHtml}
-            <div id="signatures-container">
-                <h4 style="margin-top: 10px;">Signatures</h4>
-                ${signaturesConfigHtml}
-            </div>
-            <button id="add-signature-btn">Add Another Signature</button>
-        `;
-
-        // Create header - exactly matching the template with subject and date on same row
-        const header = document.createElement("div");
-        header.className = "sheet-header";
-
-        // Institution details
-        header.innerHTML = `
-            <h2>Epoka University</h2>
-            <h2>Faculty of Architecture and Engineering</h2>
-            <h3>ATTENDANCE LIST</h3>
-            <div class="header-flex">
-                <h4>${data.courseTitle}</h4>
-                <p id="printed-date-display"><i>Printed on:</i> ${formatDate(new Date())}</p>
-            </div>
-        `;
-
-        // Create table
-        const table = document.createElement("table");
-        table.className = "attendance-table";
-
-        // Create table header
-        const thead = document.createElement("thead");
-        const headerRow = document.createElement("tr");
-
-        // Add header cells - EXACTLY matching the template
-        let headerCells = `
-            <th>No.</th>
-            <th>R</th>
-            <th>Student ID</th>
-            <th>Name Surname</th>
-        `;
-
-        // Add date columns based on totalHours
-        for (let i = 0; i < 5; i++) {
-            if (i < data.totalHours) {
-                headerCells += `<th class="date-column" data-index="${i}">__/__/2025</th>`;
-            } else {
-                headerCells += `<th class="date-column"></th>`;
-            }
-        }
-
-        headerCells += `<th>EX</th>`;
-        headerRow.innerHTML = headerCells;
-
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-
-        // Create table body
-        const tbody = document.createElement("tbody");
-
-        // Add rows for each student
-        data.students.forEach((student) => {
-            const row = document.createElement("tr");
-
-            // Student number
-            const numCell = document.createElement("td");
-            numCell.textContent = student.index;
-            row.appendChild(numCell);
-
-            // Repeated indicator (R column)
-            const repeatedCell = document.createElement("td");
-            repeatedCell.textContent = student.repeated ? "R" : "";
-            row.appendChild(repeatedCell);
-
-            // Student ID
-            const idCell = document.createElement("td");
-            idCell.className = "id-cell";
-            idCell.textContent = student.id;
-            row.appendChild(idCell);
-
-            // Student name
-            const nameCell = document.createElement("td");
-            nameCell.className = "name-cell";
-            nameCell.textContent = student.name;
-            row.appendChild(nameCell);
-
-            // Date columns (5 of them)
-            // Distribute student signatures or checkmarks across columns - one column per hour
-            const studentAttendance = data.attendance[student.id] || [];
-
-            for (let i = 0; i < 5; i++) {
-                const dateCell = document.createElement("td");
-
-                // --- FIX START: Removed the "!student.exempt" condition ---
-                // This will now draw a mark if the student was present,
-                // regardless of their exemption status.
-                if (i < studentAttendance.length && studentAttendance[i]) {
-                    // --- FIX END ---
-                    // Get the display mode (names or checkmarks)
-                    const displayMode =
-                        document.querySelector("#signature-display-select")?.value ||
-                        "checkmarks";
-
-                    if (displayMode === "names") {
-                        // Extract first name for shorter signature
-                        const firstName = student.name.split(" ")[0];
-
-                        // Use the student's assigned font (for consistent random per student)
-                        // or use the selected font if not random
-                        const selectedFontClass =
-                            document.querySelector("#signature-font-select")?.value ||
-                            "random";
-                        let fontClass = selectedFontClass;
-
-                        // If random, use the student's assigned font
-                        if (selectedFontClass === "random") {
-                            fontClass =
-                                student.fontClass ||
-                                data.studentFonts[student.id] ||
-                                "font-dancing-script";
-                        }
-
-                        dateCell.innerHTML = `<span class="student-signature ${fontClass}">${firstName}</span>`;
-                    } else {
-                        let symbol = "✓";
-                        if (displayMode === "pluses") symbol = "+";
-                        else if (displayMode === "crosses") symbol = "✗";
-                        else if (displayMode === "filled_circles") symbol = "●";
-
-                        // Show symbol
-                        dateCell.innerHTML = `<span class="student-checkmark">${symbol}</span>`;
-                    }
-
-                    // Add a hidden input to track attendance for EIS compatibility
-                    dateCell.innerHTML += `<input type="hidden" name="stdabsences[${i}][checked]" value="${i + 1}">`;
-                }
-
-                row.appendChild(dateCell);
-            }
-
-            // Exempted indicator (EX column)
-            const exemptCell = document.createElement("td");
-            exemptCell.textContent = student.exempt ? "EX" : "";
-            row.appendChild(exemptCell);
-
-            tbody.appendChild(row);
-        });
-
-        table.appendChild(tbody);
-
-        // Add note at bottom - EXACTLY matching the template with BOLD text
-        const note = document.createElement("div");
-        note.className = "footer-note";
-        note.innerHTML = `
-            <p style="margin-bottom: 10px;"><strong>NOTE:</strong></p>
-            <p style="margin-bottom: 10px;">Students that are not listed in the attendance list will not be considered as enrolled in the course!</p>
-            <p style="margin-bottom: 10px;">All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS.</p>
-            <p style="margin-bottom: 10px;"><strong>R</strong> - Repeated Course, <strong>EX</strong> - Exempted from attendances.</p>
-        `;
-
-        const signature = document.createElement("div");
-        signature.className = "signature-line";
-        signature.id = "signature-area";
-
-        // Add page number with automatic page counting - REMOVED
-        // const pageNumber = document.createElement('div');
-        // pageNumber.className = 'page-number';
-        // We leave this empty because the content will be added via CSS counter
-        // This enables proper page numbering for multi-page documents
-
-        // Assemble content
-        content.appendChild(controls);
-        content.appendChild(configPanel);
-        content.appendChild(header);
-        content.appendChild(table);
-        content.appendChild(note);
-        content.appendChild(signature);
-        // Page number removed as requested
-        container.appendChild(content);
+                <div id="attendance-sheet-page">
+                    <div class="sheet-header">
+                        <h2>Epoka University</h2>
+                        <h2>Faculty of Architecture and Engineering</h2>
+                        <h3>ATTENDANCE LIST</h3>
+                        <div class="header-flex">
+                            <h4>${escapeHtml(data.courseTitle)}</h4>
+                            <p id="printed-date-display"></p>
+                        </div>
+                    </div>
+                    <table class="attendance-table">
+                        <thead><tr>
+                            <th>No.</th><th>R</th><th>Student ID</th><th>Name Surname</th>
+                            ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<th class="date-column" data-index="${i}"></th>`).join("")}
+                            <th>EX</th>
+                        </tr></thead>
+                        <tbody>
+                            ${data.students.map(student => `
+                            <tr>
+                                <td>${student.index}</td>
+                                <td>${student.repeated ? "R" : ""}</td>
+                                <td class="id-cell">${escapeHtml(student.id)}</td>
+                                <td class="name-cell">${escapeHtml(student.name)}</td>
+                                ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<td class="mark-cell" data-present="${student.attendance[i] ? 1 : 0}"></td>`).join("")}
+                                <td>${student.exempt ? "EX" : ""}</td>
+                            </tr>`).join("")}
+                        </tbody>
+                    </table>
+                    <div class="footer-note">
+                        <p><strong>NOTE:</strong></p>
+                        <p>Students that are not listed in the attendance list will not be considered as enrolled in the course!</p>
+                        <p>All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS.</p>
+                        <p><strong>R</strong> - Repeated Course, <strong>EX</strong> - Exempted from attendances.</p>
+                    </div>
+                    <div class="signature-line" id="signature-area"></div>
+                </div>
+            </div>`;
         document.body.appendChild(container);
 
-        // Add event listeners for signature display mode and font select
-        document
-            .getElementById("signature-display-select")
-            .addEventListener("change", function () {
-                const displayMode = this.value;
+        const $ = selector => container.querySelector(selector);
+        const markRows = Array.from(container.querySelectorAll(".attendance-table tbody tr"));
 
-                // Save to localStorage
-                try {
-                    localStorage.setItem("EIS_attendance_display_type", displayMode);
-                } catch (e) { }
-
-                // Toggle font selector visibility
-                const fontRow = document.getElementById("signature-font-row");
-                if (fontRow) {
-                    fontRow.style.display = displayMode === "names" ? "flex" : "none";
-                }
-
-                // Update all attendance markers based on display mode
-                const signatures = document.querySelectorAll(
-                    ".student-signature, .student-checkmark",
-                );
-
-                // Remove all elements first
-                signatures.forEach((sig) => sig.remove());
-
-                // Rebuild all attendance markers based on the new display mode
-                if (displayMode !== "names") {
-                    let symbol = "✓";
-                    if (displayMode === "pluses") symbol = "+";
-                    else if (displayMode === "crosses") symbol = "✗";
-                    else if (displayMode === "filled_circles") symbol = "●";
-
-                    // Replace all signatures with symbols
-                    document.querySelectorAll("td").forEach((cell) => {
-                        if (cell.querySelector('input[type="hidden"]')) {
-                            // This cell has attendance, add symbol at beginning
-                            const mark = document.createElement("span");
-                            mark.className = "student-checkmark";
-                            mark.textContent = symbol;
-                            cell.insertBefore(mark, cell.firstChild);
-                        }
-                    });
-                } else {
-                    // Replace all checkmarks with signatures
-                    document.querySelectorAll("td").forEach((cell) => {
-                        if (cell.querySelector('input[type="hidden"]')) {
-                            // This cell has attendance, add signature
-                            const rowElement = cell.closest("tr");
-                            const studentId = rowElement
-                                .querySelector("td:nth-child(3)")
-                                ?.textContent?.trim();
-                            const studentName =
-                                rowElement.querySelector(".name-cell")?.textContent?.trim() ||
-                                "";
-
-                            if (studentName) {
-                                const firstName = studentName.split(" ")[0];
-
-                                // Get the student's data to use consistent font
-                                const studentData = data.students.find(
-                                    (s) => s.id === studentId,
-                                );
-
-                                // Use selected font or student's assigned font if random
-                                const selectedFontClass =
-                                    document.querySelector("#signature-font-select")?.value ||
-                                    "random";
-                                let fontClass = selectedFontClass;
-
-                                if (selectedFontClass === "random" && studentData) {
-                                    fontClass =
-                                        studentData.fontClass ||
-                                        data.studentFonts[studentId] ||
-                                        "font-dancing-script";
-                                }
-
-                                const signature = document.createElement("span");
-                                signature.className = `student-signature ${fontClass}`;
-                                signature.textContent = firstName;
-                                cell.insertBefore(signature, cell.firstChild);
-                            }
-                        }
-                    });
-                }
-            });
-
-        document
-            .getElementById("signature-font-select")
-            .addEventListener("change", function () {
-                // Save to localStorage
-                const selectedFontClass = this.value;
-                try {
-                    localStorage.setItem("EIS_attendance_font_type", selectedFontClass);
-                } catch (e) { }
-
-                // Only update if in names mode
-                if (
-                    document.getElementById("signature-display-select").value === "names"
-                ) {
-                    // Update all signatures with the new font
-                    const signatures = document.querySelectorAll(".student-signature");
-
-                    signatures.forEach((sig) => {
-                        // Get the student ID to apply font consistently
-                        const rowElement = sig.closest("tr");
-                        const studentId = rowElement
-                            ?.querySelector("td:nth-child(3)")
-                            ?.textContent?.trim();
-
-                        // Remove all existing font classes
-                        sig.className = "student-signature";
-
-                        // If random, use student's assigned font
-                        if (selectedFontClass === "random") {
-                            const studentData = data.students.find((s) => s.id === studentId);
-                            if (studentData && studentData.fontClass) {
-                                sig.classList.add(studentData.fontClass);
-                            } else if (data.studentFonts[studentId]) {
-                                sig.classList.add(data.studentFonts[studentId]);
-                            } else {
-                                // Fallback if no font assigned
-                                sig.classList.add("font-dancing-script");
-                            }
-                        } else {
-                            // Otherwise apply the selected font to all
-                            sig.classList.add(selectedFontClass);
-                        }
-                    });
-                }
-            });
-
-        // Update the printed date when changed
-        document
-            .getElementById("printed-date-input")
-            .addEventListener("change", function () {
-                const dateValue = this.value; // YYYY-MM-DD
-                if (dateValue) {
-                    const date = new Date(dateValue);
-                    if (!isNaN(date.getTime())) {
-                        document.getElementById("printed-date-display").textContent =
-                            `Printed on: ${formatDate(date)}`;
-                    }
-                }
-            });
-
-        // Ensure INITIAL UI state matches settings
-        setTimeout(() => {
-            // Initialize display mode to trigger visibility updates initially
-            document
-                .getElementById("signature-display-select")
-                .dispatchEvent(new Event("change"));
-
-            // Make sure date headers are normal weight
-            document.querySelectorAll(".date-column").forEach((col) => {
-                col.style.fontWeight = "normal";
-            });
-        }, 100);
-
-        // Add event listeners to buttons
-        document.getElementById("print-sheet-btn").addEventListener("click", () => {
-            window.print();
-        });
-
-        document.getElementById("close-sheet-btn").addEventListener("click", () => {
-            document.body.removeChild(container);
-        });
-
-        // Add event listener for the "Set all dates at once" input
-        document
-            .getElementById("all-dates-input")
-            .addEventListener("change", function () {
-                const dateValue = this.value;
-
-                // Update all individual date inputs
-                document.querySelectorAll(".single-date-input").forEach((input) => {
-                    input.value = dateValue;
+        // --- Rendering from state ---
+        function renderMarks() {
+            const mark = MARKS.find(m => m.value === state.display) || MARKS[0];
+            markRows.forEach((row, r) => {
+                const student = data.students[r];
+                const fontClass = state.font === "random" ? student.fontClass : state.font;
+                const firstName = student.name.split(" ")[0];
+                row.querySelectorAll(".mark-cell").forEach(cell => {
+                    if (cell.dataset.present !== "1") return;
+                    cell.innerHTML = mark.value === "names"
+                        ? `<span class="student-signature ${fontClass}">${escapeHtml(firstName)}</span>`
+                        : `<span class="student-checkmark">${mark.symbol}</span>`;
                 });
-
-                // Update all date columns in the table
-                updateAllDates(dateValue);
             });
-
-        // Add event listener for adding signatures
-        let signatureCounter =
-            cachedSigs && cachedSigs.length > 0 ? cachedSigs.length : 1;
-        document
-            .getElementById("add-signature-btn")
-            .addEventListener("click", () => {
-                signatureCounter++;
-
-                const signaturesContainer = document.getElementById(
-                    "signatures-container",
-                );
-
-                const signatureItem = document.createElement("div");
-                signatureItem.className = "signature-item";
-                signatureItem.id = `signature-item-${signatureCounter}`;
-
-                signatureItem.innerHTML = `
-                <select id="signature-title-${signatureCounter}">
-                    <option value="Lecturer Prof. Dr.">Lecturer Prof. Dr.</option>
-                    <option value="Lecturer Assoc. Prof. Dr.">Lecturer Assoc. Prof. Dr.</option>
-                    <option value="Lecturer Dr." selected>Lecturer Dr.</option>
-                    <option value="Assistant Lecturer">Assistant Lecturer</option>
-                </select>
-                <input type="text" id="signature-name-${signatureCounter}" value="" style="flex: 1;">
-                <button class="remove-signature-btn" data-id="${signatureCounter}">Remove</button>
-            `;
-
-                signaturesContainer.appendChild(signatureItem);
-
-                // Make remove button visible for first signature
-                document.querySelector(
-                    "#signature-item-1 .remove-signature-btn",
-                ).style.visibility = "visible";
-
-                // Add event listener for remove button
-                signatureItem
-                    .querySelector(".remove-signature-btn")
-                    .addEventListener("click", function () {
-                        const id = this.getAttribute("data-id");
-                        const item = document.getElementById(`signature-item-${id}`);
-                        item.parentNode.removeChild(item);
-
-                        // If only one signature left, hide its remove button
-                        const signatures = document.querySelectorAll(".signature-item");
-                        if (signatures.length === 1) {
-                            signatures[0].querySelector(
-                                ".remove-signature-btn",
-                            ).style.visibility = "hidden";
-                        }
-
-                        // Update signatures in sheet
-                        updateSignatures();
-                    });
-
-                // Add event listeners for signature fields
-                signatureItem
-                    .querySelector("select")
-                    .addEventListener("change", updateSignatures);
-                signatureItem
-                    .querySelector("input")
-                    .addEventListener("change", updateSignatures);
-                signatureItem
-                    .querySelector("input")
-                    .addEventListener("input", updateSignatures);
-
-                // Update signatures in sheet
-                updateSignatures();
-            });
-
-        // Add event listeners for remove buttons
-        document.querySelectorAll(".remove-signature-btn").forEach((button) => {
-            button.addEventListener("click", function () {
-                const id = this.getAttribute("data-id");
-                const item = document.getElementById(`signature-item-${id}`);
-                item.parentNode.removeChild(item);
-
-                // If only one signature left, hide its remove button
-                const signatures = document.querySelectorAll(".signature-item");
-                if (signatures.length === 1) {
-                    signatures[0].querySelector(
-                        ".remove-signature-btn",
-                    ).style.visibility = "hidden";
-                }
-
-                // Update signatures in sheet
-                updateSignatures();
-            });
-        });
-
-        // Add event listeners for individual date inputs
-        document.querySelectorAll(".single-date-input").forEach((input) => {
-            input.addEventListener("change", function () {
-                const index = this.id.split("-")[2];
-                const dateColumn = document.querySelector(
-                    `.date-column[data-index="${index}"]`,
-                );
-                if (dateColumn) {
-                    const dateValue = this.value; // YYYY-MM-DD
-                    if (dateValue) {
-                        const parts = dateValue.split("-");
-                        if (parts.length === 3) {
-                            dateColumn.textContent = `${parts[2]}/${parts[1]}/${parts[0]}`;
-                        }
-                    } else {
-                        dateColumn.textContent = "__/__/2025";
-                    }
-                }
-            });
-        });
-
-        // Add event listeners for signature inputs
-        document
-            .querySelectorAll(
-                "#signatures-container select, #signatures-container input",
-            )
-            .forEach((input) => {
-                input.addEventListener("change", updateSignatures);
-                input.addEventListener("input", updateSignatures); // Also listen for real-time input changes
-            });
-
-        // Add listeners for cached remove buttons
-        document.querySelectorAll(".remove-signature-btn").forEach((btn) => {
-            if (btn.getAttribute("data-id") !== "1") {
-                btn.addEventListener("click", function () {
-                    this.closest(".signature-item").remove();
-                    updateSignatures();
-                });
-            }
-        });
-
-        // Set initial dates
-        if (data.isoDate) {
-            updateAllDates(data.isoDate);
+            $("#signature-font-row").hidden = state.display !== "names";
         }
 
-        // Set the initial signature text dynamically
-        updateSignatures();
-
-        // Function to update signatures in the sheet
-        function updateSignatures() {
-            const signatureItems = document.querySelectorAll(".signature-item");
-            const signatureArea = document.getElementById("signature-area");
-
-            let savedSigs = [];
-            signatureItems.forEach((item) => {
-                const parts = item.id.split("-");
-                if (parts.length >= 3) {
-                    const id = parts[2];
-                    const titleEl = document.getElementById(`signature-title-${id}`);
-                    const nameEl = document.getElementById(`signature-name-${id}`);
-
-                    if (titleEl && nameEl) {
-                        savedSigs.push({ title: titleEl.value, name: nameEl.value });
-                    }
+        function renderDates() {
+            container.querySelectorAll(".date-column").forEach(th => {
+                const i = Number(th.dataset.index);
+                if (i >= state.dates.length) {
+                    th.textContent = "";
+                    return;
                 }
+                const [y, m, d] = (state.dates[i] || "").split("-");
+                th.textContent = d ? `${d}/${m}/${y}` : `__/__/${new Date().getFullYear()}`;
             });
-
-            // Sort signatures for display
-            const titleOrder = {
-                "Lecturer Prof. Dr.": 1,
-                "Lecturer Assoc. Prof. Dr.": 2,
-                "Lecturer Dr.": 3,
-                "Assistant Lecturer": 4,
-            };
-
-            const displaySigs = [...savedSigs].sort((a, b) => {
-                const orderA = titleOrder[a.title] || 99;
-                const orderB = titleOrder[b.title] || 99;
-                if (orderA !== orderB) {
-                    return orderA - orderB;
-                }
-                return a.name.localeCompare(b.name);
+            const allSame = state.dates.every(date => date === state.dates[0]);
+            $("#all-dates-input").value = allSame ? state.dates[0] || "" : "";
+            container.querySelectorAll(".single-date-input").forEach(input => {
+                input.value = state.dates[Number(input.dataset.index)] || "";
             });
-
-            let signaturesHtml = "";
-            displaySigs.forEach((sig) => {
-                signaturesHtml += `
-                    <div style="margin-bottom: 40px;">
-                        <p style="font-weight: bold; font-size: 14px; margin-bottom: 2px;">${sig.title} ${sig.name}</p>
-                        <p style="font-size: 11px; font-style: italic; margin-top: 0;">(Signature)</p>
-                    </div>
-                `;
-            });
-
-            if (signatureArea) {
-                signatureArea.innerHTML = signaturesHtml;
-            }
-
-            // Save to localStorage whenever signatures are updated
-            if (data.storageKey) {
-                localStorage.setItem(
-                    `EIS_attendance_sigs_${data.storageKey}`,
-                    JSON.stringify(savedSigs),
-                );
-            }
         }
+
+        function renderPrintedDate() {
+            const [y, m, d] = state.printedDate.split("-");
+            $("#printed-date-display").innerHTML = `<i>Printed on:</i> ${d ? `${d}.${m}.${y}` : ""}`;
+        }
+
+        function renderSignatureArea() {
+            $("#signature-area").innerHTML = state.signers
+                .filter(s => s.name.trim())
+                .map(s => `
+                    <div class="signer">
+                        <p>${escapeHtml(`${s.title} ${s.name}`.trim())}</p>
+                        <small>(Signature)</small>
+                    </div>`).join("");
+            store.set(STORE.signers(data.storageKey), state.signers);
+        }
+
+        // The editable list; drawn again only when its order or length changes, so
+        // typing keeps its focus.
+        function renderSignerList(focusIndex = -1, focusSelector = "input") {
+            const list = $("#signatures-container");
+            const last = state.signers.length - 1;
+            list.innerHTML = state.signers.map((s, i) => `
+                <li class="signature-item" data-index="${i}">
+                    <span class="asg-order">${i + 1}</span>
+                    <select class="form-control input-sm" aria-label="Title of lecturer ${i + 1}">
+                        ${TITLES.map(t => `<option value="${escapeHtml(t)}"${t === s.title ? " selected" : ""}>${escapeHtml(t)}</option>`).join("")}
+                    </select>
+                    <input type="text" class="form-control input-sm" value="${escapeHtml(s.name)}" placeholder="Name Surname" aria-label="Name of lecturer ${i + 1}">
+                    <button type="button" class="asg-icon-btn" data-move="-1" title="Move up" aria-label="Move up"${i === 0 ? " disabled" : ""}><i class="fa fa-arrow-up" aria-hidden="true"></i></button>
+                    <button type="button" class="asg-icon-btn" data-move="1" title="Move down" aria-label="Move down"${i === last ? " disabled" : ""}><i class="fa fa-arrow-down" aria-hidden="true"></i></button>
+                    <button type="button" class="asg-icon-btn is-danger" data-remove title="Remove" aria-label="Remove lecturer ${i + 1}"${last === 0 ? " disabled" : ""}><i class="fa fa-times" aria-hidden="true"></i></button>
+                </li>`).join("");
+            if (focusIndex >= 0) {
+                const item = list.querySelector(`[data-index="${focusIndex}"]`);
+                (item?.querySelector(`${focusSelector}:not(:disabled)`) || item?.querySelector("input"))?.focus();
+            }
+            renderSignatureArea();
+        }
+
+        // --- Controls ---
+        $("#signature-display-select").value = state.display;
+        $("#signature-font-select").value = state.font;
+        $("#printed-date-input").value = state.printedDate;
+
+        $("#signature-display-select").addEventListener("change", event => {
+            state.display = event.target.value;
+            store.set(STORE.display, state.display);
+            renderMarks();
+        });
+        $("#signature-font-select").addEventListener("change", event => {
+            state.font = event.target.value;
+            store.set(STORE.font, state.font);
+            renderMarks();
+        });
+        $("#all-dates-input").addEventListener("change", event => {
+            state.dates = state.dates.map(() => event.target.value);
+            renderDates();
+        });
+        container.querySelectorAll(".single-date-input").forEach(input => {
+            input.addEventListener("change", () => {
+                state.dates[Number(input.dataset.index)] = input.value;
+                renderDates();
+            });
+        });
+        $("#printed-date-input").addEventListener("change", event => {
+            state.printedDate = event.target.value;
+            renderPrintedDate();
+        });
+
+        const signerList = $("#signatures-container");
+        signerList.addEventListener("input", event => {
+            const index = Number(event.target.closest(".signature-item")?.dataset.index);
+            if (isNaN(index)) return;
+            if (event.target.matches("input")) state.signers[index].name = event.target.value;
+            if (event.target.matches("select")) state.signers[index].title = event.target.value;
+            renderSignatureArea();
+        });
+        signerList.addEventListener("click", event => {
+            const button = event.target.closest("button");
+            const index = Number(button?.closest(".signature-item")?.dataset.index);
+            if (!button || isNaN(index)) return;
+            if (button.hasAttribute("data-remove")) {
+                state.signers.splice(index, 1);
+                renderSignerList(Math.min(index, state.signers.length - 1), "select");
+            } else {
+                const to = index + Number(button.dataset.move);
+                if (to < 0 || to >= state.signers.length) return;
+                [state.signers[index], state.signers[to]] = [state.signers[to], state.signers[index]];
+                renderSignerList(to, `[data-move="${button.dataset.move}"]`);
+            }
+        });
+        $("#add-signature-btn").addEventListener("click", () => {
+            state.signers.push({ title: "Lecturer Dr.", name: "" });
+            renderSignerList(state.signers.length - 1);
+        });
+
+        const close = () => {
+            container.remove();
+            document.removeEventListener("keydown", onKey, true);
+        };
+        const onKey = event => {
+            if (event.key === "Escape" && !event.target.closest?.("select")) close();
+        };
+        document.addEventListener("keydown", onKey, true);
+        $("#close-sheet-btn").addEventListener("click", close);
+        // A click on the dimmed page around the sheet closes it; a press that
+        // starts in a field and ends outside (selecting text) does not.
+        let pressedOutside = false;
+        container.addEventListener("mousedown", event => { pressedOutside = event.target === container; });
+        container.addEventListener("click", event => {
+            if (pressedOutside && event.target === container) close();
+            pressedOutside = false;
+        });
+        $("#print-sheet-btn").addEventListener("click", () => window.print());
+
+        renderMarks();
+        renderDates();
+        renderPrintedDate();
+        renderSignerList();
+        $("#print-sheet-btn").focus();
     }
 
     // Format date as DD.MM.YYYY or ISO format
     function formatDate(date, format = "regular") {
-        if (format === "iso") {
-            return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
-        }
-        return `${date.getDate().toString().padStart(2, "0")}.${(date.getMonth() + 1).toString().padStart(2, "0")}.${date.getFullYear()}`;
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return format === "iso" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
     }
 
-    // Initialize the script
-    function init() {
-        // Add button to the page
-        addAttendanceButton();
-    }
-
-    // Run the script
-    init();
+    addAttendanceButton();
 })();

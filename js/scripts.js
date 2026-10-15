@@ -4448,6 +4448,38 @@ function formatHoursAsPills(hoursString) {
         .join(' ');
 }
 
+// "Thu 15 Oct" for a request's YYYY-MM-DD date, with the year when it is not this one.
+function formatRequestDate(dateStr) {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateStr || '').trim());
+    if (!match) return String(dateStr || '');
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    const options = { weekday: 'short', day: 'numeric', month: 'short' };
+    if (date.getFullYear() !== new Date().getFullYear()) options.year = 'numeric';
+    return date.toLocaleDateString('en-GB', options).replace(',', '');
+}
+
+// A request's day as a pill: a calendar and "Thu 15 Oct".
+function requestDatePillHtml(dateStr) {
+    return dateStr
+        ? `<span class="req-pill is-date" title="${escapeHtml(dateStr)}"><i class="fa-regular fa-calendar" aria-hidden="true"></i>${escapeHtml(formatRequestDate(dateStr))}</span>`
+        : '';
+}
+
+// Request details: the day and then each hour ("12:40–13:30") as pills, in a row that wraps.
+function requestWhenHtml(dateStr, hoursString) {
+    const hours = String(hoursString || '').split(',').map(hour => hour.trim()).filter(Boolean);
+    const hourPills = hours.map(hour => `<span class="req-pill">${escapeHtml(hour.replace(/\s*-\s*/, '–'))}</span>`).join('');
+    return `<span class="req-when">${requestDatePillHtml(dateStr)}${hourPills}</span>`;
+}
+
+// The pending list: the day, then "Medical for 3 h"; the hours show in the dialog.
+function requestSummaryHtml(dateStr, hoursString, reason) {
+    const count = String(hoursString || '').split(',').filter(hour => hour.trim()).length;
+    const amount = count ? `${count} h` : '';
+    const text = reason ? (amount ? `${reason} for ${amount}` : reason) : amount;
+    return `<span class="req-when">${requestDatePillHtml(dateStr)}${text ? `<span class="req-reason">${escapeHtml(text)}</span>` : ''}</span>`;
+}
+
 /**
 * Direct EIS Export function with interactive UI, performance fixes, and dynamic sections.
 */
@@ -4714,11 +4746,25 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
             }
         });
 
-        const nameMap = {};
-        Object.entries(databaseMap).forEach(([k, v]) => nameMap[k] = v.name);
+        // Only what the EIS importer needs, by name: the hours each student scanned in
+        // this group that day, and everyone this course has seen, so a row EIS lists
+        // but Stando never saw stands out. No card IDs, and not the whole Student List.
+        const studentName = key => (key && !databaseMap[key]?.isStaff) ? String(databaseMap[key]?.name || '').trim() : '';
+        const attendance = {};
+        Object.entries(uidCounts).forEach(([key, count]) => {
+            const name = studentName(key);
+            if (name) attendance[name] = (attendance[name] || 0) + count;
+        });
+        const known = new Set(Object.keys(attendance));
+        logsForCourse.forEach(log => {
+            const name = studentName(lookupPrimaryUid(log.uid));
+            if (name) known.add(name);
+        });
 
         return {
+            version: 2,
             parameters: {
+                eisId: String(eisId),
                 week: weekSelect.value,
                 hours: hoursInput.value,
                 category: selectedSection,
@@ -4732,8 +4778,8 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
                 markExemptedAsAbsent: document.getElementById('mark-exempted-option').checked,
                 manualHours: document.getElementById('manual-hours-check').checked // <-- KEY FLAG
             },
-            attendance: uidCounts,
-            nameMap: nameMap
+            attendance,
+            known: [...known]
         };
     };
 
@@ -6759,16 +6805,17 @@ function renderAbsencesTable(requests) {
             sessionBadge = `<span class="session-badge">${escapeHtml(req.session)}</span>`;
         }
 
+        // The programme sits beside the name, and When is the day with the reason
+        // and how many hours (the hours themselves are in the dialog), so the row
+        // fits the panel without scrolling sideways.
+        const programmeId = studentProgrammeId(req.email);
         row.innerHTML = `
             <td class="person-cell">
-                <div class="person-name">${escapeHtml(req.name)}</div>
+                <div class="person-name">${escapeHtml(req.name)}${programmeById(programmeId) ? ` ${programmeBadgeHtml(programmeId)}` : ''}</div>
                 <small class="person-email">${escapeHtml(req.email)}</small>
             </td>
-            <td class="programme-cell">${programmeBadgeHtml(studentProgrammeId(req.email))}</td>
             <td class="course-col">${courseCellHtml(req.course, sessionBadge ? ` ${sessionBadge}` : '')}</td>
-            <td class="date-col">${escapeHtml(req.absenceDate)}</td>
-            <td class="times-cell">${formatHoursAsPills(req.hours)}</td>
-            <td class="reason-col">${escapeHtml(req.reasonType)}</td>
+            <td class="when-cell">${requestSummaryHtml(req.absenceDate, req.hours, req.reasonType)}</td>
             <td class="actions-cell">
                 <div class="actions-cell-content card-actions">
                     ${rowMenuHtml([{
@@ -6830,77 +6877,43 @@ function showPermissionDetailsDialog(data, isReadOnly = false) {
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
 
-    let attachmentHtml = '<span style="opacity:0.5; font-style:italic;">No attachment</span>';
+    let attachmentHtml = '<span class="req-detail-empty">No attachment</span>';
     if (data.attachmentUrl) {
         // openAttachment() handles both legacy Drive URLs and Storage paths
-        attachmentHtml = `<a href="#" data-att="${escapeHtml(data.attachmentUrl)}" onclick="openAttachment(this.dataset.att); return false;" class="btn-attachment"><i class="fa-solid fa-paperclip"></i> View Document</a>`;
+        attachmentHtml = `<a href="#" data-att="${escapeHtml(data.attachmentUrl)}" onclick="openAttachment(this.dataset.att); return false;" class="btn-attachment"><i class="fa-solid fa-paperclip" aria-hidden="true"></i> View document</a>`;
     }
 
-    // Determine Action Buttons based on context
-    let actionsHtml = '';
-    if (isReadOnly) {
-        actionsHtml = `<button id="close-details-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Close</button>`;
-    } else {
-        actionsHtml = `
-            <button id="close-details-btn" class="btn-secondary" style="margin-right:auto;"><i class="fa-solid fa-xmark"></i> Close</button>
-            <button id="reject-req-btn" class="btn-red"><i class="fa-solid fa-ban"></i> Reject</button>
-            <button id="approve-req-btn" class="btn-green"><i class="fa-solid fa-check"></i> Approve</button>
-        `;
-    }
+    // The × in the title bar closes, as in every dialog; the footer holds only the
+    // decisions, so a request from History (read only) has none.
+    const actionsHtml = isReadOnly ? '' : `
+        <div class="dialog-actions">
+            <button type="button" id="reject-req-btn" class="btn-red"><i class="fa-solid fa-ban" aria-hidden="true"></i> Reject</button>
+            <button type="button" id="approve-req-btn" class="btn-green"><i class="fa-solid fa-check" aria-hidden="true"></i> Approve</button>
+        </div>`;
 
-    // Handle session badge if present
-    let sessionHtml = '';
-    if (data.session && data.session !== 'Default') {
-        sessionHtml = `<span style="background:#e3f2fd; color:var(--primary-color); font-weight:700; font-size:0.8em; padding:2px 8px; border-radius:4px; margin-left:10px;">${escapeHtml(data.session)}</span>`;
-    }
+    const sessionHtml = (data.session && data.session !== 'Default')
+        ? `<span class="session-badge">${escapeHtml(data.session)}</span>` : '';
+    const programme = programmeById(studentProgrammeId(data.studentEmail));
+
+    // Values read as text under their labels, not as greyed-out fields.
+    const detailRow = (label, valueHtml) => `
+            <div class="req-detail">
+                <span class="req-detail-label">${label}</span>
+                <div class="req-detail-value">${valueHtml}</div>
+            </div>`;
 
     dialog.innerHTML = `
-        <h3 class="dialog-title"><i class="fa-solid fa-circle-info"></i> Request Details</h3>
-        <div class="dialog-content">
-            <div class="form-group" style="align-items: flex-start;">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-user"></i> Student</label>
-                <div class="form-control" style="border:none;">
-                    <strong>${escapeHtml(data.studentName)}</strong><br>
-                    <small style="opacity:0.7">${escapeHtml(data.studentEmail)}</small>
-                </div>
-            </div>
-
-            ${programmeById(studentProgrammeId(data.studentEmail)) ? `
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-graduation-cap"></i> Programme</label>
-                <div class="form-control" style="border:none;">${escapeHtml(programmeOptionLabel(programmeById(studentProgrammeId(data.studentEmail))))}</div>
-            </div>` : ''}
-
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-book"></i> Course</label>
-                <div class="form-control" style="border:none; display:flex; align-items:center; flex-wrap:wrap;">
-                    ${data.course ? courseCellHtml(data.course, sessionHtml ? ` ${sessionHtml}` : '') : 'N/A'}
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-regular fa-clock"></i> Date/Time</label>
-                <input class="form-control" value="${escapeHtml(data.absenceDate)} (${escapeHtml(data.hours)})" disabled>
-            </div>
-
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-tag"></i> Reason</label>
-                <input class="form-control" value="${escapeHtml(data.reasonType)}" disabled>
-            </div>
-
-            <div class="form-group" style="align-items:flex-start;">
-                <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-align-left"></i> Description</label>
-                <textarea class="form-control" rows="3" disabled>${escapeHtml(data.description || 'No description provided.')}</textarea>
-            </div>
-
-            <div class="form-group">
-                <label class="dialog-label-fixed"><i class="fa-solid fa-paperclip"></i> Proof</label>
-                <div style="flex-grow:1;">${attachmentHtml}</div>
-            </div>
-        </div>
-        <div class="dialog-actions">
-            ${actionsHtml}
-        </div>
+        <h3 class="dialog-title">Request details</h3>
+        <div class="dialog-content request-details">
+            ${detailRow('Student', `<strong>${escapeHtml(data.studentName)}</strong>${programme ? ` ${programmeBadgeHtml(programme.id)}` : ''}<small class="req-detail-sub">${escapeHtml(data.studentEmail)}</small>`)}
+            ${detailRow('Course', data.course ? courseCellHtml(data.course, sessionHtml ? ` ${sessionHtml}` : '') : '<span class="req-detail-empty">None</span>')}
+            ${detailRow('Date and hours', requestWhenHtml(data.absenceDate, data.hours))}
+            ${detailRow('Reason', escapeHtml(data.reasonType) || '<span class="req-detail-empty">None given</span>')}
+            ${detailRow('Description', data.description
+        ? `<p class="req-detail-note">${escapeHtml(data.description)}</p>`
+        : '<span class="req-detail-empty">No description</span>')}
+            ${detailRow('Proof', attachmentHtml)}
+        </div>${actionsHtml}
     `;
 
     dialogBackdrop.appendChild(dialog);
@@ -6912,8 +6925,6 @@ function showPermissionDetailsDialog(data, isReadOnly = false) {
         }
         closeDialogMode();
     };
-
-    document.getElementById('close-details-btn').addEventListener('click', closeDialog);
 
     if (!isReadOnly) {
         document.getElementById('approve-req-btn').addEventListener('click', () => {
