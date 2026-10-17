@@ -5455,12 +5455,13 @@ function formatCardCode(value) {
 
 // A typed Card ID: the digits a scan shows, or a colon-separated hardware UID.
 // Scanned 4-byte cards never exceed 16777215, so longer numbers are a printed number.
+// Digits carry no UID: its last byte cannot be worked out from the Card ID.
 function parseTypedCardId(value) {
     const text = String(value || '').replace(/\s+/g, '').toLowerCase();
     if (/^\d+$/.test(text)) {
         const cardId = text.replace(/^0+(?=\d)/, '');
         if (cardId.length > 8 || Number(cardId) < 1 || Number(cardId) > 0xFFFFFF) return null;
-        return { cardId, hardwareUid: convertExternalIdToUid(cardId) };
+        return { cardId, hardwareUid: '' };
     }
     if (/^([0-9a-f]{2}:){3,9}[0-9a-f]{2}$/.test(text)) {
         return { cardId: convertUidToExternalId(text), hardwareUid: text };
@@ -5598,7 +5599,8 @@ function showRegisterUIDDialog() {
             email: currentUser.email,
             uid: card.cardId,
             hardwareUid: card.hardwareUid,
-            programmeId
+            programmeId,
+            source: 'scan'
         }, 'POST')
             .then(data => {
                 if (data && data.result === 'success') {
@@ -5935,13 +5937,14 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
 
         try {
-            // A request stores one value for the card: its UID when used, else its Card ID.
+            // The card's Card ID, and its UID when Use UID is on.
             const submissionData = {
                 name: name,
                 email: email,
-                uid: isGlobalAdmin ? card.cardId() : (card.uid() || card.cardId()),
+                uid: card.cardId(),
                 hardwareUid: card.uid(),
                 programmeId: programme.id,
+                source: 'staff',
                 sentBy: {
                     name: currentUser?.name || 'Admin',
                     email: currentUser?.email || ''
@@ -6070,11 +6073,12 @@ function studentCardLists(student) {
     return { ids: ids.length ? ids : uids.map(uidToCardId), uids };
 }
 
-// A new entry's card: its Card ID, and its UID only when one was given.
+// A new entry's card: its UID only when one was given, and its Card ID worked out
+// from that UID whenever there is one.
 function newEntryCard(data) {
     const card = splitCardValue(data.uid);
     const uid = normalizeUid(data.hardwareUid || data.hardware_uid) || card.uid;
-    return { cardId: card.cardId || uidToCardId(uid), uid };
+    return { cardId: uidToCardId(uid) || card.cardId, uid };
 }
 
 // The comparison rows for a card: its Card ID(s), and its UID(s) when there are any.
@@ -6343,7 +6347,7 @@ function showFinalApprovalDialog(registration) {
     dialog.innerHTML = `
     <h3 class="dialog-title">Approve Application</h3>
     <div class="dialog-content">
-        <p style="margin-bottom:15px;">Please review and confirm the details below.</p>
+        <p style="margin-bottom:15px;">${registration.source === 'friend' ? `A friend, ${escapeHtml(personNameByEmail(registration.sentBy))}, scanned this card. ` : ''}Please review and confirm the details below.</p>
         
         <div class="form-group">
             <label class="dialog-label-fixed" for="approve-name"><i class="fa-solid fa-quote-left"></i> Name</label>
@@ -6357,7 +6361,7 @@ function showFinalApprovalDialog(registration) {
 
         ${programmeFieldHtml('approve-programme', registration.programmeId)}
 
-        ${cardFieldsHtml('approve-card', splitCardValue(registration.uid))}
+        ${cardFieldsHtml('approve-card', newEntryCard(registration))}
         <div id="approve-nfc-status" style="margin-top:10px;"></div>
     </div>
     <div class="dialog-actions">
@@ -6409,7 +6413,8 @@ function showFinalApprovalDialog(registration) {
                 } else { throw new Error(result ? result.message : 'Approval failed.'); }
             }).catch(err => { showNotification('error', 'Approval Failed', err.message); confirmBtn.disabled = false; confirmBtn.innerHTML = idleLabel; });
         };
-        confirmUidRemoval([card], approve);
+        // Nothing is saved yet, so turning off Use UID only leaves the UID out.
+        approve();
     });
 }
 
@@ -6433,8 +6438,10 @@ function showDuplicateWarningDialog(newData, duplicates) {
     const norm = (str) => (str || '').toString().normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
     const isNameMatch = norm(newData.name) === norm(existing.name);
     const isEmailMatch = norm(newData.email) === norm(existing.email);
-    const isUidMatch = existingCards.ids.some(id => uidsEquivalent(id, newCard.cardId)) ||
-        (!!newCard.uid && existingCards.uids.some(uid => uidsEquivalent(uid, newCard.uid)));
+    // A scanned card the student has by Card ID alone can still add its UID (Merge).
+    const isUidMatch = newCard.uid
+        ? existingCards.uids.some(uid => uidsEquivalent(uid, newCard.uid))
+        : existingCards.ids.some(id => uidsEquivalent(id, newCard.cardId));
 
     // --- Dynamic HTML for checkboxes ---
     const nameActionHTML = isNameMatch ?
@@ -6458,7 +6465,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
     dialog.innerHTML = `
     <h3 class="dialog-title" style="color: var(--warning-color);"><i class="fa-solid fa-triangle-exclamation"></i> Similar Entry Found</h3>
     <div class="dialog-content">
-        <p style="margin-bottom: 15px;">An entry with similar data already exists.</p>
+        <p style="margin-bottom: 15px;">An entry with similar data already exists.${newData.source === 'friend' ? ` A friend, ${escapeHtml(personNameByEmail(newData.sentBy))}, scanned this card.` : ''}</p>
         
         <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
             <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">Existing Data</div>
@@ -6699,6 +6706,13 @@ function stopAdminAutoRefresh() {
     }
 }
 
+// The name on the student list for an email, or the email when it is not there.
+function personNameByEmail(email) {
+    const key = String(email || '').trim().toLowerCase();
+    const entry = key && Object.values(databaseMap).find(item => String(item?.email || '').trim().toLowerCase() === key);
+    return entry?.name || email || '';
+}
+
 // "3 pending" under a requests list's title.
 function setPendingCount(id, count) {
     const el = document.getElementById(id);
@@ -6716,21 +6730,20 @@ function renderRegistrationsTable(registrations) {
     registrations.forEach(reg => {
         const row = document.createElement('tr');
 
-        // Who sent it shows only when it was not the student (a lecturer registering a card).
+        // A friend's scan names the friend; otherwise who sent it shows only when it
+        // was not the student (a lecturer registering a card).
         const sentByOther = reg.sentBy && reg.sentBy.trim().toLowerCase() !== String(reg.email || '').trim().toLowerCase();
+        const sentNote = reg.source === 'friend'
+            ? `<small class="cell-note" title="A friend scanned the card (${escapeHtml(reg.sentBy)}), and ${escapeHtml(reg.name)} typed the code"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Scanned by ${escapeHtml(personNameByEmail(reg.sentBy))}</small>`
+            : sentByOther ? `<small class="cell-note">by ${escapeHtml(reg.sentBy)}</small>` : '';
         const sentAt = reg.timestamp ? new Date(reg.timestamp) : null;
         const formattedTimestamp = sentAt && !isNaN(sentAt)
             ? `${sentAt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}, ${formatScanLockTime(sentAt)}`
             : '—';
 
-        const rawUid = (reg.uid || '').toString().trim();
-        const isHex = rawUid.includes(':') || /^[0-9A-Fa-f]{8}$/.test(rawUid);
-        const hexUid = isHex ? rawUid : (convertExternalIdToUid(rawUid) || rawUid);
-        const decId = isHex ? (convertUidToExternalId(rawUid) || rawUid) : rawUid;
-        // The Card ID, with the card's UID under it.
-        const uidCellDisplay = (hexUid && decId && hexUid !== decId)
-            ? `<span class="card-id-badge">${escapeHtml(decId)}</span><small class="cell-sub" title="UID">UID ${escapeHtml(hexUid)}</small>`
-            : `<span class="card-id-badge">${escapeHtml(hexUid || reg.uid || 'N/A')}</span>`;
+        // The Card ID, with the UID it was read from under it when the request has one.
+        const card = newEntryCard(reg);
+        const uidCellDisplay = `<span class="card-id-badge">${escapeHtml(card.cardId || 'N/A')}</span>${card.uid ? `<small class="cell-sub" title="UID">UID ${escapeHtml(card.uid)}</small>` : ''}`;
 
         row.innerHTML = `
             <td class="person-cell">
@@ -6739,7 +6752,7 @@ function renderRegistrationsTable(registrations) {
             </td>
             <td class="programme-cell">${programmeBadgeHtml(reg.programmeId)}</td>
             <td class="id-cell">${uidCellDisplay}</td>
-            <td class="date-col">${escapeHtml(formattedTimestamp)}${sentByOther ? `<small class="cell-note">by ${escapeHtml(reg.sentBy)}</small>` : ''}</td>
+            <td class="date-col">${escapeHtml(formattedTimestamp)}${sentNote}</td>
             <td class="actions-cell">
                 <div class="actions-cell-content decision-pair">
                     <button type="button" class="decision-btn is-approve approve-reg-btn" title="Approve" aria-label="Approve ${escapeHtml(reg.name)}"><i class="fa-solid fa-check" aria-hidden="true"></i><span>Approve</span></button>
@@ -8219,15 +8232,22 @@ async function callSupabase(action, payload = {}) {
         case 'getPendingRegistrations': {
             const query = columns => supabaseClient.from('registrations').select(columns)
                 .order('submitted_at', { ascending: true });
-            let result = await query('id,name,uid,email,submitted_at,sent_by,programme_id');
-            if (SB_MISSING_COLUMN.includes(result.error?.code)) result = await query('id,name,uid,email,submitted_at,sent_by');
+            // Before the database has them, a request is read without its UID and source, then its programme.
+            let result;
+            for (const columns of ['id,name,uid,email,submitted_at,sent_by,programme_id,hardware_uid,source',
+                'id,name,uid,email,submitted_at,sent_by,programme_id', 'id,name,uid,email,submitted_at,sent_by']) {
+                result = await query(columns);
+                if (!SB_MISSING_COLUMN.includes(result.error?.code)) break;
+            }
             return (sbUnwrap(result) || []).map(row => ({
                 rowNumber: row.id,
                 name: row.name || '',
                 uid: row.uid || '',
+                hardwareUid: row.hardware_uid || '',
                 email: row.email || '',
                 timestamp: row.submitted_at || '',
                 sentBy: row.sent_by || '',
+                source: row.source || '',
                 programmeId: row.programme_id ?? null
             }));
         }
@@ -8320,18 +8340,23 @@ async function callSupabase(action, payload = {}) {
             const sentBy = payload.sentBy
                 ? (payload.sentBy.name || payload.sentBy.email || email)
                 : email;
+            // The Card ID comes from the UID the card was read from, when there is one.
+            const hardwareUid = normalizeUid(payload.hardwareUid);
             const registration = {
                 name: payload.name || '',
-                uid: payload.uid || '',
+                uid: uidToCardId(hardwareUid) || payload.uid || '',
                 email: payload.email || '',
                 submitted_at: new Date().toISOString(),
                 sent_by: sentBy
             };
-            let result = await supabaseClient.from('registrations')
-                .insert(payload.programmeId ? { ...registration, programme_id: payload.programmeId } : registration);
-            if (payload.programmeId && SB_MISSING_COLUMN.includes(result.error?.code)) {
-                result = await supabaseClient.from('registrations').insert(registration);
-            }
+            const programme = payload.programmeId ? { programme_id: payload.programmeId } : {};
+            const insert = row => supabaseClient.from('registrations').insert(row);
+            let result = await insert({ ...registration, ...programme, hardware_uid: hardwareUid || null, source: payload.source || null });
+            // Before the database has those columns, the uid column holds the UID itself (the
+            // Card ID follows from it); before programmes exist, the request goes without one.
+            const older = { ...registration, uid: hardwareUid || registration.uid };
+            if (SB_MISSING_COLUMN.includes(result.error?.code)) result = await insert({ ...older, ...programme });
+            if (payload.programmeId && SB_MISSING_COLUMN.includes(result.error?.code)) result = await insert(older);
             sbUnwrap(result);
             return { result: 'success', message: 'Registration submitted successfully' };
         }
@@ -8363,7 +8388,7 @@ async function callSupabase(action, payload = {}) {
             // Before the database issues codes, a typed Card ID is sent as it is.
             const card = parseTypedCardId(payload.code);
             if (!card) throw new Error("That isn't a Card ID. Check the number on your friend's screen.");
-            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid, programmeId: payload.programmeId });
+            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid, programmeId: payload.programmeId, source: 'friend' });
         }
 
         case 'deleteAbsenceRequest': {
@@ -8620,9 +8645,10 @@ async function callSupabase(action, payload = {}) {
 
         case 'approveRegistration': {
             // The card's UID is kept only when one was given; it is never guessed from the Card ID.
+            // When there is one, the Card ID comes from it.
             const card = splitCardValue(payload.uid);
             const hardwareUid = normalizeUid(payload.hardwareUid) || card.uid;
-            const studentId = card.cardId || uidToCardId(hardwareUid);
+            const studentId = uidToCardId(hardwareUid) || card.cardId;
 
             if (payload.approvalMode === 'custom_replace') {
                 const existing = sbUnwrap(await supabaseClient.from('students')
@@ -9949,10 +9975,12 @@ function uidToCardId(uid) {
     return normalized ? convertUidToExternalId(normalized) : '';
 }
 
-// A card as stored, whichever form it was saved in: { cardId, uid }.
+// A card as stored, whichever form it was saved in: { cardId, uid }. Digits alone
+// are a Card ID, even eight of them; a stored UID has letters or colons.
 function splitCardValue(value) {
-    const uid = normalizeUid(value);
-    return uid ? { cardId: uidToCardId(uid), uid } : { cardId: String(value || '').trim(), uid: '' };
+    const text = String(value || '').trim();
+    const uid = /^\d+$/.test(text) ? '' : normalizeUid(text);
+    return uid ? { cardId: uidToCardId(uid), uid } : { cardId: text, uid: '' };
 }
 
 function cardFieldsHtml(id, { cardId = '', uid = '', required = true, scan = nfcSupported } = {}) {

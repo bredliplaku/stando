@@ -82,6 +82,13 @@ Card ID never appears on either screen. This needs
 Before submitting, students choose their programme; an administrator can change
 it when approving the card.
 
+**New cards** shows each card's Card ID with the UID it was read from; the Card
+ID is always worked out from the UID. A card scanned by a friend says who
+scanned it. Approving opens with **Use UID** on; turn it off to save the Card ID
+only. This needs
+[supabase/migrations/registration_card_uid.sql](supabase/migrations/registration_card_uid.sql);
+requests sent before this change show the Card ID alone.
+
 On the sign-in page, a student's card is greeted with their name, as a check
 that it works; a staff card signs in. The greeting needs the current
 `kiosk-login` function (see [Deploy the functions](#deploy-the-functions)).
@@ -107,7 +114,8 @@ A card is known by its **Card ID**, the number a scan shows. Its **UID** (the
 chip's own number, such as `b5:01:fa:ce`) is optional: under **More settings**,
 turn on **Use UID** to type or scan it, and the Card ID then follows it. Cards
 saved with a UID open with it on; turning it off and saving removes the UID and
-keeps the Card ID. The same applies to staff cards and card approvals.
+keeps the Card ID. The same applies to staff cards. A scanned card request also
+opens with it on, and turning it off just leaves the UID out.
 
 Lecturers can export attendance for backup or later import. For courses using
 EIS, **Add to EIS** copies a day's attendance; the
