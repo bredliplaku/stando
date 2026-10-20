@@ -1010,16 +1010,18 @@ function renderTableSkeletons() {
     const tbody = document.getElementById('logs-tbody');
     if (!tbody) return;
 
-    let html = '';
-    // Five rows matching the table: Name, Date, Time and, for the course's admins, Actions.
-    const actionsCell = isAdminForCourse(currentCourse) ? '<td><span class="skeleton-bar short"></span></td>' : '';
+    // Five rows built from the list's own cells, so they lay out as its rows do at
+    // every width: the name, the date, each group's label and times (empty pills the
+    // size of a time) and, for the course's admins, Edit and ⋯.
+    const timeRow = count => `<div class="time-row"><span class="cat-label"><span class="skeleton-bar skeleton-label"></span></span>` +
+        `<div class="pills-wrapper">${'<span class="time-tag skeleton-pill">00:00</span>'.repeat(count)}</div></div>`;
+    const actionsCell = isAdminForCourse(currentCourse)
+        ? '<td class="actions-cell"><div class="actions-cell-content card-actions"><span class="skeleton-bar skeleton-edit"></span><span class="skeleton-bar skeleton-menu"></span></div></td>'
+        : '';
     const selectCell = isBulkMode ? '<td class="select-column"></td>' : '';
-    for (let i = 0; i < 5; i++) {
-        html += `
-        <tr class="skeleton-row">
-            ${selectCell}<td><span class="skeleton-bar medium"></span></td><td class="date-column"><span class="skeleton-bar short"></span></td><td><span class="skeleton-bar medium"></span></td>${actionsCell}</tr>`;
-    }
-    tbody.innerHTML = html;
+    tbody.innerHTML = [[2, 2], [2, 1], [2], [1, 2], [2, 2]].map(groups => `
+        <tr class="skeleton-row" aria-hidden="true">
+            ${selectCell}<td class="name-cell name-column"><span class="skeleton-bar skeleton-name"></span></td><td class="date-cell date-column"><span class="skeleton-bar skeleton-date"></span></td><td class="times-cell times-cell-stacked">${groups.map(timeRow).join('')}</td>${actionsCell}</tr>`).join('');
 
     const countEl = document.getElementById('filtered-count');
     if (countEl) countEl.textContent = 'Loading…';
@@ -3622,7 +3624,7 @@ function refreshOpenSettings() {
 }
 
 // A student's profile: who they are, whether their Student ID card is registered
-// (its Card ID hidden, like a password), and their absence requests.
+// (its Card ID hidden, like a password), their colours, and their absence requests.
 async function showStudentProfileDialog() {
     const cardCount = ownStudentCardCount();
     const email = String(currentUser.email || '').toLowerCase();
@@ -3670,6 +3672,18 @@ async function showStudentProfileDialog() {
                     <button type="button" class="btn-blue btn-sm" data-action="register">Register</button>
                 </div>`}
             </section>
+            ${colourThemeSupported ? `
+            <section class="sp-section" aria-labelledby="sp-theme-title">
+                <h4 class="sp-section-title" id="sp-theme-title">Theme</h4>
+                <div class="sp-card">
+                    <span class="sp-card-icon sp-theme-icon" aria-hidden="true"><i class="fa-solid fa-palette"></i></span>
+                    <span class="sp-card-text">
+                        <strong>Colours</strong>
+                        <span class="sp-swatches" aria-hidden="true">${THEME_FAMILIES.map(({ id }) => `<span style="background: var(--${id}-main)"></span>`).join('')}</span>
+                    </span>
+                    <button type="button" class="btn-blue btn-sm" data-action="theme" title="Choose Stando's colours; they follow your account">Change</button>
+                </div>
+            </section>` : ''}
             <section class="sp-section" aria-labelledby="sp-requests-title">
                 <div class="sp-section-head">
                     <h4 class="sp-section-title" id="sp-requests-title">Absence requests</h4>
@@ -3697,6 +3711,7 @@ async function showStudentProfileDialog() {
         if (action === 'close') close();
         else if (action === 'register') { close(); showRegisterUIDDialog(); }
         else if (action === 'request') { close(); showRequestPermissionDialog(); }
+        else if (action === 'theme') { close(); showThemeDialog(); }
     });
     dialog.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') close();
@@ -4030,12 +4045,9 @@ function useColourTheme(theme) {
     } catch { /* The account still has it. */ }
 }
 
-// After sign-in: staff get their account's colours, everyone else Stando's.
+// After sign-in: everyone, students too, gets their own account's colours (the
+// row-level policies give each person only their own row).
 async function loadAccountColourTheme() {
-    if (!isAdmin) {
-        useColourTheme({});
-        return;
-    }
     const { data, error } = await supabaseClient.from('user_preferences').select('theme').maybeSingle();
     if (error) {
         colourThemeSupported = false;
@@ -4091,12 +4103,20 @@ function themePreviewHtml() {
         </div>`;
 }
 
+// Settings → Theme for staff; students have the same in a dialog of its own.
 function themeSectionHtml() {
     if (!colourThemeSupported) return '';
-    const value = family => accountColourTheme[family.id] || family.fallback;
     return `
         <div id="sect-theme" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            <div class="settings-scroll theme-settings">
+            ${themeSettingsHtml('settings-scroll')}
+        </div>`;
+}
+
+// The colours, a preview in them, then Reset and Save (bindThemeSection).
+function themeSettingsHtml(className = '') {
+    const value = family => accountColourTheme[family.id] || family.fallback;
+    return `
+            <div class="theme-settings ${className}">
                 <div class="settings-group-label">Theme colours <span class="theme-label-note">pick a swatch or type a code</span></div>
                 <div class="theme-colours">
                     ${THEME_FAMILIES.map(family => `
@@ -4112,15 +4132,35 @@ function themeSectionHtml() {
                     <button type="button" id="theme-reset-btn" class="btn-secondary"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</button>
                     <button type="button" id="theme-save-btn" class="btn-blue"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
                 </div>
-            </div>
-        </div>`;
+            </div>`;
+}
+
+// A student's colours: the Theme of Settings, opened from their profile. Saving closes it.
+function showThemeDialog() {
+    if (!colourThemeSupported) return;
+    openDialogMode();
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dialog-backdrop';
+    const dialog = document.createElement('div');
+    dialog.className = 'dialog theme-dialog';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.innerHTML = `
+        <h3 class="dialog-title"><i class="fa-solid fa-palette" aria-hidden="true"></i> Theme</h3>
+        <div class="dialog-content">${themeSettingsHtml()}</div>`;
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+    bindThemeSection(dialog, () => {
+        backdrop.remove();
+        closeDialogMode();
+    });
 }
 
 // Picking a colour (or typing its code) repaints the preview; Save paints the page
-// and stores the colours in the account. Reset puts Stando's colours back in the
-// fields, for Save to keep.
-function bindThemeSection(dialog) {
-    const section = dialog.querySelector('#sect-theme');
+// and stores the colours in the account, then calls onSaved. Reset puts Stando's
+// colours back in the fields, for Save to keep.
+function bindThemeSection(dialog, onSaved) {
+    const section = dialog.querySelector('.theme-settings');
     if (!section) return;
     const preview = section.querySelector('#theme-preview');
     const fields = THEME_FAMILIES.map(family => ({
@@ -4157,6 +4197,7 @@ function bindThemeSection(dialog) {
             await saveAccountColourTheme(read());
             section.querySelectorAll('input').forEach(input => { input._initialValue = input.value; });
             showNotification('success', 'Saved', 'Your colours are saved to your account.');
+            onSaved?.();
         } catch (error) {
             showNotification('error', 'Save Failed', error.message);
         } finally {

@@ -128,7 +128,8 @@
             <span class="sk-footer"><span class="sk sk-logo"></span><span class="sk sk-text sk-copyright"></span></span>
         </div>
 
-        <!-- Signed in: top bar, header, staff chips, courses, scan button and Scan History. -->
+        <!-- Signed in: top bar, header, staff chips, courses, groups, scan button and the
+             attendance list, each shaped and sized as the page draws it. -->
         <div class="sk-app">
             <div class="sk-topbar">
                 <span class="sk-topbar-group sk-staff">
@@ -153,15 +154,25 @@
                     <span class="sk-tab"><span class="sk sk-on-primary"></span></span>
                 </span>
             </div>
+            <!-- Course tabs in a segmented row, the chosen one a pill in the app's colour. -->
             <div class="sk-courses">
+                <span class="sk-course is-active"><span class="sk sk-on-primary"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
                 <span class="sk-course"><span class="sk"></span></span>
             </div>
+            <!-- Lecturers: the group tracks (category, then letter), each with its raised thumb. -->
+            <div class="sk-groups sk-staff">
+                <span class="sk-track"><span class="sk-thumb"><span class="sk"></span></span><span class="sk-option"><span class="sk"></span></span></span>
+                <span class="sk-track is-letters"><span class="sk-thumb"><span class="sk"></span></span><span class="sk-option"><span class="sk"></span></span></span>
+            </div>
             <span class="sk-scan sk-nfc sk-staff"><span class="sk sk-on-primary"></span></span>
             <div class="sk-module">
-                <div class="sk-module-header"><span class="sk sk-module-title"></span><span class="sk sk-text sk-module-count"></span></div>
+                <div class="sk-module-header">
+                    <span class="sk-module-heading"><span class="sk sk-module-title"></span><span class="sk sk-text sk-module-count"></span></span>
+                    <span class="sk sk-module-refresh"></span>
+                </div>
                 <div class="sk-module-body">
                     <div class="sk-filter">
                         <span class="sk sk-field"></span>
@@ -169,11 +180,41 @@
                         <span class="sk sk-round sk-add sk-staff"></span>
                         <span class="sk sk-round sk-staff"></span>
                     </div>
-                    <span class="sk sk-day"></span>
-                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
-                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
-                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
-                    <span class="sk-log"><span class="sk sk-text"></span><span class="sk sk-text sk-time"></span></span>
+                    <!-- Lecturers: a day's band, its date in the middle and Add to EIS at the end. -->
+                    <span class="sk-day sk-staff"><span class="sk sk-day-date"></span><span class="sk sk-day-eis"></span></span>
+                    <!-- Rows: the name (a student's day beside or under it), each group's label
+                         and times, then Edit and ⋯. -->
+                    <span class="sk-log">
+                        <span class="sk sk-name"></span><span class="sk sk-date sk-student"></span>
+                        <span class="sk-times">
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+                        </span>
+                        <span class="sk-row-actions sk-staff"><span class="sk"></span><span class="sk"></span></span>
+                    </span>
+                    <span class="sk-log">
+                        <span class="sk sk-name"></span><span class="sk sk-date sk-student"></span>
+                        <span class="sk-times">
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span></span>
+                        </span>
+                        <span class="sk-row-actions sk-staff"><span class="sk"></span><span class="sk"></span></span>
+                    </span>
+                    <span class="sk-log">
+                        <span class="sk sk-name"></span><span class="sk sk-date sk-student"></span>
+                        <span class="sk-times">
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+                        </span>
+                        <span class="sk-row-actions sk-staff"><span class="sk"></span><span class="sk"></span></span>
+                    </span>
+                    <span class="sk-log">
+                        <span class="sk sk-name"></span><span class="sk sk-date sk-student"></span>
+                        <span class="sk-times">
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span></span>
+                            <span class="sk-line"><span class="sk sk-label"></span><span class="sk sk-pill"></span><span class="sk sk-pill"></span></span>
+                        </span>
+                        <span class="sk-row-actions sk-staff"><span class="sk"></span><span class="sk"></span></span>
+                    </span>
                 </div>
             </div>
         </div>

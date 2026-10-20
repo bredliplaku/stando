@@ -1113,10 +1113,11 @@
             /* White check on the blue background */
         }
 
-        /* --- Feature 4: Skeleton Loading --- */
-        .skeleton-row td {
-            padding: 15px;
-            border-top: 1px solid #eee;
+        /* --- Skeleton rows (renderTableSkeletons): the list's own cells, laid out
+           as its rows are, their text replaced by bones; a time is an empty pill
+           the size of a time. --- */
+        .skeleton-row {
+            pointer-events: none;
         }
 
         .skeleton-bar {
@@ -1132,12 +1133,62 @@
             background: rgba(255, 255, 255, 0.08);
         }
 
-        .skeleton-bar.short {
-            width: 40%;
+        .skeleton-bar.skeleton-name {
+            width: 120px;
+            max-width: 100%;
+            height: 13px;
         }
 
-        .skeleton-bar.medium {
-            width: 70%;
+        .skeleton-row:nth-child(even) .skeleton-name {
+            width: 96px;
+        }
+
+        .skeleton-row:nth-child(3) .skeleton-name {
+            width: 144px;
+        }
+
+        .skeleton-bar.skeleton-date {
+            width: 78px;
+            max-width: 100%;
+        }
+
+        .skeleton-bar.skeleton-label {
+            width: 44px;
+            height: 9px;
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--primary-600) 20%, transparent);
+        }
+
+        .dark-mode .skeleton-bar.skeleton-label {
+            background: color-mix(in srgb, var(--primary-200) 28%, transparent);
+        }
+
+        .time-tag.skeleton-pill {
+            color: transparent;
+            animation: sk-breathe 2.4s ease-in-out infinite;
+        }
+
+        .skeleton-bar.skeleton-edit {
+            width: 70px;
+            height: 32px;
+            border-radius: 16px;
+        }
+
+        .skeleton-bar.skeleton-menu {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+        }
+
+        /* Block-level: bones have no text, so an inline box would add a line under them. */
+        .skeleton-row .card-actions {
+            display: flex;
+        }
+
+        @media (max-width: 768px) {
+            .skeleton-bar.skeleton-edit {
+                width: 32px;
+            }
         }
 
         /* --- Feature 5: Form Sections & Required Fields --- */
@@ -5195,6 +5246,28 @@ body.signed-out #main-container {
     user-select: none;
 }
 
+/* Theme: the colours in use, a dot each, and Change (showThemeDialog). */
+.sp-card-icon.sp-theme-icon {
+    background: var(--primary-color);
+}
+
+.sp-swatches {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+}
+
+.sp-swatches > span {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+
+.theme-dialog {
+    max-width: 600px;
+}
+
 .sp-pill {
     flex-shrink: 0;
     padding: 3px 10px;
@@ -9216,10 +9289,15 @@ html.scan-locked body {
     --sk-page: #f4f4f4;
     --sk-card: #fff;
     --sk-card-border: transparent;
-    --sk-course: #fff;
+    --sk-course: #e6e6e6;
     --sk-bone: #eceef3;
     --sk-bone-page: #e1e4eb;
-    --sk-bone-course: #eceef3;
+    --sk-bone-course: rgba(0, 0, 0, 0.07);
+    --sk-track: rgba(15, 23, 42, 0.06);
+    --sk-thumb: #fff;
+    --sk-thumb-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 2px 8px -2px rgba(15, 23, 42, 0.12);
+    --sk-pill: var(--tertiary-50);
+    --sk-band: color-mix(in srgb, var(--primary-400) 5%, transparent);
     --sk-accent: color-mix(in srgb, var(--primary-600) 20%, transparent);
     --sk-on-primary: rgba(255, 255, 255, 0.2);
     --sk-banner: linear-gradient(135deg, var(--primary-600), var(--primary-900));
@@ -9241,10 +9319,15 @@ html.scan-locked body {
     --sk-page: #000;
     --sk-card: #121212;
     --sk-card-border: #333;
-    --sk-course: #444;
+    --sk-course: #1f1f20;
     --sk-bone: rgba(255, 255, 255, 0.08);
     --sk-bone-page: rgba(255, 255, 255, 0.1);
-    --sk-bone-course: rgba(255, 255, 255, 0.12);
+    --sk-bone-course: rgba(255, 255, 255, 0.1);
+    --sk-track: rgba(255, 255, 255, 0.08);
+    --sk-thumb: #3a3a3e;
+    --sk-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    --sk-pill: #202c68e5;
+    --sk-band: color-mix(in srgb, var(--primary-400) 10%, transparent);
     --sk-accent: color-mix(in srgb, var(--primary-200) 28%, transparent);
     --sk-on-primary: rgba(255, 255, 255, 0.14);
     --sk-banner: linear-gradient(135deg, #2c3e50, var(--primary-900));
@@ -9582,26 +9665,31 @@ html:not([data-stando-nfc]) .sk-nfc {
     height: 16px;
 }
 
+/* Course tabs: grey and flat in a segmented row (its last end rounded), each as
+   wide as its code; the chosen one a pill in the app's colour, as wide as a name. */
 .sk-courses {
     --sk-delay: 0.24s;
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 3px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 2px;
     margin-bottom: 20px;
 }
 
 .sk-course {
     display: flex;
+    flex: 0 0 auto;
     align-items: center;
     justify-content: center;
-    height: 51px;
+    box-sizing: border-box;
+    height: 38px;
+    padding: 0 22px;
     border-radius: 8px;
     background: var(--sk-course);
-    box-shadow: var(--sk-shadow-soft);
 }
 
-.sk-course:first-child {
-    border-radius: 20px 8px 8px 20px;
+.sk-course.is-active {
+    border-radius: 20px;
+    background: var(--sk-primary);
 }
 
 .sk-course:last-child {
@@ -9609,9 +9697,66 @@ html:not([data-stando-nfc]) .sk-nfc {
 }
 
 .sk-course .sk {
-    width: 64px;
-    height: 14px;
+    width: 56px;
+    max-width: 100%;
+    height: 12px;
     background: var(--sk-bone-course);
+}
+
+.sk-course.is-active .sk {
+    width: 168px;
+    background: var(--sk-on-primary);
+}
+
+/* Lecturers' groups: a soft track each, the chosen part raised; side by side. */
+.sk-groups {
+    --sk-delay: 0.28s;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-bottom: 20px;
+}
+
+.sk-track {
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 16px;
+    background: var(--sk-track);
+}
+
+.sk-thumb,
+.sk-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-sizing: border-box;
+    width: 104px;
+    height: 30px;
+    border-radius: 12px;
+}
+
+.sk-track.is-letters > span {
+    width: 44px;
+}
+
+.sk-thumb {
+    background: var(--sk-thumb);
+    box-shadow: var(--sk-thumb-shadow);
+}
+
+.sk-track .sk {
+    width: 48px;
+    height: 10px;
+    border-radius: 5px;
+}
+
+.sk-track.is-letters .sk {
+    width: 10px;
+}
+
+.sk-thumb .sk {
+    background: var(--sk-accent);
 }
 
 /* The scan pill, as on the page: 58px tall, at most 480px wide. Lecturers only. */
@@ -9651,12 +9796,24 @@ html:not([data-stando-nfc]) .sk-nfc {
     background: #1c1c1e;
 }
 
-/* The panel's header: its title and count, as in .list-panel. */
+/* The panel's header: its title and count, as in .list-panel, and Refresh. */
 .sk-module-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    padding: 22px 20px 6px 22px;
+}
+
+.sk-module-heading {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 24px 22px 6px;
+}
+
+.sk-module-refresh {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
 }
 
 .sk-module-title {
@@ -9703,33 +9860,127 @@ html:not([data-stando-nfc]) .sk-nfc {
     width: 92px;
 }
 
+/* A day's band: its date centred, Add to EIS at the end. */
 .sk-day {
     --sk-delay: 0.52s;
-    width: 94px;
-    height: 26px;
-    margin-bottom: 14px;
-    border-radius: 13px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 56px;
+    border-radius: 12px;
+    background: var(--sk-band);
 }
 
+.sk-day-date {
+    width: 125px;
+    height: 32px;
+    border-radius: 16px;
+    background: var(--sk-accent);
+}
+
+.sk-day-eis {
+    position: absolute;
+    right: 16px;
+    width: 109px;
+    height: 34px;
+    border-radius: 17px;
+    background: var(--sk-accent);
+}
+
+/* A row as in the list: the name in the first 41%, a student's day beside it, each
+   group's label and its segmented times, then Edit and ⋯. */
 .sk-log {
     --sk-delay: 0.6s;
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: 41% auto minmax(0, 1fr) auto;
+    grid-template-areas: "name date times actions";
     align-items: center;
-    padding: 16px 0;
-    border-top: 1px solid var(--sk-divider);
+    padding: 13px 0;
+    border-bottom: 1px solid var(--sk-divider);
 }
 
-.sk-log .sk-text {
-    width: 34%;
+.sk-log:last-child {
+    border-bottom: 0;
 }
 
-.sk-log .sk-time {
+.sk-name {
+    grid-area: name;
+    width: 120px;
+    max-width: calc(100% - 14px);
+    height: 13px;
+    margin-left: 14px;
+}
+
+.sk-log:nth-child(even) .sk-name {
+    width: 96px;
+}
+
+.sk-log:nth-child(4n + 1) .sk-name {
+    width: 144px;
+}
+
+.sk-date {
+    grid-area: date;
+    width: 78px;
+    height: 12px;
+    margin: 0 28px 0 14px;
+}
+
+.sk-times {
+    grid-area: times;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 14px;
+}
+
+.sk-line {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.sk-label {
+    width: 44px;
+    height: 9px;
+    margin-right: 20px;
+    border-radius: 4px;
+    background: var(--sk-accent);
+}
+
+.sk.sk-pill {
     width: 52px;
+    height: 32px;
+    border-radius: 4px;
+    background: var(--sk-pill);
 }
 
-.sk-log:nth-of-type(odd) .sk-text:first-child {
-    width: 42%;
+.sk-label + .sk-pill {
+    border-top-left-radius: 12px;
+    border-bottom-left-radius: 12px;
+}
+
+.sk-line > .sk-pill:last-child {
+    border-top-right-radius: 12px;
+    border-bottom-right-radius: 12px;
+}
+
+.sk-row-actions {
+    grid-area: actions;
+    display: flex;
+    gap: 2px;
+    padding-right: 14px;
+}
+
+.sk-row-actions > .sk {
+    width: 32px;
+    height: 32px;
+    border-radius: 16px;
+}
+
+.sk-row-actions > .sk:first-child {
+    width: 70px;
 }
 
 /* --- Phones and small tablets: the top bar shows icons, courses go two by two --- */
@@ -9793,18 +10044,41 @@ html:not([data-stando-nfc]) .sk-nfc {
         width: 50%;
     }
 
-    .sk-courses {
-        grid-template-columns: 1fr 1fr;
-        gap: 6px 4px;
-        margin-bottom: 10px;
+    /* Courses fill their lines, 44px tall: the chosen one and one more, then three. */
+    .sk-course {
+        flex: 1 1 25%;
+        height: 44px;
+        padding: 0 14px;
     }
 
-    .sk-course:nth-child(odd) {
+    .sk-course.is-active {
+        flex-basis: 55%;
+    }
+
+    .sk-course:nth-child(2) {
+        flex-basis: 30%;
+        border-radius: 8px 20px 20px 8px;
+    }
+
+    .sk-course:nth-child(3) {
         border-radius: 20px 8px 8px 20px;
     }
 
-    .sk-course:nth-child(even) {
-        border-radius: 8px 20px 20px 8px;
+    /* The groups: full-width tracks, one above the other, as tall as a course. */
+    .sk-groups {
+        flex-direction: column;
+    }
+
+    .sk-track {
+        padding: 3px;
+    }
+
+    .sk-track > span,
+    .sk-track.is-letters > span {
+        flex: 1 1 0;
+        width: auto;
+        height: 38px;
+        border-radius: 13px;
     }
 
     .sk-app > .sk-scan {
@@ -9831,6 +10105,81 @@ html:not([data-stando-nfc]) .sk-nfc {
     .sk-round.sk-sort,
     .sk-round.sk-add {
         width: 42px;
+    }
+}
+
+/* Phones keep the row: the name (a student's day under it), the times beside it in
+   a narrower label column, then Edit and ⋯ as icons. The day's date sits at the start. */
+@media (max-width: 760px) {
+    .sk-day {
+        justify-content: flex-start;
+        height: 49px;
+        padding: 0 4px;
+    }
+
+    .sk-day-date {
+        width: 112px;
+        height: 29px;
+    }
+
+    .sk-day-eis {
+        display: none;
+    }
+
+    .sk-log {
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-areas: "name times actions";
+        column-gap: 10px;
+        padding: 12px 2px 12px 4px;
+    }
+
+    html[data-stando-view="student"] .sk-log {
+        grid-template-areas: "name times actions" "date times actions";
+    }
+
+    html[data-stando-view="student"] .sk-name {
+        align-self: end;
+    }
+
+    .sk-name {
+        width: 70px;
+        margin: 0;
+    }
+
+    .sk-log:nth-child(even) .sk-name {
+        width: 56px;
+    }
+
+    .sk-log:nth-child(4n + 1) .sk-name {
+        width: 80px;
+    }
+
+    .sk-date {
+        align-self: start;
+        width: 70px;
+        height: 10px;
+        margin: 8px 0 0;
+    }
+
+    .sk-times {
+        padding-left: 0;
+    }
+
+    .sk-label {
+        margin-right: 14px;
+    }
+
+    .sk.sk-pill {
+        width: 46px;
+        height: 30px;
+    }
+
+    .sk-row-actions {
+        padding-right: 0;
+    }
+
+    .sk-row-actions > .sk:first-child {
+        width: 32px;
     }
 }
 
@@ -9867,7 +10216,8 @@ html:not([data-stando-nfc]) .sk-nfc {
     .sk,
     .sk-signin,
     .sk-app,
-    .skeleton-bar {
+    .skeleton-bar,
+    .skeleton-pill {
         animation: none;
     }
 
@@ -10778,12 +11128,9 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         align-self: center;
     }
 
-    #scanner-tab .logs-table tr:is(.day-separator, .skeleton-row) {
-        grid-column: 1 / -1;
-    }
-
     #scanner-tab .logs-table tr.day-separator {
         display: block;
+        grid-column: 1 / -1;
     }
 
     #scanner-tab .logs-table tr.day-separator td {
@@ -10827,20 +11174,6 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     #scanner-tab .logs-table.bulk-mode thead .select-column-header::after {
         content: 'Select all';
         letter-spacing: 0.04em;
-    }
-
-    #scanner-tab .logs-table tbody tr.skeleton-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        padding: 14px 4px;
-    }
-
-    #scanner-tab .logs-table tr.skeleton-row > td {
-        display: block;
-        flex: 1;
-        padding: 0;
-        border: 0;
     }
 }
 
