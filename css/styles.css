@@ -2263,7 +2263,7 @@
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 4px;
+            gap: 8px;
             /* Space between "Theory" row and "Lab" row */
             height: 100%;
         }
@@ -4179,8 +4179,10 @@
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
         }
 
-        /* Hide on Mobile (As requested) */
-        @media (max-width: 768px) {
+        /* Only beside the page, never over it: the panels are 1000px wide and centred
+           and the cat takes the window's last 160px, so it needs 1000 + 2 × 160px,
+           and up to 20px more for a scrollbar. */
+        @media (max-width: 1339px) {
             #cat-companion {
                 display: none !important;
             }
@@ -10480,6 +10482,16 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     #database-tab .database-table .actions-cell .row-edit-btn span {
         display: none;
     }
+
+    /* New cards fits too: Approve and Reject keep only their icons. */
+    .request-panel .decision-btn {
+        width: 32px;
+        padding: 0;
+    }
+
+    .request-panel .decision-btn span {
+        display: none;
+    }
 }
 
 /* Sort and programme as icons; the invisible select over each still opens
@@ -10639,14 +10651,34 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         grid-area: actions;
     }
 
-    /* Attendance: the name (with the date under it when sorted by name), the
-       times beside it, then Edit and ⋯. */
+    /* Attendance, as in the table: the name (with the date under it when sorted by
+       name), each group's label and times beside it, then Edit and ⋯. The list is
+       one grid of four columns (name, label, times, actions) that every row and
+       every times cell takes as its own (subgrid), so labels and times line up
+       from row to row, each column as wide as its widest entry. */
+    #scanner-tab .logs-table {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        column-gap: 10px;
+    }
+
+    /* Selecting: the box first, and no row buttons (the bar has the actions). */
+    #scanner-tab .logs-table.bulk-mode {
+        grid-template-columns: auto minmax(0, 1fr) auto auto;
+    }
+
+    #scanner-tab .logs-table tbody {
+        display: grid;
+        grid-column: 1 / -1;
+        grid-template-columns: subgrid;
+    }
+
     #scanner-tab .logs-table tbody tr:not(.day-separator) {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) auto auto;
-        grid-template-areas: "name times actions" "date times actions";
+        grid-column: 1 / -1;
+        grid-template-columns: minmax(0, 1fr) auto auto auto;
+        grid-template-columns: subgrid;
         align-items: center;
-        column-gap: 10px;
         padding: 10px 2px 10px 4px;
         border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
@@ -10661,20 +10693,7 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 
     #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator) {
         grid-template-columns: auto minmax(0, 1fr) auto auto;
-        grid-template-areas: "select name times actions" "select date times actions";
-    }
-
-    /* Under a day's heading the date is not repeated: one line, centred. */
-    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
-        grid-template-areas: "name times actions";
-    }
-
-    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody .name-cell {
-        align-self: center;
-    }
-
-    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
-        grid-template-areas: "select name times actions";
+        grid-template-columns: subgrid;
     }
 
     #scanner-tab .logs-table tbody tr:not(.day-separator) > td,
@@ -10686,10 +10705,9 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         background: transparent;
     }
 
-    #scanner-tab .logs-table tbody .select-column { grid-area: select; }
-
     #scanner-tab .logs-table tbody .name-cell {
-        grid-area: name;
+        grid-column: 1;
+        grid-row: 1;
         align-self: end;
         font-weight: 600;
         white-space: normal;
@@ -10698,7 +10716,8 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     }
 
     #scanner-tab .logs-table tbody .date-cell {
-        grid-area: date;
+        grid-column: 1;
+        grid-row: 2;
         align-self: start;
         margin-top: 2px;
         color: #78909c;
@@ -10706,13 +10725,61 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         text-align: left;
     }
 
-    #scanner-tab .logs-table tbody .times-cell { grid-area: times; }
-    #scanner-tab .logs-table tbody .actions-cell { grid-area: actions; }
+    /* Each group's label and times take the label and times columns. */
+    #scanner-tab .logs-table tbody tr:not(.day-separator) > td.times-cell {
+        display: grid;
+        grid-column: 2 / span 2;
+        grid-row: 1 / span 2;
+        grid-template-columns: auto auto;
+        grid-template-columns: subgrid;
+        align-content: center;
+        row-gap: 8px;
+    }
+
+    #scanner-tab .logs-table .time-row {
+        display: contents;
+    }
 
     #scanner-tab .logs-table .cat-label {
+        grid-column: 1;
+        align-self: center;
         width: auto;
-        min-width: 44px;
-        margin-right: 6px;
+        margin: 0;
+    }
+
+    #scanner-tab .logs-table .pills-wrapper {
+        grid-column: 2;
+        align-self: center;
+        justify-self: start;
+    }
+
+    #scanner-tab .logs-table tbody .actions-cell {
+        grid-column: 4;
+        grid-row: 1 / span 2;
+        width: auto;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody .select-column {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody :is(.name-cell, .date-cell) {
+        grid-column: 2;
+    }
+
+    #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator) > td.times-cell {
+        grid-column: 3 / span 2;
+    }
+
+    /* Under a day's heading the date is not repeated: the name is centred. */
+    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody .name-cell {
+        grid-row: 1 / span 2;
+        align-self: center;
+    }
+
+    #scanner-tab .logs-table tr:is(.day-separator, .skeleton-row) {
+        grid-column: 1 / -1;
     }
 
     #scanner-tab .logs-table tr.day-separator {
@@ -10762,7 +10829,7 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         letter-spacing: 0.04em;
     }
 
-    #scanner-tab .logs-table tr.skeleton-row {
+    #scanner-tab .logs-table tbody tr.skeleton-row {
         display: flex;
         align-items: center;
         gap: 12px;
@@ -11790,9 +11857,9 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     white-space: nowrap;
 }
 
-/* Request panels on phones: each request is a short card instead of a wide
-   row: who, then the course (or card), then a line of details; actions at the
-   top right. */
+/* Request panels on phones keep the line of a wide screen, as the attendance
+   does: the student on the left, then the course and when (or the card and when
+   it was sent) one above the other, and the actions at the right. */
 @media (max-width: 760px) {
     .collapsible-module .database-table,
     .collapsible-module .database-table tbody {
@@ -11806,17 +11873,18 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     }
 
     .collapsible-module .database-table tbody tr {
-        position: relative;
-        display: flex;
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto;
+        grid-template-areas: "person course actions" "person when actions";
         align-items: center;
-        gap: 6px 12px;
-        padding: 12px 52px 12px 4px;
+        gap: 4px 12px;
+        padding: 12px 4px;
         border-bottom: 1px solid rgba(0, 0, 0, 0.06);
     }
 
-    .collapsible-module .database-table tbody tr:has(.decision-pair) {
-        padding-right: 84px;
+    /* New cards: the programme under the student; the Card ID above when it was sent. */
+    #registrations-tbody tr {
+        grid-template-areas: "person id actions" "programme date actions";
     }
 
     .dark-mode .collapsible-module .database-table tbody tr {
@@ -11835,15 +11903,24 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         border: 0;
     }
 
-    .collapsible-module .database-table tbody :is(.person-cell, .course-col) {
-        flex: 1 1 100%;
+    .collapsible-module .database-table tbody .person-cell {
+        grid-area: person;
+        white-space: normal;
+    }
+
+    /* Names wrap, and the student keeps no wide screen's minimum width. */
+    #absences-tbody .person-cell,
+    #registrations-tbody td:first-child {
         min-width: 0;
         white-space: normal;
     }
 
-    /* Programme, date, hours and reason share one line under the course. */
-    .collapsible-module .database-table tbody td:not(.person-cell, .course-col) {
-        order: 2;
+    .collapsible-module .database-table tbody .person-name {
+        white-space: normal;
+    }
+
+    #registrations-tbody .person-cell {
+        align-self: end;
     }
 
     .collapsible-module .database-table tbody .person-email {
@@ -11852,25 +11929,44 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
         white-space: nowrap;
     }
 
+    .collapsible-module .database-table tbody .course-col {
+        grid-area: course;
+        align-self: end;
+        min-width: 0;
+        white-space: normal;
+    }
+
+    .collapsible-module .database-table tbody .when-cell {
+        grid-area: when;
+        align-self: start;
+        white-space: normal;
+    }
+
+    .collapsible-module .database-table tbody .programme-cell {
+        grid-area: programme;
+        align-self: start;
+    }
+
     .collapsible-module .database-table tbody .programme-cell:has(.cell-empty) {
         display: none;
     }
 
-    .collapsible-module .database-table tbody .actions-cell {
-        position: absolute;
-        top: 12px;
-        right: 4px;
-        width: auto;
+    .collapsible-module .database-table tbody .id-cell {
+        grid-area: id;
+        align-self: end;
     }
 
-    .collapsible-module .database-table tbody :is(.date-col, .reason-col) {
+    .collapsible-module .database-table tbody .date-col {
+        grid-area: date;
+        align-self: start;
         color: #78909c;
         font-size: 0.8125rem;
+        white-space: normal;
     }
 
-    .collapsible-module .database-table tbody .date-col .cell-note {
-        display: inline;
-        margin: 0 0 0 4px;
+    .collapsible-module .database-table tbody .actions-cell {
+        grid-area: actions;
+        width: auto;
     }
 }
 
@@ -12578,41 +12674,15 @@ body.is-selecting #scanner-tab {
         padding-bottom: 150px;
     }
 
-    /* Attendance rows on phones: the name has its own line (breaking only between
-       words), the session and times go under it, Edit and ⋯ at the side. */
-    #scanner-tab .logs-table tbody tr:not(.day-separator),
-    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
-        grid-template-columns: minmax(0, 1fr) auto;
-        grid-template-areas: "name actions" "date actions" "times actions";
-        row-gap: 6px;
-    }
-
-    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody tr:not(.day-separator) {
-        grid-template-areas: "name actions" "times actions";
-    }
-
+    /* Attendance rows on phones keep the wide screen's line: the name (breaking only
+       between words, with the date under it), the times beside it, Edit and ⋯ last. */
     #scanner-tab .logs-table tbody .name-cell {
-        align-self: auto;
         overflow-wrap: break-word;
         word-break: normal;
     }
 
-    #scanner-tab .logs-table tbody .date-cell {
-        margin-top: -2px;
-    }
-
     #scanner-tab .logs-table tbody .times-cell {
         white-space: normal;
-    }
-
-    #scanner-tab .logs-table tbody .time-row {
-        flex-wrap: wrap;
-        row-gap: 4px;
-    }
-
-    #scanner-tab .logs-table tbody .pills-wrapper {
-        flex-wrap: wrap;
-        row-gap: 2px;
     }
 
     #scanner-tab .logs-table tbody .actions-cell {
@@ -12620,17 +12690,9 @@ body.is-selecting #scanner-tab {
     }
 
     /* Selecting: the box on the left, no row buttons (the bar has the actions). */
-    #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator),
-    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
-        grid-template-columns: auto minmax(0, 1fr);
-        grid-template-areas: "select name" "select date" "select times";
-        column-gap: 12px;
+    #scanner-tab .logs-table.bulk-mode tbody tr:not(.day-separator) {
         padding-left: 8px;
         border-radius: 12px;
-    }
-
-    body.is-admin #scanner-tab .logs-table.sorting-by-date.bulk-mode tbody tr:not(.day-separator) {
-        grid-template-areas: "select name" "select times";
     }
 
     #scanner-tab .logs-table.bulk-mode tbody .actions-cell {
@@ -12656,6 +12718,34 @@ body.is-selecting #scanner-tab {
     /* The bar has Select all; the list's own "select all" line is not needed. */
     #scanner-tab .logs-table.bulk-mode thead {
         display: none !important;
+    }
+}
+
+/* Small phones: two times to a line and closer columns, so the name keeps its
+   room; each line of times is rounded at its ends. */
+@media (max-width: 480px) {
+    #scanner-tab .logs-table {
+        column-gap: 8px;
+    }
+
+    #scanner-tab .logs-table tbody .pills-wrapper {
+        display: grid;
+        grid-template-columns: repeat(2, auto);
+        gap: 4px 2px;
+    }
+
+    #scanner-tab .logs-table tbody .time-tag {
+        padding: 7px 2px;
+    }
+
+    #scanner-tab .logs-table tbody .pills-wrapper .time-tag:nth-child(odd) {
+        border-top-left-radius: var(--border-radius);
+        border-bottom-left-radius: var(--border-radius);
+    }
+
+    #scanner-tab .logs-table tbody .pills-wrapper .time-tag:is(:nth-child(even), :last-child) {
+        border-top-right-radius: var(--border-radius);
+        border-bottom-right-radius: var(--border-radius);
     }
 }
 
@@ -12739,6 +12829,7 @@ body.is-selecting #scanner-tab {
 }
 
 #session-label[hidden],
+body.signed-out #session-label,
 body.on-student-list:not(.signed-out) #session-label {
     display: none;
 }
@@ -13097,14 +13188,15 @@ body.on-student-list:not(.signed-out) #session-label {
     color: var(--primary-200);
 }
 
+/* Phones: 44px tall, to be tapped (the groups match, below). */
 @media (max-width: 768px) {
     #course-buttons-container .course-button,
     #course-buttons-container .course-button:hover {
         flex: 1 1 auto;
-        padding: 8px 12px;
-        font-size: 0.8em;
+        min-height: 44px;
+        padding: 0 14px;
+        font-size: 0.875rem;
     }
-
 }
 
 /* The note by a course button. */
@@ -13175,7 +13267,7 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 /* One height for course tabs and groups, with the same type: a group track, its
-   padding included, is as tall as a course tab (38px, and 32px on phones), so
+   padding included, is as tall as a course tab (38px, and 44px on phones), so
    its buttons are that less the padding. */
 #session-controls .course-button,
 #session-controls .course-button:hover,
@@ -13190,20 +13282,19 @@ body.on-student-list:not(.signed-out) #session-label {
     #session-controls .course-button,
     #session-controls .course-button:hover,
     #session-controls .course-button:active {
-        height: 26px;
-        min-height: 26px;
-        font-size: 0.8rem;
+        height: 38px;
+        min-height: 38px;
+        font-size: 0.875rem;
     }
 
     #session-category-group,
     #session-group-container {
         padding: 3px;
-        border-radius: 14px;
+        border-radius: 16px;
     }
 
-    #session-controls .course-button,
-    .segment-thumb {
-        border-radius: 11px !important;
+    #session-controls :is(.course-button, .segment-thumb) {
+        border-radius: 13px !important;
     }
 }
 
@@ -13264,6 +13355,13 @@ body.on-student-list:not(.signed-out) #session-label {
 .dialog .segment-track > .course-button.active,
 .dialog .segment-track > .course-button.active:hover {
     color: var(--primary-color);
+}
+
+/* The bulk dialogs' "Same as previous" / "Latest" has the track's first line; the
+   thumb slides down to the categories under it. */
+.dialog .segment-track > .course-button[data-val="INHERIT"],
+.dialog .segment-track > .course-button[data-val="INHERIT"]:hover {
+    flex-basis: 100%;
 }
 
 .dark-mode .dialog .segment-track {
@@ -13719,31 +13817,9 @@ body.on-student-list:not(.signed-out) #session-label {
     }
 }
 
-/* Phones: each request is a card. The actions take the top right beside the
-   name only, so the course and the pills use the full width below. */
+/* Phones: each request is one row block, so the row takes the hover tint and
+   its parts none. */
 @media (max-width: 760px) {
-    .request-panel .database-table tbody tr,
-    .request-panel .database-table tbody tr:has(.decision-pair) {
-        padding-right: 4px;
-    }
-
-    .request-panel .database-table tbody .person-cell {
-        padding-right: 44px;
-    }
-
-    .request-panel .database-table tbody tr:has(.decision-pair) .person-cell {
-        padding-right: 76px;
-    }
-
-    #absences-tbody .when-cell {
-        flex: 1 1 100%;
-        width: auto;
-        min-width: 0;
-        order: 0;
-        white-space: normal;
-    }
-
-    /* The card is one block: the row takes the hover tint, its parts none. */
     .request-panel .database-table tbody tr {
         border-radius: 12px;
     }
@@ -13762,12 +13838,6 @@ body.on-student-list:not(.signed-out) #session-label {
         .dark-mode .request-panel .database-table tbody tr:not(.day-separator):hover td {
             background-color: transparent;
         }
-    }
-
-    /* New cards: the card's UID beside its ID, not under it. */
-    #registrations-tbody .id-cell .cell-sub {
-        display: inline;
-        margin-left: 6px;
     }
 }
 

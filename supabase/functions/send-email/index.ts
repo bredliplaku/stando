@@ -222,7 +222,22 @@ async function getAllGlobalAdminEmails(): Promise<string[]> {
   const globalEmails = [...FALLBACK_GLOBAL_ADMINS];
   const { data } = await service.from("staff").select("email").eq("role", "Global");
   (data || []).forEach((row) => { if (row.email) globalEmails.push(row.email); });
-  return [...new Set(globalEmails)];
+  // One address per person, however its case was typed.
+  const seen = new Set<string>();
+  return globalEmails.map((email) => email.trim()).filter((email) => {
+    const key = email.toLowerCase();
+    if (!email || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// Card registration decisions are copied to every global administrator (Staff role
+// Global), never to lecturers, and never to the student the email is addressed to.
+async function getGlobalAdminCC(studentEmail: string): Promise<string[]> {
+  const student = studentEmail.trim().toLowerCase();
+  const admins = (await getAllGlobalAdminEmails()).filter((email) => email.toLowerCase() !== student);
+  return await formatAdminEmailsForCC(admins);
 }
 
 async function formatAdminEmailsForCC(emails: string[]): Promise<string[]> {
@@ -495,6 +510,7 @@ Deno.serve(async (req) => {
 
       await sendViaResend({
         to: [mailbox(name, email)],
+        cc: await getGlobalAdminCC(email),
         replyTo: callerMailbox,
         subject: "Your Student ID Card Application has been Approved",
         html: bodyHtml,
@@ -523,6 +539,7 @@ Deno.serve(async (req) => {
 
       await sendViaResend({
         to: [mailbox(name, email)],
+        cc: await getGlobalAdminCC(email),
         replyTo: callerMailbox,
         subject: "Your Student ID Card Application has been Rejected",
         html: bodyHtml,

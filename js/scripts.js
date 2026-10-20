@@ -467,183 +467,82 @@ function generateSessionOptions(selectedValue = '') {
 }
 
 /**
-* Generates Session Toggle Buttons.
+* The group picker of the Add Manual Log and bulk dialogs: the categories, then the
+* letters, as group tracks like the main screen's (segmentButtonHtml). An inherit
+* option, when named, takes the first line of the category track.
 * @param {string} prefix - ID prefix.
-* @param {boolean} includeInherit - Show "Same as previous".
-* @param {boolean} isCompact - Reduces padding/size for dialogs.
+* @param {string} inheritLabel - The inherit option's label, or '' for none.
 */
-
-
-/**
-* Generates Session Toggle Buttons.
-* @param {string} prefix - ID prefix.
-* @param {boolean} includeInherit - Show "Same as previous".
-* @param {boolean} isCompact - Reduces padding/size for dialogs.
-*/
-function renderSessionSelectorHTML(prefix, includeInherit = false, isCompact = false) {
+function renderSessionSelectorHTML(prefix, inheritLabel = '') {
     if (!currentCourse || !courseInfoMap[currentCourse]) return '';
 
-    const rawSections = courseInfoMap[currentCourse].availableSections || '';
-    const sectionsMap = parseAvailableSections(rawSections);
-    const categories = Object.keys(sectionsMap);
-
+    const categories = Object.keys(parseAvailableSections(courseInfoMap[currentCourse].availableSections || ''));
     if (categories.length === 0) return '';
 
-    // Compact styles
-    const btnStyle = isCompact ? 'padding: 8px 12px; font-size: 0.9em; min-width: auto;' : 'flex:1;';
-    const rowStyle = isCompact ? 'margin-bottom:8px; justify-content:flex-start; gap:8px;' : 'margin-bottom:8px; justify-content:flex-start; gap:5px;';
-
-    // 1. Inherit Button
-    let inheritHtml = '';
-    if (includeInherit) {
-        inheritHtml = `
-        <div class="course-buttons-container" style="${rowStyle}">
-            <div class="course-button active" id="${prefix}-btn-inherit" data-val="INHERIT" style="${btnStyle} width:100%; text-align:center;">
-                <i class="fa-solid fa-clock-rotate-left"></i>&nbsp; ${prefix === 'bulk' && includeInherit ? 'Latest / Same as Previous' : 'Same as Previous'}
-            </div>
-        </div>`;
-    }
-
-    // 2. Category Row
-    let catHtml = '';
-    const icons = { 'theory': 'fa-book', 'lab': 'fa-desktop', 'practice': 'fa-pen-to-square' };
-
-    categories.forEach(cat => {
-        const lowerCat = cat.toLowerCase();
-        const iconClass = icons[lowerCat] || 'fa-tag';
-        const isActive = !includeInherit && cat === categories[0] ? 'active' : '';
-
-        catHtml += `<div class="course-button ${isActive}" data-type="category" data-val="${cat}" style="${btnStyle}">
-            <i class="fa-solid ${iconClass}"></i>&nbsp; ${cat}
-        </div>`;
-    });
-
-    // 3. Group Row
-    let groupRowsHtml = '';
-    categories.forEach(cat => {
-        const groups = sectionsMap[cat] || [];
-        const isVisible = !includeInherit && cat === categories[0] ? 'flex' : 'none';
-
-        if (groups.length > 0) {
-            let btns = '';
-            groups.forEach((grp, idx) => {
-                const isActive = (!includeInherit && idx === 0) ? 'active' : '';
-                // Groups are always small squares
-                btns += `<div class="course-button ${isActive}" data-type="group" data-val="${grp}" style="min-width:40px; padding:8px 0; justify-content:center;"><b>${grp}</b></div>`;
-            });
-
-            groupRowsHtml += `<div class="course-buttons-container group-row" id="${prefix}-groups-${cat}" style="display:${isVisible}; ${rowStyle}">${btns}</div>`;
-        }
-    });
+    const inherit = inheritLabel ? segmentButtonHtml('data-val="INHERIT"', 'fa-clock-rotate-left', inheritLabel) : '';
+    const options = categories.map(cat =>
+        segmentButtonHtml(`data-val="${escapeHtml(cat)}"`, SESSION_ICONS[cat.toLowerCase()] || 'fa-tag', cat)).join('');
 
     return `
-    <div id="${prefix}-session-wrapper" style="margin-top:5px;">
-        <input type="hidden" id="${prefix}-selected-session" value="${includeInherit ? 'INHERIT' : categories[0] + ' ' + (sectionsMap[categories[0]]?.[0] || '')}">
-        ${inheritHtml}
-        <div class="course-buttons-container" id="${prefix}-cat-row" style="${rowStyle}">
-            ${catHtml}
-        </div>
-        ${groupRowsHtml}
+    <div id="${prefix}-session-wrapper" class="segment-rows">
+        <input type="hidden" id="${prefix}-selected-session" value="">
+        <div id="${prefix}-cat-row" class="segment-track">${inherit}${options}</div>
+        <div id="${prefix}-grp-row" class="segment-track" hidden></div>
     </div>`;
 }
 
 /**
- * Attaches event listeners to the generated Session Selector.
- * @param {string} containerIdPrefix - The prefix used in renderSessionSelectorHTML.
+ * Makes a picker from renderSessionSelectorHTML work; its hidden input holds the
+ * choice ("Theory B", "Lab" or INHERIT). As on the main screen, a category keeps the
+ * letter last picked when it has it, and a single letter is not shown.
+ * @param {string} prefix - The prefix used in renderSessionSelectorHTML.
  * @param {Object} sectionsMap - The parsed sections object.
+ * @param {string} initialSession - The choice to start on; otherwise the first option.
  */
+function setupSessionToggleListeners(prefix, sectionsMap, initialSession = '') {
+    const input = document.getElementById(`${prefix}-selected-session`);
+    const catRow = document.getElementById(`${prefix}-cat-row`);
+    const grpRow = document.getElementById(`${prefix}-grp-row`);
+    if (!input || !catRow || !grpRow) return;
 
+    let category = null;
+    let preferredLetter = null;
 
-/**
- * Attaches event listeners to the generated Session Selector.
- * @param {string} containerIdPrefix - The prefix used in renderSessionSelectorHTML.
- * @param {Object} sectionsMap - The parsed sections object.
- */
-function setupSessionToggleListeners(containerIdPrefix, sectionsMap) {
-    const wrapper = document.getElementById(`${containerIdPrefix}-session-wrapper`);
-    if (!wrapper) return;
-
-    const input = document.getElementById(`${containerIdPrefix}-selected-session`);
-    const inheritBtn = document.getElementById(`${containerIdPrefix}-btn-inherit`);
-    const catRow = document.getElementById(`${containerIdPrefix}-cat-row`);
-    const groupRows = wrapper.querySelectorAll('.group-row');
-
-    const updateValue = () => {
-        if (inheritBtn && inheritBtn.classList.contains('active')) {
-            input.value = 'INHERIT';
-            return;
-        }
-
-        const activeCat = catRow.querySelector('.course-button.active');
-        if (!activeCat) {
-            input.value = '';
-            return;
-        }
-
-        const catVal = activeCat.dataset.val;
-        const activeGroupRow = document.getElementById(`${containerIdPrefix}-groups-${catVal}`);
-        let groupVal = '';
-
-        if (activeGroupRow) {
-            const activeGrp = activeGroupRow.querySelector('.course-button.active');
-            if (activeGrp) groupVal = activeGrp.dataset.val;
-        }
-
-        // Construct session string (e.g., "Theory A" or just "Theory")
-        input.value = groupVal ? `${catVal} ${groupVal}` : catVal;
+    const markTrack = (track, value, animate) => {
+        track.querySelectorAll(':scope > .course-button').forEach(btn => btn.classList.toggle('active', btn.dataset.val === value));
+        updateSegmentThumb(track, animate);
     };
 
-    // 1. Inherit Click
-    if (inheritBtn) {
-        inheritBtn.addEventListener('click', () => {
-            inheritBtn.classList.add('active');
-            // Deactivate all categories
-            catRow.querySelectorAll('.course-button').forEach(b => b.classList.remove('active'));
-            // Hide all groups
-            groupRows.forEach(r => r.style.display = 'none');
-            updateValue();
-        });
-    }
+    const select = (nextCategory, animate = true) => {
+        const letters = sectionsMap[nextCategory] || [];
+        if (nextCategory !== category) {
+            setSegmentOptions(grpRow, letters.map(grp => segmentButtonHtml(`data-val="${escapeHtml(grp)}"`, '', grp)).join(''));
+            grpRow.hidden = letters.length <= 1;
+        }
+        category = nextCategory;
+        const letter = letters.includes(preferredLetter) ? preferredLetter : (letters[0] || '');
+        markTrack(catRow, category, animate);
+        markTrack(grpRow, letter, animate);
+        input.value = letter ? `${category} ${letter}` : category;
+    };
 
-    // 2. Category Click
+    const [initialCategory, initialLetter] = String(initialSession || '').split(' ');
+    const options = [...catRow.querySelectorAll(':scope > .course-button')].map(btn => btn.dataset.val);
+    preferredLetter = initialLetter || null;
+    select(options.includes(initialCategory) ? initialCategory : options[0], false);
+
     catRow.addEventListener('click', (e) => {
         const btn = e.target.closest('.course-button');
+        if (btn && btn.dataset.val !== category) select(btn.dataset.val);
+    });
+    grpRow.addEventListener('click', (e) => {
+        const btn = e.target.closest('.course-button');
         if (!btn) return;
-
-        // Activate Category
-        if (inheritBtn) inheritBtn.classList.remove('active');
-        catRow.querySelectorAll('.course-button').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-
-        const catVal = btn.dataset.val;
-
-        // Show relevant Group Row, hide others
-        groupRows.forEach(row => {
-            if (row.id === `${containerIdPrefix}-groups-${catVal}`) {
-                row.style.display = 'flex';
-                // Auto-select first group if none active
-                if (!row.querySelector('.course-button.active')) {
-                    const first = row.querySelector('.course-button');
-                    if (first) first.classList.add('active');
-                }
-            } else {
-                row.style.display = 'none';
-            }
-        });
-        updateValue();
+        preferredLetter = btn.dataset.val;
+        select(category);
     });
-
-    // 3. Group Click
-    groupRows.forEach(row => {
-        row.addEventListener('click', (e) => {
-            const btn = e.target.closest('.course-button');
-            if (!btn) return;
-
-            row.querySelectorAll('.course-button').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-            updateValue();
-        });
-    });
+    // Tracks drawn before the dialog is laid out place their thumbs once shown.
+    [catRow, grpRow].forEach(track => watchButtonRows(track, followSegmentThumb));
 }
 
 // --- SMART VERTICAL SESSION CONTROLS ---
@@ -690,8 +589,8 @@ function renderSessionControls(courseName) {
         activeSessionGroup = null; // Reset group
     }
 
-    // 2. Render Categories
-    catGroup.innerHTML = '';
+    // 2. Render Categories (the thumb stays, so a redraw never cuts its slide short)
+    catGroup.querySelectorAll(':scope > .course-button').forEach(btn => btn.remove());
     const icons = { 'theory': 'fa-book', 'lab': 'fa-desktop', 'practice': 'fa-pen-to-square' };
 
     categories.forEach(cat => {
@@ -739,10 +638,10 @@ function renderSessionControls(courseName) {
     requestAnimationFrame(() => {
         updateButtonRows(catGroup);
         updateButtonRows(sessionGroups);
-        updateSegmentThumb(catGroup, false);
-        updateSegmentThumb(sessionGroups, false);
+        followSegmentThumb(catGroup);
+        followSegmentThumb(sessionGroups);
     });
-    const placeTrack = track => { updateButtonRows(track); updateSegmentThumb(track, false); };
+    const placeTrack = track => { updateButtonRows(track); followSegmentThumb(track); };
     watchButtonRows(catGroup, placeTrack);
     watchButtonRows(sessionGroups, placeTrack);
 }
@@ -758,7 +657,7 @@ function selectSessionCategory(category) {
     });
 
     updateSegmentThumb(catGroup, true);
-    renderGroupsForCategory(category);
+    renderGroupsForCategory(category, true);
 
     // Re-check parent visibility (Group row might have appeared/disappeared)
     const grpContainer = document.getElementById('session-group-container');
@@ -770,7 +669,8 @@ function selectSessionCategory(category) {
     rememberCourseSession();
 }
 
-function renderGroupsForCategory(category) {
+// animate: the letter's thumb slides when the letter in use changes (Theory B → Lab A).
+function renderGroupsForCategory(category, animate = false) {
     const groups = currentCourseSections[category] || [];
     const grpContainer = document.getElementById('session-group-container');
 
@@ -782,8 +682,8 @@ function renderGroupsForCategory(category) {
         activeSessionGroup = null;
     }
 
-    // 2. Render Buttons
-    grpContainer.innerHTML = '';
+    // 2. Render Buttons (the thumb stays, to slide to the letter now chosen)
+    grpContainer.querySelectorAll(':scope > .course-button').forEach(btn => btn.remove());
 
     groups.forEach(grp => {
         const btn = document.createElement('div');
@@ -809,7 +709,8 @@ function renderGroupsForCategory(category) {
     // Apply row-aware rounding after group buttons are rendered
     requestAnimationFrame(() => {
         updateButtonRows(grpContainer);
-        updateSegmentThumb(grpContainer, false);
+        if (animate) updateSegmentThumb(grpContainer);
+        else followSegmentThumb(grpContainer);
     });
 }
 
@@ -847,6 +748,19 @@ function updateSegmentThumb(track, animate = true) {
         void thumb.offsetWidth;
         thumb.classList.remove('no-slide');
     }
+}
+
+// Places a track's thumb after a redraw or a resize. One already sliding slides on to
+// its option's new place (an icon closing moves the options), never cut short.
+function followSegmentThumb(track) {
+    const thumb = track?.querySelector(':scope > .segment-thumb');
+    updateSegmentThumb(track, !!thumb?.getAnimations().length);
+}
+
+// New options for a group track; its thumb stays, to slide to the next one chosen.
+function setSegmentOptions(track, html) {
+    track.querySelectorAll(':scope > .course-button').forEach(btn => btn.remove());
+    track.insertAdjacentHTML('beforeend', html);
 }
 
 function selectSessionGroup(group) {
@@ -4645,11 +4559,11 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         selectedSubgroup = groups.includes(subgroup) ? subgroup : (groups[0] || null);
         markActive(catContainer, btn => btn.dataset.category === category, animate);
         if (categoryChanged) {
-            subContainer.innerHTML = groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
+            setSegmentOptions(subContainer, groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join(''));
             subContainer.hidden = groups.length <= 1;
             groupField.hidden = catContainer.hidden && subContainer.hidden;
         }
-        markActive(subContainer, btn => btn.dataset.group === selectedSubgroup, animate && !categoryChanged);
+        markActive(subContainer, btn => btn.dataset.group === selectedSubgroup, animate);
         if (categoryChanged) selectSection(category.toLowerCase(), animate);
     };
 
@@ -4688,7 +4602,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
         if (btn) selectSection(btn.dataset.value);
     });
     // A track that was hidden (the closed More options, the loader) places its thumb once shown.
-    [catContainer, subContainer, sectionContainer].forEach(track => watchButtonRows(track, t => updateSegmentThumb(t, false)));
+    [catContainer, subContainer, sectionContainer].forEach(track => watchButtonRows(track, followSegmentThumb));
 
     // Picking another date moves the week with it, and the group to that day's.
     dateInput.addEventListener('change', () => {
@@ -7300,11 +7214,11 @@ function showRequestPermissionDialog() {
         requestLetter = [preferredLetter, letter].find(l => groups.includes(l)) || groups[0] || null;
         markTrack(catRow, btn => btn.dataset.category === category, animate);
         if (categoryChanged) {
-            grpRow.innerHTML = groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join('');
+            setSegmentOptions(grpRow, groups.map(grp => segmentButtonHtml(`data-group="${escapeHtml(grp)}"`, '', grp)).join(''));
             grpRow.hidden = groups.length <= 1;
             sessionField.hidden = catRow.hidden && grpRow.hidden;
         }
-        markTrack(grpRow, btn => btn.dataset.group === requestLetter, animate && !categoryChanged);
+        markTrack(grpRow, btn => btn.dataset.group === requestLetter, animate);
         selectedSession = requestLetter ? `${category} ${requestLetter}` : category;
     };
 
@@ -7335,7 +7249,7 @@ function showRequestPermissionDialog() {
         selectRequestGroup(requestCategory, btn.dataset.group);
     });
     // A track drawn while hidden places its thumb once shown.
-    [catRow, grpRow].forEach(track => watchButtonRows(track, t => updateSegmentThumb(t, false)));
+    [catRow, grpRow].forEach(track => watchButtonRows(track, followSegmentThumb));
 
     // --- Hours Logic ---
     courseSelect.addEventListener('change', () => {
@@ -9284,9 +9198,11 @@ function updateAuthUI() {
 
     document.body.classList.toggle('is-admin', isAdmin);
 
+    // The groups and their label go together (signing out in another tab included).
     const sessionControls = document.getElementById('session-controls');
     if (!isAdmin && sessionControls) {
         sessionControls.style.setProperty('display', 'none', 'important');
+        document.getElementById('session-label')?.setAttribute('hidden', '');
     }
 
     // --- Sort Select Logic ---
@@ -10629,7 +10545,7 @@ function showAddLogEntryDialog() {
     const formattedTime = now.toTimeString().split(' ')[0].substring(0, 5);
 
     // Prepare Session Toggles
-    const sessionHtml = renderSessionSelectorHTML('manual', false, true);
+    const sessionHtml = renderSessionSelectorHTML('manual');
 
     // Prepare student list (1 unique entry per student in databaseMap)
     const studentList = [];
@@ -10684,11 +10600,9 @@ function showAddLogEntryDialog() {
             <input type="time" id="manual-time" class="form-control" value="${formattedTime}">
         </div>
 
-        <div class="form-group" style="align-items:flex-start; margin-top:15px;">
-            <label class="dialog-label-fixed" style="margin-top:12px;"><i class="fa-solid fa-users"></i> Group</label>
-            <div style="flex-grow:1;">
-                ${sessionHtml || '<input type="text" id="manual-session-fallback" class="form-control" value="Default" disabled>'}
-            </div>
+        <div class="form-group">
+            <label class="dialog-label-fixed"><i class="fa-solid fa-users"></i> Group</label>
+            ${sessionHtml || '<input type="text" id="manual-session-fallback" class="form-control" value="Default" disabled>'}
         </div>
 
     </div>
@@ -10700,25 +10614,10 @@ function showAddLogEntryDialog() {
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
 
-    // --- Activate Toggles ---
+    // --- Activate Toggles: starting on the main screen's group ---
     if (sessionHtml) {
         const rawSections = courseInfoMap[currentCourse].availableSections || '';
-        setupSessionToggleListeners('manual', parseAvailableSections(rawSections));
-
-        // Auto-select based on Main UI State
-        const currentActive = getCurrentActiveSession();
-        if (currentActive && currentActive !== 'Default') {
-            const [cat, grp] = currentActive.split(' ');
-
-            // Trigger clicks to simulate selection
-            const catBtn = document.querySelector(`#manual-cat-row .course-button[data-val="${cat}"]`);
-            if (catBtn) catBtn.click();
-
-            if (grp) {
-                const grpBtn = document.querySelector(`#manual-groups-${cat} .course-button[data-val="${grp}"]`);
-                if (grpBtn) grpBtn.click();
-            }
-        }
+        setupSessionToggleListeners('manual', parseAvailableSections(rawSections), getCurrentActiveSession());
     }
 
     // --- Logic (Student Search) ---
@@ -11520,9 +11419,9 @@ async function performBulkAction(action) {
     const rowCount = selectedLogGroups().length;
     const rowsText = `${rowCount} ${rowCount === 1 ? 'row' : 'rows'}`;
 
-    // Enable inherit option for BOTH add1h AND sub1h
-    const includeInherit = (action === 'add1h' || action === 'sub1h');
-    const sessionHtml = renderSessionSelectorHTML('bulk', includeInherit);
+    // Adding and removing an hour can keep each row's own group instead of choosing one.
+    const inheritLabel = { add1h: 'Same as previous', sub1h: 'Latest' }[action] || '';
+    const sessionHtml = renderSessionSelectorHTML('bulk', inheritLabel);
 
     if (action === 'delete') {
         confirmTitle = `Delete ${rowsText}?`;
@@ -11530,7 +11429,7 @@ async function performBulkAction(action) {
     } else if (action === 'session') {
         confirmTitle = `Change the group of ${rowsText}`;
         confirmMsg = 'Every time in the selected rows moves to this group.';
-        extraHtml = `<div style="margin-top:15px; text-align:left;">${renderSessionSelectorHTML('bulk', false)}</div>`;
+        extraHtml = `<div style="margin-top:15px; text-align:left;">${renderSessionSelectorHTML('bulk')}</div>`;
     } else if (action === 'date') {
         const first = selectedLogGroups()[0]?.originalLogs.find(log => selectedLogIds.has(log.id));
         confirmTitle = `Move ${rowsText} to another day`;
@@ -11694,7 +11593,7 @@ async function performBulkAction(action) {
     if (extraHtml && action !== 'date') {
         setTimeout(() => {
             const rawSections = courseInfoMap[currentCourse].availableSections || '';
-            setupSessionToggleListeners('bulk', parseAvailableSections(rawSections));
+            setupSessionToggleListeners('bulk', parseAvailableSections(rawSections), inheritLabel ? 'INHERIT' : '');
         }, 0);
     }
 }
