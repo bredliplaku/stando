@@ -63,6 +63,23 @@ has confirmed a card once also unlocks with it offline. The lock covers every
 Stando tab in the browser and stays after a reload. Without a card, **Sign
 out** ends the session instead.
 
+On your own phone, the **Fingerprint or PIN** switch on its row in **Settings →
+Trusted Devices** lets the lock screen open with the phone's fingerprint, face
+or PIN (Windows Hello on a computer): tap **Fingerprint or PIN** on it. It is
+kept on that device for your account, works offline, and also lets scanning
+lock without a staff card. Anyone who can unlock the phone can then unlock
+Stando, so turn it on only on a phone that is yours.
+
+While scanning behind the lock, Stando fills the screen: the browser's address
+bar and tabs and the phone's status and navigation bars go, and cards are still
+read. The phone's Back, or a swipe from an edge, shows them again; the next tap
+on the lock screen fills it again. A website cannot lock the phone itself. For
+that, turn on Android's app pinning once in the phone's security settings
+(**App pinning**, or **Pin windows** on Samsung, asking for the PIN before
+unpinning), then pin Chrome from the recent apps screen. The phone then stays on Stando, keeps scanning, and leaves it only with
+the phone's PIN. Do not let the phone lock its own screen while scanning: a
+locked or dark screen reads no cards.
+
 The phone reads cards only while Stando is on screen, so the screen stays on
 while you scan. If Stando goes off screen anyway (the power button, another app
 or tab, or the phone's own NFC screen), cards tapped meanwhile are not recorded,
@@ -214,7 +231,9 @@ under it.
 
 A teaching assistant is a student with a staff entry whose role is
 **Teaching Assistant** (**Settings → Staff**), formerly "Student". Administrators
-assign them to courses under **People** in a course's settings. In those courses
+assign them to courses under **People** in a course's settings: one list of
+staff, each with their role, to search or narrow to lecturers, assistants or
+those chosen. Ticking someone adds them as their role says. In those courses
 they see the whole attendance list, scan on their own phone (no trusted device,
 no lock screen), choose the group, **Add** records, use **Add 1 hour** and
 **Delete my latest time** on the rows they recorded, and send an unknown card's

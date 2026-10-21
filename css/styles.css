@@ -14070,10 +14070,50 @@ body.is-assistant .sync-auth-container {
     margin: 0 0 14px 2px;
 }
 
+/* A course's people: one box, search and role filters on top, the list under them. */
+.dialog .staff-picker {
+    overflow: hidden;
+    margin-bottom: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+    background: var(--card-background);
+}
+
+.staff-picker-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.dialog .staff-picker-tools .form-control {
+    min-height: 36px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+}
+
 .dialog .staff-picker-list {
-    height: 200px;
-    margin-top: 6px;
-    border-radius: 12px;
+    height: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.dark-mode .dialog .staff-picker {
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+.dark-mode .staff-picker-tools {
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* A lecturer's read-only list: each name with its role. */
+.people-pills .admin-pill-item small {
+    color: #78909c;
+    font-size: 0.75rem;
+    font-weight: 600;
 }
 
 .staff-picker .student-info {
@@ -14251,4 +14291,77 @@ body.is-assistant .sync-auth-container {
     letter-spacing: 0.2em;
     -webkit-user-select: none;
     user-select: none;
+}
+
+/* =========================================================================
+   Unlocking with the device's own lock (fingerprint, face or PIN): its switch
+   on this device's row in Settings → Trusted Devices, and its button on the
+   lock screen.
+   ========================================================================= */
+.device-lock-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    color: #607d8b;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.device-lock-switch .switch-input {
+    width: 36px;
+    height: 20px;
+}
+
+.device-lock-switch .switch-input::before {
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+}
+
+.device-lock-switch .switch-input:checked::before {
+    transform: translateX(16px);
+}
+
+.dark-mode .device-lock-switch {
+    color: #90a4ae;
+}
+
+@media (max-width: 560px) {
+    .device-lock-switch > span {
+        display: none;
+    }
+}
+
+.scan-lock-footer {
+    flex-wrap: wrap;
+}
+
+.scan-lock .scan-lock-device,
+.scan-lock .scan-lock-device:hover,
+.scan-lock .scan-lock-device:active {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 9px 16px;
+    border: 1px solid var(--lock-card-border);
+    border-radius: 999px;
+    background: var(--lock-chip);
+    box-shadow: none;
+    color: var(--lock-text);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 600;
+    filter: none;
+    transform: none;
+    cursor: pointer;
+}
+
+.scan-lock .scan-lock-device[hidden] {
+    display: none;
 }

@@ -2529,7 +2529,7 @@ function trustedDevicesSectionHtml() {
     return `
         <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
             <div class="settings-scroll">
-                ${trustedDevicesHtml(`Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}`)}
+                ${trustedDevicesHtml(`Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}${isAdmin ? ' On the row of this device, <strong>Fingerprint or PIN</strong> lets the scan lock open with the lock of the device itself.' : ''}`)}
             </div>
         </div>`;
 }
@@ -2553,6 +2553,13 @@ function renderTrustedDevices(devices) {
         regBtn.classList.toggle('btn-blue', !isRegistered);
     }
 
+    // On this device's row a lecturer turns unlocking the scan lock with the
+    // device's own fingerprint, face or PIN on or off (the key stays on the device).
+    const lockSwitch = isAdmin && deviceUnlockAvailable ? `
+                    <label class="device-lock-switch" title="Unlock the scan lock with this device's fingerprint, face or PIN">
+                        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>Fingerprint or PIN</span>
+                        <input type="checkbox" role="switch" class="switch-input" aria-label="Unlock the scan lock with fingerprint or PIN" data-no-dirty${deviceUnlockId() ? ' checked' : ''}>
+                    </label>` : '';
     deviceBody.innerHTML = devices.length ? devices.map(d => {
         const mine = String(d.owner || '').toLowerCase() === me;
         const attrs = `data-row-index="${escapeHtml(String(d.rowIndex))}" data-name="${escapeHtml(d.name)}"`;
@@ -2563,7 +2570,7 @@ function renderTrustedDevices(devices) {
                     <span class="settings-row-people">${mine ? 'Registered by you' : escapeHtml(d.owner)}</span>
                 </div>
                 <div class="settings-row-meta">
-                    <span class="settings-row-sub">${escapeHtml(d.date)}</span>
+                    <span class="settings-row-sub">${escapeHtml(d.date)}</span>${d.id === myId ? lockSwitch : ''}
                 </div>
                 ${isGlobalAdmin || mine ? `<div class="card-actions">
                     ${rowEditButtonHtml(`Rename ${d.name}`, 'rename-device-btn', attrs)}
@@ -2574,6 +2581,23 @@ function renderTrustedDevices(devices) {
 
     deviceBody.querySelectorAll('.rename-device-btn').forEach(btn => {
         btn.onclick = () => renameTrustedDevice(btn.dataset.rowIndex, btn.dataset.name);
+    });
+    deviceBody.querySelector('.device-lock-switch input')?.addEventListener('change', async (event) => {
+        const input = event.target;
+        if (!input.checked) {
+            turnOffDeviceUnlock();
+            return;
+        }
+        input.disabled = true;
+        try {
+            await turnOnDeviceUnlock();
+            showNotification('success', 'Turned On', "The scan lock now opens with this device's fingerprint, face or PIN.");
+        } catch (error) {
+            input.checked = false;
+            if (error?.name !== 'NotAllowedError') showNotification('error', 'Not Turned On', error?.message || 'This device could not set it up.');
+        } finally {
+            input.disabled = false;
+        }
     });
     deviceBody.querySelectorAll('.delete-device-btn').forEach(btn => {
         btn.onclick = () => window.deleteTrustedDevice(btn.dataset.rowIndex, btn.dataset.name);
@@ -2913,58 +2937,84 @@ function staffNameByEmail(email) {
     return settingsStaffNames.get(key) || personNameByEmail(key);
 }
 
-// Administrators tick a course's lecturers and teaching assistants in a list of staff.
-function staffPickerHtml(id, label) {
+// A course's people in one list. Administrators tick lecturers and teaching
+// assistants alike (each row names its role), searching or narrowing the list to
+// one role or to those chosen.
+function peoplePickerHtml(id) {
     return `
-        <div class="form-group staff-picker" id="${id}">
-            <label class="dialog-label-fixed" for="${id}-search">${label} <span class="theme-label-note staff-picker-count"></span></label>
-            <div class="input-with-icon">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="${id}-search" class="form-control" placeholder="Search staff" autocomplete="off">
+        <div class="staff-picker" id="${id}" role="group" aria-label="Lecturers and teaching assistants">
+            <div class="staff-picker-tools">
+                <div class="input-with-icon">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input type="search" id="${id}-search" class="form-control" placeholder="Search staff" autocomplete="off" aria-label="Search staff">
+                </div>
+                <div class="settings-facet staff-picker-filters" role="group" aria-label="Show"></div>
             </div>
-            <div class="student-list-container staff-picker-list" role="group" aria-label="${label}">
+            <div class="staff-picker-list">
                 <div class="staff-picker-note"><div class="loading-spinner"></div></div>
             </div>
         </div>`;
 }
 
-// people: the staff offered; selected: a Set of e-mails, changed as rows are ticked.
-function bindStaffPicker(root, people, selected) {
+// Ticking someone adds them as their role makes them: a teaching assistant to the
+// course's assistants, anyone else to its lecturers. Unticking removes them from both.
+function bindPeoplePicker(root, staff, lecturers, assistants) {
     const list = root.querySelector('.staff-picker-list');
     const search = root.querySelector('input[type="search"]');
-    const count = root.querySelector('.staff-picker-count');
+    const filters = root.querySelector('.staff-picker-filters');
+    const emailOf = s => String(s.email || '').trim().toLowerCase();
+    const isChosen = s => lecturers.has(emailOf(s)) || assistants.has(emailOf(s));
+    const FILTERS = [
+        { id: 'all', label: 'All', test: () => true },
+        { id: 'lecturers', label: 'Lecturers', test: s => staffRole(s.role) !== 'Assistant' },
+        { id: 'assistants', label: 'Assistants', test: s => staffRole(s.role) === 'Assistant' },
+        { id: 'chosen', label: 'Chosen', test: isChosen }
+    ];
+    let filter = 'all';
     const render = () => {
+        filters.innerHTML = FILTERS.map(f => `<button type="button" data-filter="${f.id}" aria-pressed="${f.id === filter}">${f.label}<span>${staff.filter(f.test).length}</span></button>`).join('');
         const query = search.value.trim().toLowerCase();
-        const shown = people.filter(s => !query || staffDisplayName(s).toLowerCase().includes(query) ||
-            String(s.email || '').toLowerCase().includes(query));
-        count.textContent = `${selected.size} selected`;
+        const test = FILTERS.find(f => f.id === filter).test;
+        const shown = staff.filter(s => test(s) && (!query || staffDisplayName(s).toLowerCase().includes(query) ||
+            emailOf(s).includes(query)));
         list.innerHTML = shown.length ? '' : '<div class="staff-picker-note">No staff found</div>';
-        shown.forEach(staff => {
-            const email = String(staff.email || '').trim().toLowerCase();
-            const isSelected = selected.has(email);
-            const name = staffDisplayName(staff);
+        shown.forEach(person => {
+            const email = emailOf(person);
+            const chosen = isChosen(person);
+            const name = staffDisplayName(person);
             const row = document.createElement('div');
-            row.className = `student-item${isSelected ? ' selected' : ''}`;
+            row.className = `student-item${chosen ? ' selected' : ''}`;
             row.setAttribute('role', 'checkbox');
-            row.setAttribute('aria-checked', String(isSelected));
+            row.setAttribute('aria-checked', String(chosen));
             row.tabIndex = 0;
+            row.dataset.email = email;
             row.innerHTML = `
-                ${userAvatarHtml(name, staff.photo, 'user-avatar settings-row-avatar')}
+                ${userAvatarHtml(name, person.photo, 'user-avatar settings-row-avatar')}
                 <div class="student-info">
                     <div class="student-name">${escapeHtml(name)}</div>
-                    <div class="student-uid"><span class="role-chip">${escapeHtml(staffRoleLabel(staff.role))}</span>${escapeHtml(staff.email)}</div>
+                    <div class="student-uid"><span class="role-chip">${escapeHtml(staffRoleLabel(person.role))}</span>${escapeHtml(person.email)}</div>
                 </div>
-                ${isSelected ? '<i class="fa-solid fa-check student-item-check" aria-hidden="true"></i>' : ''}`;
+                ${chosen ? '<i class="fa-solid fa-check student-item-check" aria-hidden="true"></i>' : ''}`;
             row.onclick = () => {
-                if (isSelected) selected.delete(email);
-                else selected.add(email);
+                if (chosen) {
+                    lecturers.delete(email);
+                    assistants.delete(email);
+                } else {
+                    (staffRole(person.role) === 'Assistant' ? assistants : lecturers).add(email);
+                }
                 render();
                 list.querySelector(`[data-email="${CSS.escape(email)}"]`)?.focus();
             };
-            row.dataset.email = email;
             list.appendChild(row);
         });
     };
+    filters.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-filter]');
+        if (!button) return;
+        filter = button.dataset.filter;
+        render();
+        filters.querySelector(`[data-filter="${filter}"]`)?.focus();
+    });
     search.addEventListener('input', render);
     render();
 }
@@ -3017,14 +3067,12 @@ function showCourseEditorDialog(courseName, info = null) {
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
 
-    // Lecturers read who teaches and assists; administrators choose them.
-    const peopleHtml = (id, label, emails) => isGlobalAdmin ? staffPickerHtml(id, label) : `
-        <div class="form-group">
-            <label class="dialog-label-fixed">${label}</label>
-            <div class="admin-pills-list people-pills">${emails.size
-            ? [...emails].map(email => `<div class="admin-pill-item" title="${escapeHtml(email)}"><b>${escapeHtml(staffNameByEmail(email))}</b></div>`).join('')
-            : '<span class="people-pills-empty">None yet</span>'}</div>
-        </div>`;
+    // Lecturers read who teaches and assists, by name and role; administrators choose them.
+    const person = (email, role) => `<div class="admin-pill-item" title="${escapeHtml(email)}"><b>${escapeHtml(staffNameByEmail(email))}</b><small>${role}</small></div>`;
+    const peopleHtml = isGlobalAdmin ? peoplePickerHtml('edit-c-people') : `
+        <div class="admin-pills-list people-pills">${lecturers.size + assistants.size
+            ? [...lecturers].map(email => person(email, 'Lecturer')).join('') + [...assistants].map(email => person(email, 'Teaching assistant')).join('')
+            : '<span class="people-pills-empty">None yet</span>'}</div>`;
 
     let groupButtonsHtml = '';
     for (let i = 0; i < 4; i++) {
@@ -3080,9 +3128,8 @@ function showCourseEditorDialog(courseName, info = null) {
         ${!isNew ? switchRowHtml('edit-c-archived', data.archived, 'Archived', 'Hidden from lists. Its records stay.') : ''}
 
         <h4 class="editor-section-title">People</h4>
-        ${peopleHtml('edit-c-lecturers', 'Lecturers', lecturers)}
-        ${peopleHtml('edit-c-assistants', 'Teaching assistants', assistants)}
-        ${isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records in this course, and add or delete times only on the records they made.</p>' : ''}
+        ${peopleHtml}
+        ${isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records here, and change only the ones they made.</p>' : ''}
 
         <h4 class="editor-section-title">Dates</h4>
         <div class="form-group">
@@ -3203,18 +3250,16 @@ function showCourseEditorDialog(courseName, info = null) {
         }
     };
 
-    // --- Lecturers and teaching assistants: ticked in the staff list ---
-    // Each list offers its own role, and anyone already chosen so they can be unticked.
+    // --- Lecturers and teaching assistants: ticked in the staff list, lecturers
+    // (by title) before teaching assistants (A–Z) ---
     if (isGlobalAdmin) {
         callWebApp('getGlobalSettingsData', {}, 'POST')
             .then(({ staff = [] }) => {
-                const sorted = [...staff].sort((a, b) => compareLecturers(staffDisplayName(a), staffDisplayName(b)));
-                const email = s => String(s.email || '').trim().toLowerCase();
-                bindStaffPicker(dialog.querySelector('#edit-c-lecturers'),
-                    sorted.filter(s => staffRole(s.role) !== 'Assistant' || lecturers.has(email(s))), lecturers);
-                const assistantPicker = dialog.querySelector('#edit-c-assistants');
-                if (assistantPicker) bindStaffPicker(assistantPicker,
-                    sorted.filter(s => staffRole(s.role) === 'Assistant' || assistants.has(email(s))), assistants);
+                const assistant = s => staffRole(s.role) === 'Assistant';
+                const sorted = [...staff].sort((a, b) => assistant(a) - assistant(b) || (assistant(a)
+                    ? staffDisplayName(a).localeCompare(staffDisplayName(b), undefined, { sensitivity: 'base' })
+                    : compareLecturers(staffDisplayName(a), staffDisplayName(b))));
+                bindPeoplePicker(dialog.querySelector('#edit-c-people'), sorted, lecturers, assistants);
             })
             .catch(() => {
                 dialog.querySelectorAll('.staff-picker-list').forEach(list => {
@@ -8766,7 +8811,6 @@ function isStoredSessionKey(key) {
 const IDLE_SIGNOUT_MS = 30 * 60 * 1000;
 const IDLE_WARNING_MS = 60 * 1000;
 const LAST_ACTIVITY_KEY = 'stando_last_activity';
-const IDLE_SIGNED_OUT_KEY = 'stando_idle_signed_out';
 let lastActivityWrite = 0;
 let idleCountdown = null;
 
@@ -8818,7 +8862,6 @@ function isIdleSessionStale() {
 
 function signOutForInactivity() {
     hideIdleCountdown();
-    try { sessionStorage.setItem(IDLE_SIGNED_OUT_KEY, '1'); } catch { /* The message is optional. */ }
     handleSignoutClick();
 }
 
@@ -8903,13 +8946,6 @@ function setupIdleSignOut() {
         if (document.visibilityState === 'visible') checkIdleSignOut();
     });
     setInterval(checkIdleSignOut, 15000);
-
-    try {
-        if (sessionStorage.getItem(IDLE_SIGNED_OUT_KEY)) {
-            sessionStorage.removeItem(IDLE_SIGNED_OUT_KEY);
-            pendingNotifications.push({ type: 'info', title: 'Signed Out', message: 'You were signed out after 30 minutes without activity.', duration: 8000 });
-        }
-    } catch { /* The message is optional. */ }
 }
 
 // Update sync status indicator
@@ -13724,6 +13760,79 @@ async function canUnlockWithStaffCard() {
     return getSavedUnlockCards().some(card => card.course === '*');
 }
 
+// --- Unlocking with the device's own lock: its fingerprint, face or PIN (Windows
+// Hello on a computer) instead of a staff card. A lecturer turns it on for their
+// account on this device (Settings → Trusted Devices), and the browser keeps a key
+// that opens only after the device checks who is holding it. The lock guards this
+// screen, so the device's answer is enough and nothing is sent: it works offline.
+// Anyone who can unlock the device can unlock Stando this way, so it is for a
+// lecturer's own phone, not a shared one.
+const SCAN_LOCK_DEVICE_PREFIX = 'stando_scan_lock_device_';
+let scanLockVerifying = false; // The device's own prompt is up
+let deviceUnlockAvailable = false; // This device has a fingerprint, face or PIN for websites (setupScanLock)
+
+function deviceUnlockId() {
+    try {
+        return localStorage.getItem(SCAN_LOCK_DEVICE_PREFIX + scanLockAccount()) || '';
+    } catch {
+        return '';
+    }
+}
+
+async function deviceUnlockSupported() {
+    try {
+        return !!window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+    } catch {
+        return false;
+    }
+}
+
+const toBase64Url = bytes => btoa(String.fromCharCode(...new Uint8Array(bytes))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const fromBase64Url = text => Uint8Array.from(atob(text.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+
+async function turnOnDeviceUnlock() {
+    const credential = await navigator.credentials.create({
+        publicKey: {
+            rp: { name: 'Stando' },
+            user: { id: crypto.getRandomValues(new Uint8Array(16)), name: scanLockAccount(), displayName: currentUserDisplayName() },
+            challenge: crypto.getRandomValues(new Uint8Array(32)),
+            pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+            authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'discouraged' },
+            attestation: 'none',
+            timeout: 60000
+        }
+    });
+    localStorage.setItem(SCAN_LOCK_DEVICE_PREFIX + scanLockAccount(), toBase64Url(credential.rawId));
+}
+
+function turnOffDeviceUnlock() {
+    try { localStorage.removeItem(SCAN_LOCK_DEVICE_PREFIX + scanLockAccount()); } catch { /* Stays on. */ }
+}
+
+// Whether the device checked who is holding it (the user-verified flag of its answer).
+async function verifyWithDevice() {
+    const id = deviceUnlockId();
+    if (!id) return false;
+    scanLockVerifying = true;
+    try {
+        const assertion = await navigator.credentials.get({
+            publicKey: {
+                challenge: crypto.getRandomValues(new Uint8Array(32)),
+                allowCredentials: [{ type: 'public-key', id: fromBase64Url(id), transports: ['internal'] }],
+                userVerification: 'required',
+                timeout: 60000
+            }
+        });
+        return (new Uint8Array(assertion.response.authenticatorData)[32] & 0x04) !== 0;
+    } catch (error) {
+        // Cancelled, or the key is no longer on the device.
+        console.warn('Device unlock not completed:', error?.name || error);
+        return false;
+    } finally {
+        scanLockVerifying = false;
+    }
+}
+
 // The e-mail of the lecturer whose staff card opens the lock for this course, or ''.
 async function verifyScanUnlockCard(serialNumber, course) {
     const { data, error } = await supabaseClient.rpc('verify_scan_unlock_card', {
@@ -13784,7 +13893,7 @@ async function startScanningLocked() {
     const lockable = scanLockAvailable();
     const [trusted, lockReady] = await Promise.all([
         isSignedIn && isAdmin ? checkDeviceTrusted() : true,
-        lockable ? canUnlockWithStaffCard() : false
+        lockable ? canUnlockWithStaffCard().then(ready => ready || !!deviceUnlockId()) : false
     ]);
     if (trusted === false) {
         openTrustedDevicesSettings();
@@ -13797,17 +13906,31 @@ async function startScanningLocked() {
         if (!scanLockUnavailableShown) {
             scanLockUnavailableShown = true;
             showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
-                ? 'To lock Stando while scanning, add your card in Settings → Staff.'
-                : 'To lock Stando while scanning, ask an administrator to add your staff card.', 10000);
+                ? 'To lock Stando while scanning, add your card in Settings → Staff, or turn on unlocking with this device in Settings → Trusted Devices.'
+                : 'To lock Stando while scanning, ask an administrator to add your staff card, or turn on unlocking with this device in Settings → Trusted Devices.', 10000);
         }
         return;
     }
     scanLockSession = true;
     scanLockScans = [];
-    // No full screen: the browser would announce how to leave it, and its status
-    // bar would turn black. The page's theme colour matches the lock screen instead.
+    fillScreenForScanning();
     lockScanner();
     updateScanLockButton();
+}
+
+// While scanning behind the lock, Stando fills the screen: the browser's address
+// bar and tabs go, and so do the phone's status and navigation bars. Cards are
+// still read. The phone's Back, or a swipe from an edge, shows them again; the
+// next tap on the lock screen fills it again (a browser allows that only on a
+// tap). It ends with the scanning. A website cannot lock the phone itself:
+// Android's app pinning does that (README).
+function fillScreenForScanning() {
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
+    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Tried again on the next tap. */ });
+}
+
+function leaveFullScreen() {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => { /* Already left. */ });
 }
 
 function lockScanner() {
@@ -13833,6 +13956,7 @@ function unlockScanner() {
 }
 
 function endScanLockSession() {
+    if (scanLockSession) leaveFullScreen();
     scanLockSession = false;
     clearTimeout(scanLockIdleTimer);
     scanLockIdleTimer = null;
@@ -13925,6 +14049,7 @@ function showScanLockScreen() {
                 </div>
                 <div class="scan-lock-footer">
                     <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i><span>Tap your Staff ID to unlock</span></p>
+                    <button type="button" class="scan-lock-device" data-key="device" hidden><i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Fingerprint or PIN</button>
                     <button type="button" class="scan-lock-link" data-key="signout"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
                 </div>
             </div>
@@ -13986,6 +14111,7 @@ function updateScanLockScreen() {
     setText('.scan-lock-course-group', session !== 'Default' ? session : '');
     group.hidden = session === 'Default';
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
+    screen.querySelector('.scan-lock-device').hidden = !deviceUnlockId();
     screen.classList.toggle('is-paused', !isScanning);
     setText('.scan-lock-title', isScanning ? 'Tap your Student ID' : 'Scanning is paused');
 
@@ -14177,9 +14303,12 @@ function bindScanLockSwipe(screen) {
 }
 
 // Sign out is the way out without a staff card (forgotten, or the phone is
-// offline and has never confirmed it); it gives nobody else access.
+// offline and has never confirmed it); it gives nobody else access. Where the
+// lecturer turned it on, the device's own fingerprint or PIN unlocks it too.
 function handleScanLockClick(event) {
     const key = event.target.closest('[data-key]')?.dataset.key;
+    // A tap fills the screen again, unless it asks the device or signs out.
+    if (scanLockSession && key !== 'device' && key !== 'signout') fillScreenForScanning();
     if (key === 'list') {
         openScanLockList();
     } else if (key === 'close-list') {
@@ -14187,6 +14316,10 @@ function handleScanLockClick(event) {
     } else if (key === 'signout') {
         // The lock stays until the session is gone, which offline takes a moment.
         handleSignoutClick();
+    } else if (key === 'device') {
+        verifyWithDevice().then(verified => {
+            if (verified && isScanLockScreenShown()) unlockScanner();
+        });
     }
 }
 
@@ -14217,7 +14350,9 @@ function stopScanLockReader() {
 }
 
 // Record when the locked page is hidden or closed; report it when it is back.
+// The device's own fingerprint or PIN prompt hides it too, but cards are not lost then.
 function noteScanLockHidden() {
+    if (scanLockVerifying) return;
     const state = readScanLockState();
     if (state && state.email === scanLockAccount() && !state.hiddenAt) {
         writeScanLockState({ ...state, hiddenAt: Date.now() });
@@ -14276,6 +14411,7 @@ function syncScanLockFromStorage() {
 
 function setupScanLock() {
     document.getElementById('scan-lock-btn')?.addEventListener('click', lockScanner);
+    deviceUnlockSupported().then(available => { deviceUnlockAvailable = available; });
 
     // Any touch or key while unlocked and scanning restarts the relock countdown.
     ['pointerdown', 'keydown', 'wheel', 'touchmove'].forEach(type => {
