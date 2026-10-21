@@ -48,7 +48,7 @@
         (function () {
             try {
                 const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');
-                for (const family of ['primary', 'secondary', 'tertiary', 'success', 'danger']) {
+                for (const family of ['primary', 'secondary', 'tertiary', 'accent', 'success']) {
                     if (!/^#[0-9a-f]{6}$/.test(colours[family])) continue;
                     document.documentElement.style.setProperty('--' + family + '-main', colours[family]);
                     document.documentElement.classList.add('theme-' + family);
@@ -313,12 +313,15 @@
 
         <div id="course-buttons-container" class="course-buttons-container"></div>
 
-        <div id="session-label" class="session-label" hidden><i class="fa-solid fa-layer-group" aria-hidden="true"></i>Group</div>
-        <div id="session-controls" style="display: none; flex-direction: column; gap: 8px; margin-bottom: 20px;">
-            <div id="session-category-group" class="course-buttons-container"
-                style="margin-bottom:0; justify-content:center;"></div>
-            <div id="session-group-container" class="course-buttons-container"
-                style="margin-bottom:0; justify-content:center;"></div>
+        <!-- The groups, beside a "Group" label when the courses stand under programme codes. -->
+        <div id="session-row">
+            <div id="session-label" class="session-label" hidden>Group</div>
+            <div id="session-controls" style="display: none; flex-direction: column; gap: 8px;">
+                <div id="session-category-group" class="course-buttons-container"
+                    style="margin-bottom:0; justify-content:center;"></div>
+                <div id="session-group-container" class="course-buttons-container"
+                    style="margin-bottom:0; justify-content:center;"></div>
+            </div>
         </div>
 
         <div class="scan-buttons">

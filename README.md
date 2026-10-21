@@ -21,10 +21,10 @@ while scanning or while attendance on the device waits to sync.
 
 | User | What you can do |
 |---|---|
-| Students | View your attendance, register your card or a friend's (choosing the programme) and request an excused absence with a supporting document. |
+| Students | View your attendance, register your card or a friend's (choosing the programme), request an excused absence with a supporting document, and trust your own phone to sign in there with your card. |
 | Teaching assistants | Everything a student does. In the courses assigned to them: scan, add records, add or delete times on the records they made, and send an unknown card for approval. |
-| Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, change their courses' programmes, sections and archiving, and trust devices (renaming or removing only their own). |
-| Administrators | Everything above, plus the student list, card approvals, staff, courses (with their teaching assistants, icon and colours), programmes and every trusted device. |
+| Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, change their courses' programmes, sections and archiving, and trust their own devices. |
+| Administrators | Everything above, plus the student list, card approvals, staff, courses (with their teaching assistants, icon and colours), programmes, the class devices everyone uses, and every trusted device. |
 
 Every dialog closes with the **×** in its title bar, a tap outside it or Escape.
 If something in it was changed, Stando asks first: **Save**, **Discard** or
@@ -38,8 +38,9 @@ name in **Settings → Courses**; until then the banner shows the code alone.
 ### Taking attendance
 
 Choose a course and start scanning. Scanning works only on a trusted device:
-on any other device, **Start scanning** opens **Settings → Trusted Devices**
-instead, where you register it. Each card tap records the student's
+one you registered, or a class device an administrator registered. On any other
+device, **Start scanning** opens **Settings → Trusted Devices** instead, where
+you register it. Each card tap records the student's
 attendance. A card that is not in the student list still records attendance,
 but plays the failure sound and turns the scan result orange. You can search
 records by name, card, date or group to find an entry or make a correction.
@@ -81,13 +82,17 @@ the phone's PIN. Do not let the phone lock its own screen while scanning: a
 locked or dark screen reads no cards.
 
 The phone reads cards only while Stando is on screen, so the screen stays on
-while you scan. If Stando goes off screen anyway (the power button, another app
+whenever Stando is open. To spare an OLED screen, the lock screen moves by a
+couple of pixels every two minutes, and dims after a minute without a scan; the
+next card (or a tap, which does nothing else) brightens it again. If Stando goes off screen anyway (the power button, another app
 or tab, or the phone's own NFC screen), cards tapped meanwhile are not recorded,
 and the lock screen says when and for how long, for example "Stando was off
 screen at 12:34 for 11 s".
 
 Card scanning uses Web NFC: it needs an Android phone with NFC switched on, a
-browser that offers Web NFC, and an HTTPS website. Stando checks the browser
+browser that offers Web NFC, and an HTTPS website. Android stops reading cards
+while any app uses the camera, even in the background (a security-camera app,
+for example), so scan on a phone whose camera is free. Stando checks the browser
 itself rather than its name: Chrome on Android works, and any other browser that
 offers Web NFC (some Chromium-based Android browsers do) gets the scan button
 too. iPhones and computers cannot scan. You can view records without a card
@@ -107,9 +112,21 @@ ID is always worked out from the UID. A card scanned by a friend says so, for
 example "Scanned by Ana Hoxha for Arben Krasniqi". Approving opens with **Use UID** on; turn it off to save the Card ID
 only.
 
-On the sign-in page, a student's card is greeted with their name, as a check
-that it works; a staff card signs in. The greeting needs the current
+On the sign-in page a card signs its owner in, but only on a device trusted
+for them: one they registered, or (for staff) a class device an administrator
+registered. Students and teaching assistants trust their phone in their profile
+(**Card sign-in**). Anywhere else a student's card is greeted with their name,
+as a check that it works, and a staff card is refused. This needs the current
 `kiosk-login` function (see [Deploy the functions](#deploy-the-functions)).
+
+### Trusted devices
+
+Each person's trusted devices are their own. Several people may register the
+same phone: each gets a row of their own, which only they rename, remove or set
+**Fingerprint or PIN** on. People see only their own devices; global
+administrators see everyone's. A device a global administrator registers (a
+class tablet) is trusted for everyone, for scanning and for staff card sign-in,
+but not for students' cards.
 
 Changes and scans upload by themselves a couple of seconds after they are made;
 the status at the top says **Saving…**, then **Saved**. The refresh button on
@@ -208,11 +225,12 @@ degrees): add them under **Programmes** in the course's settings. Wherever
 someone's courses span two or more programmes, Stando groups them by programme,
 and a shared course shows under each: the course buttons, **Settings → Courses**
 (with a Programme filter) and the course list of an absence request. Someone
-whose courses are all in one programme sees no grouping. The course buttons
-show each programme's code before its courses, and the chosen course shows its
-full name. The copy of a shared course you choose is selected and its other copy
-is outlined (tapping it says where it is already selected); the group buttons
-(Theory, Lab, A, B) get their own **Group** label.
+whose courses are all in one programme sees no grouping. Each programme's courses
+are led by its code in bold (`BA CE`; the full name on hover): on a computer the
+codes stand in a column of their own, beside their courses; on a phone each code
+is centred on a line of its own, between two hairlines. The chosen course shows its full name. The copy of a shared course you choose is selected and its other copy
+is outlined (tapping it says where it is already selected); the group sliders
+(Theory, Lab, A, B) get their own **Group** label beside them.
 
 Programmes are listed A–Z by code everywhere. In a programme or course list,
 typing a code (`BA CE`) shows just that programme, or its courses.
@@ -221,9 +239,10 @@ typing a code (`BA CE`) shows just that programme, or its courses.
 
 Administrators and lecturers open **Settings** from their photo or name. Both
 see the same tabs: Courses (a lecturer's own, as **My Courses**), Programmes,
-Staff and Trusted Devices. In a course, lecturers change only its programmes,
-sections and archiving; everything else, and the Programmes and Staff tabs, is
-theirs to read. Lecturers still register and manage their own trusted devices.
+Staff and Trusted Devices. A course opens in cards, as in Syllabase: Course and
+Dates beside Sections and People on a computer, Appearance under them, and one
+column on a phone. Lecturers change only its programmes, sections and archiving;
+everything else, and the Programmes and Staff tabs, is theirs to read. Lecturers still register and manage their own trusted devices.
 An editor opened from Settings opens above it, and saving refreshes the list
 under it.
 
@@ -234,29 +253,34 @@ A teaching assistant is a student with a staff entry whose role is
 assign them to courses under **People** in a course's settings: one list of
 staff, each with their role, to search or narrow to lecturers, assistants or
 those chosen. Ticking someone adds them as their role says. In those courses
-they see the whole attendance list, scan on their own phone (no trusted device,
-no lock screen), choose the group, **Add** records, use **Add 1 hour** and
+they see the whole attendance list, scan on their own phone (no trusted device
+needed; scanning locks as it does for lecturers, unlocked with their staff card
+on a phone they trusted or with **Fingerprint or PIN**), choose the group, **Add** records, use **Add 1 hour** and
 **Delete my latest time** on the rows they recorded, and send an unknown card's
 **Register student** request. They have no Edit, no ⋯ menu and no Add to EIS.
 Everywhere else they are a student. A lecturer's change to a record makes it
 the lecturer's.
 
 Their staff card signs them in only on a trusted device, so a card someone else
-picks up opens nothing. They trust their own phone in their profile (**Staff
-card sign-in**), where they also rename or remove it; they see only their own
-devices.
+picks up opens nothing. They trust their own phone in their profile (**Card
+sign-in**), where they also rename or remove it and turn on **Fingerprint or
+PIN**; they see only their own devices.
 
 ### Course icon and colours
 
-Administrators set each course's look under **Appearance** in its settings, with
-a live preview. The **Icon** shows on the course's button: type a Font Awesome
-class (`fa-solid fa-cube`) or paste the `<i>` tag Font Awesome copies; the
-magnifier opens Font Awesome's free icons. Empty keeps the list icon. The five
-**Colours** are primary (header and buttons), secondary (requests and
-warnings), tertiary (information), success (adding and approving) and danger
-(deleting and rejecting). While a course is open, the page takes its colours,
-for everyone; **Reset to Stando's colours** puts the defaults back. Lecturers
-see their courses' appearance without changing it.
+Administrators set each course's look under **Appearance** in its settings, laid
+out as Syllabase's, with a live preview. The **Course Icon** shows on the
+course's button: type a Font Awesome class (`fa-solid fa-cube`) or paste the
+`<i>` tag Font Awesome copies; the magnifier opens Font Awesome's free icons.
+Empty keeps the list icon. The five **Theme Colours** are Syllabase's: primary
+(banner, title bars, course buttons and dates), secondary (requests, warnings
+and unknown cards), tertiary (information), accent (scan times) and success
+(adding and approving). Red, for deleting, is the same in every course. While a
+course is open, the whole page takes its colours, for everyone, in light and
+dark mode: in dark mode the banner and title bars are the course's colour
+deepened, and text in a dark colour is lightened until it reads, keeping its
+hue. **Reset to default colours** puts Stando's back. Lecturers see their
+courses' appearance without changing it.
 
 ### Staff names and email signatures
 

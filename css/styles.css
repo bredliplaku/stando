@@ -20,10 +20,13 @@
             --transition-curve: ease-out;
         }
 
-        /* Theme colours: five families in Material shades, Stando's own by default.
-           Settings → Theme sets a family's --*-main on the page and adds .theme-<family>:
-           its shades then follow that colour (lighter mixed with white, darker with
-           black). The roles below (--primary-color and so on) name these shades. */
+        /* Theme colours: Syllabase's five families (primary, secondary, tertiary,
+           accent, success) in Material shades, Stando's own by default, and red for
+           deleting, the same in every course. A course's settings → Appearance set a
+           family's --*-main on the page and add .theme-<family>: its shades then follow
+           that colour (lighter mixed with white, darker with black). The roles below
+           (--primary-color and so on) name these shades; the text roles after them
+           keep a dark colour readable in dark mode. */
         :root,
         .theme-scope {
             --primary-main: #3949ab;
@@ -71,6 +74,17 @@
             --success-700: #388e3c;
             --success-800: #2e7d32;
             --success-900: #1b5e20;
+            --accent-main: #1e88e5;
+            --accent-50: #e3f2fd;
+            --accent-100: #bbdefb;
+            --accent-200: #90caf9;
+            --accent-300: #64b5f6;
+            --accent-400: #42a5f5;
+            --accent-500: #2196f3;
+            --accent-600: var(--accent-main);
+            --accent-700: #1976d2;
+            --accent-800: #1565c0;
+            --accent-900: #0d47a1;
             --danger-main: #f44336;
             --danger-50: #ffebee;
             --danger-100: #ffcdd2;
@@ -91,6 +105,7 @@
             --success-color: var(--success-600);
             --warning-color: var(--secondary-600);
             --info-color: var(--tertiary-500);
+            --accent-color: var(--accent-600);
             --danger-color: var(--danger-500);
             --success-color-light: var(--success-400);
             --warning-color-light: var(--secondary-300);
@@ -148,16 +163,63 @@
             --success-900: color-mix(in srgb, var(--success-main) 60%, #000);
         }
 
-        .theme-danger {
-            --danger-50: color-mix(in srgb, var(--danger-main) 11%, #fff);
-            --danger-100: color-mix(in srgb, var(--danger-main) 28%, #fff);
-            --danger-200: color-mix(in srgb, var(--danger-main) 46%, #fff);
-            --danger-300: color-mix(in srgb, var(--danger-main) 64%, #fff);
-            --danger-400: color-mix(in srgb, var(--danger-main) 82%, #fff);
-            --danger-600: color-mix(in srgb, var(--danger-main) 92%, #000);
-            --danger-700: color-mix(in srgb, var(--danger-main) 84%, #000);
-            --danger-800: color-mix(in srgb, var(--danger-main) 75%, #000);
-            --danger-900: color-mix(in srgb, var(--danger-main) 58%, #000);
+        .theme-accent {
+            --accent-50: color-mix(in srgb, var(--accent-main) 12%, #fff);
+            --accent-100: color-mix(in srgb, var(--accent-main) 30%, #fff);
+            --accent-200: color-mix(in srgb, var(--accent-main) 50%, #fff);
+            --accent-300: color-mix(in srgb, var(--accent-main) 70%, #fff);
+            --accent-400: color-mix(in srgb, var(--accent-main) 85%, #fff);
+            --accent-500: color-mix(in srgb, var(--accent-main) 93%, #fff);
+            --accent-700: color-mix(in srgb, var(--accent-main) 88%, #000);
+            --accent-800: color-mix(in srgb, var(--accent-main) 77%, #000);
+            --accent-900: color-mix(in srgb, var(--accent-main) 60%, #000);
+        }
+
+        /* Text in a theme colour, and the banner and title bars. As in Syllabase: in
+           dark mode a dark course colour (#004d40) is lifted to a readable lightness,
+           keeping its hue, and lighter colours stay as they are; the banner is the
+           course's colour, deepened for a dark page. Declared with the families, so
+           a preview's own colours (.theme-scope) follow too. */
+        :root,
+        .theme-scope {
+            --primary-text: var(--primary-color);
+            --primary-light-text: var(--primary-light);
+            --secondary-text: var(--secondary-color);
+            --warning-text: var(--warning-color);
+            --tertiary-text: var(--info-color);
+            --accent-text: var(--accent-color);
+            --success-text: var(--success-color);
+            --danger-text: var(--danger-color);
+            --banner-from: var(--primary-color);
+            --banner-to: var(--primary-dark);
+        }
+
+        .dark-mode,
+        .dark-mode .theme-scope {
+            --banner-from: color-mix(in srgb, var(--primary-main) 62%, #000);
+            --banner-to: color-mix(in srgb, var(--primary-main) 40%, #000);
+        }
+
+        @supports (color: oklch(from red l c h)) {
+            .dark-mode,
+            .dark-mode .theme-scope {
+                --primary-text: oklch(from var(--primary-color) max(l, 0.74) c h);
+                --primary-light-text: oklch(from var(--primary-light) max(l, 0.8) c h);
+                --secondary-text: oklch(from var(--secondary-color) max(l, 0.78) c h);
+                --warning-text: oklch(from var(--warning-color) max(l, 0.78) c h);
+                --tertiary-text: oklch(from var(--info-color) max(l, 0.76) c h);
+                --accent-text: oklch(from var(--accent-color) max(l, 0.76) c h);
+                --success-text: oklch(from var(--success-color) max(l, 0.76) c h);
+                --danger-text: oklch(from var(--danger-color) max(l, 0.72) c h);
+                --banner-from: oklch(from var(--primary-main) clamp(0.3, l * 0.78, 0.42) min(c, 0.16) h);
+                --banner-to: oklch(from var(--primary-main) clamp(0.2, l * 0.52, 0.3) min(c, 0.13) h);
+            }
+
+            /* Buttons and borders in a dark course colour stay visible on a dark page. */
+            .dark-mode.theme-primary,
+            .dark-mode .theme-scope.theme-primary {
+                --primary-color: oklch(from var(--primary-400) max(l, 0.55) c h);
+            }
         }
 
         /* Website download atop My Courses and the Settings Courses tab. The dialog's own paragraph
@@ -186,7 +248,7 @@
             margin: 0;
             white-space: nowrap;
         }
-        .website-download-copy .website-download-error { color: var(--danger-color); opacity: 1; }
+        .website-download-copy .website-download-error { color: var(--danger-text); opacity: 1; }
         .dark-mode .website-download { border-bottom-color: rgba(255, 255, 255, 0.1); }
         #settings-courses-container { min-height: 0; }
 
@@ -240,7 +302,7 @@
         /* Hover State */
         .settings-tab-btn:hover {
             background-color: rgba(0, 0, 0, 0.04);
-            color: var(--primary-color);
+            color: var(--primary-text);
             border-bottom-color: transparent;
             font-weight: 600;
             -webkit-font-smoothing: antialiased;
@@ -249,7 +311,7 @@
 
         /* Active State */
         .settings-tab-btn.active {
-            color: var(--primary-color);
+            color: var(--primary-text);
             border-bottom-color: var(--primary-color);
             background-color: transparent;
         }
@@ -281,7 +343,7 @@
         }
 
         .dark-mode .settings-tab-btn.active {
-            color: var(--primary-light);
+            color: var(--primary-light-text);
             border-bottom-color: var(--primary-light);
         }
 
@@ -393,7 +455,7 @@
         /* The individual email chip */
         .admin-pill-item {
             background-color: var(--tertiary-50);
-            color: var(--primary-color);
+            color: var(--primary-text);
             border: 1px solid var(--tertiary-100);
             padding: 6px 12px;
             border-radius: 50px;
@@ -652,32 +714,32 @@
 
         .sync-status.online i,
         .sync-status.online svg {
-            color: var(--success-color);
+            color: var(--success-text);
         }
 
         .sync-status.offline i,
         .sync-status.offline svg {
-            color: var(--warning-color);
+            color: var(--warning-text);
         }
 
         .sync-status.syncing i,
         .sync-status.syncing svg {
-            color: var(--info-color);
+            color: var(--tertiary-text);
         }
 
         .sync-status.error i,
         .sync-status.error svg {
-            color: var(--danger-color);
+            color: var(--danger-text);
         }
 
         .sync-status.waiting i,
         .sync-status.waiting svg {
-            color: var(--secondary-color);
+            color: var(--secondary-text);
         }
 
         .sync-status.success i,
         .sync-status.success svg {
-            color: var(--success-color);
+            color: var(--success-text);
         }
 
         @keyframes spin {
@@ -796,7 +858,7 @@
 
         .btn-attachment:hover {
             border-color: var(--primary-color);
-            color: var(--primary-color);
+            color: var(--primary-text);
             background-color: color-mix(in srgb, var(--primary-600) 5%, transparent);
             transform: translateY(-1px);
         }
@@ -887,7 +949,7 @@
         .tab:active:not(.active) {
             transform: scale(0.96);
             box-shadow: inset 0 3px 5px rgba(0, 0, 0, 0.3);
-            background-color: #000c503b;
+            background-color: color-mix(in srgb, var(--primary-900) 23%, transparent);
         }
 
         /* Segmented: round outer ends, tight inner corners; hovered and selected tabs round fully. */
@@ -906,7 +968,7 @@
         }
 
         .tab.active {
-            background-color: #000c503b;
+            background-color: color-mix(in srgb, var(--primary-900) 23%, transparent);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
             transform: scale(0.96);
         }
@@ -929,7 +991,7 @@
         /* Use a lighter neutral grey for icons in dark mode */
         .dark-mode .actions-cell .btn-icon i,
         .dark-mode .actions-cell .btn-icon svg {
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         /* Add the background highlight for dark mode hover */
@@ -979,7 +1041,7 @@
         .course-button {
             display: flex;
             background-color: var(--card-background);
-            color: var(--primary-color);
+            color: var(--primary-text);
             padding: 15px 20px;
             border-radius: var(--border-radius-sm);
             text-decoration: none;
@@ -1122,7 +1184,7 @@
 
         .form-group.required label::after {
             content: " *";
-            color: var(--danger-color);
+            color: var(--danger-text);
             font-weight: bold;
         }
 
@@ -1155,7 +1217,7 @@
 
         .course-button:active {
             background-color: var(--primary-50);
-            color: #2c3a8e;
+            color: var(--primary-800);
             box-shadow:
                 inset 0 3px 5px rgba(0, 0, 0, 0.3),
                 /* inside top shadow */
@@ -1168,7 +1230,7 @@
 
         .course-button.active {
             background-color: var(--primary-50);
-            color: #2c3a8e;
+            color: var(--primary-800);
             transform: scale(0.98);
             border-radius: var(--border-radius-lg);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
@@ -1182,7 +1244,7 @@
 
         .dark-mode .course-button.active,
         .dark-mode .course-button.active:hover {
-            background-color: #2c3e50;
+            background-color: color-mix(in srgb, var(--primary-main) 34%, #1c1c1e);
             /* A matching dark "pressed-in" background */
             color: #e0e0e0;
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
@@ -1961,7 +2023,7 @@
 
         .logs-table th.sortable:hover,
         .database-table th.sortable:hover {
-            color: var(--primary-color);
+            color: var(--primary-text);
             background-color: color-mix(in srgb, var(--primary-400) 4%, transparent);
         }
 
@@ -2030,12 +2092,12 @@
             font-size: 0.85em;
         }
 
+        /* A justified time is outlined, never filled: scan times are filled with the
+           accent, so the two stay apart whatever colours the course has. */
         .time-tag.manual.excused {
-            background-color: var(--secondary-50);
-            /* Light orange */
+            background-color: transparent;
             color: var(--secondary-900);
-            /* Dark orange text */
-            border-style: dashed;
+            border: 1px dashed color-mix(in srgb, var(--secondary-700) 70%, transparent);
         }
 
         .time-tag.manual.excused:hover {
@@ -2044,9 +2106,9 @@
         }
 
         .dark-mode .time-tag.manual.excused {
-            background-color: #4a2c0f;
-            /* Dark mode orange */
-            color: var(--secondary-200);
+            background-color: transparent;
+            border-color: color-mix(in srgb, var(--secondary-text) 60%, transparent);
+            color: var(--secondary-text);
         }
 
         .times-cell-stacked {
@@ -2070,7 +2132,7 @@
             font-size: 0.7em;
             font-weight: 800;
             text-transform: uppercase;
-            color: var(--primary-color);
+            color: var(--primary-text);
             width: 60px;
             /* Fixed width */
             text-align: left;
@@ -2111,7 +2173,7 @@
         }
 
         .time-tag {
-            background-color: var(--tertiary-50);
+            background-color: var(--accent-50);
             border-radius: 4px;
             padding: 8px 5px;
             font-size: 0.9em;
@@ -2124,7 +2186,7 @@
             /* Ensures all tags have the same width */
             border: 1px solid transparent;
             /* Placeholder for smooth transition */
-            color: var(--primary-color);
+            color: var(--accent-800);
             transition: all 0.2s ease-out;
             /* Smoother transition */
             user-select: none;
@@ -2135,7 +2197,7 @@
         }
 
         .time-tag:hover {
-            border: 1px solid var(--primary-color);
+            border: 1px solid var(--accent-color);
             border-radius: 12px;
         }
 
@@ -2192,7 +2254,7 @@
 
         .actions-cell .btn-icon i,
         .actions-cell .btn-icon svg {
-            color: var(--primary-color);
+            color: var(--primary-text);
             /* A standard, medium-grey for icons */
             transition: color 0.2s ease-out;
             /* Smoothly animate the color change */
@@ -2263,19 +2325,19 @@
         /* Change the ICON color to green on hover */
         .actions-cell .btn-icon.btn-green:hover i,
         .actions-cell .btn-icon.btn-green:hover svg {
-            color: var(--success-color);
+            color: var(--success-text);
         }
 
         /* Change the ICON color to red on hover */
         .actions-cell .btn-icon.btn-red:hover i,
         .actions-cell .btn-icon.btn-red:hover svg {
-            color: var(--danger-color);
+            color: var(--danger-text);
         }
 
         /* Change the ICON color to blue on hover */
         .actions-cell .btn-icon.btn-blue:hover i,
         .actions-cell .btn-icon.btn-blue:hover svg {
-            color: var(--info-color);
+            color: var(--tertiary-text);
         }
 
         .logs-table .day-separator .btn-icon,
@@ -2488,7 +2550,7 @@
             /* Fixed width like the screenshot */
             min-width: 100px;
             font-weight: 700;
-            color: var(--primary-color);
+            color: var(--primary-text);
             text-align: left;
             margin-bottom: 0;
             /* Override default */
@@ -2501,7 +2563,7 @@
             margin-bottom: 6px;
             font-size: 0.85em;
             font-weight: 600;
-            color: var(--primary-color);
+            color: var(--primary-text);
             text-align: left;
             /* Reset alignment */
             flex-basis: auto;
@@ -2565,18 +2627,18 @@
         .reason-card:hover:not(.active) {
             background-color: #f9f9f9;
             border-color: var(--primary-color);
-            color: var(--primary-color);
+            color: var(--primary-text);
         }
 
         .reason-card:hover:not(.active) i,
         .reason-card:hover:not(.active) svg {
-            color: var(--primary-color);
+            color: var(--primary-text);
         }
 
         .reason-card.active,
         .reason-card:active {
             background-color: var(--primary-50);
-            color: #2c3a8e;
+            color: var(--primary-800);
             border-color: var(--primary-color);
             box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
             transform: scale(0.98);
@@ -2584,7 +2646,7 @@
 
         .reason-card.active i,
         .reason-card.active svg {
-            color: var(--primary-color);
+            color: var(--primary-text);
         }
 
         /* Dark Mode */
@@ -2597,12 +2659,12 @@
         .dark-mode .reason-card:hover:not(.active) {
             background-color: #333;
             border-color: var(--primary-light);
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         .dark-mode .reason-card:hover:not(.active) i,
         .dark-mode .reason-card:hover:not(.active) svg {
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         .dark-mode .reason-card.active {
@@ -2631,7 +2693,7 @@
         }
 
         .error-message {
-            color: var(--danger-color);
+            color: var(--danger-text);
             font-size: 0.85em;
             margin-top: -7px;
             margin-bottom: 10px;
@@ -2757,20 +2819,20 @@
             background-color: #f9f9f9 !important;
             /* Keep it light */
             border-color: var(--primary-color);
-            color: var(--primary-color);
+            color: var(--primary-text);
             transform: none;
         }
 
         .toggle-button.active {
             background-color: var(--primary-50) !important;
-            color: #2c3a8e !important;
+            color: var(--primary-800) !important;
         }
 
         /* ===== Press (non-active): tactile push ===== */
         .toggle-button:active:not(.active) {
             background-color: var(--primary-50);
             /* subtle tint */
-            color: #2c3a8e;
+            color: var(--primary-800);
             border-color: var(--primary-color);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
             transform: scale(0.96);
@@ -2780,7 +2842,7 @@
         /* ===== Active (toggled on): stable, pushed-in ===== */
         .toggle-button.active {
             background-color: var(--primary-50);
-            color: #2c3a8e;
+            color: var(--primary-800);
             border-color: var(--primary-100);
             /* softer than hover */
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
@@ -2792,7 +2854,7 @@
         /* Active + hover: slight emphasis, no layout shift */
         .toggle-button.active:hover {
             background-color: var(--primary-50) !important;
-            color: #2c3a8e !important;
+            color: var(--primary-800) !important;
             border-color: var(--primary-color);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
             transform: scale(0.96) !important;
@@ -2814,7 +2876,7 @@
         .dark-mode .toggle-button:hover:not(.active) {
             background-color: #333 !important;
             border-color: var(--primary-light);
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         .dark-mode .toggle-button.active {
@@ -2841,11 +2903,11 @@
         }
 
         .dark-mode .dialog .form-group label {
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         .dark-mode .dialog-label-fixed {
-            color: var(--primary-light);
+            color: var(--primary-light-text);
         }
 
         .dark-mode .dialog textarea,
@@ -2912,7 +2974,7 @@
         }
 
         .social-links a:hover {
-            color: var(--secondary-color);
+            color: var(--secondary-text);
         }
 
         /* ADD THIS CSS */
@@ -3062,6 +3124,62 @@
             background-color: #333;
         }
 
+        .request-list-item.clickable-hist-row {
+            margin-bottom: 8px;
+            border: 1px solid rgba(0, 0, 0, 0.06);
+            cursor: pointer;
+        }
+
+        .dark-mode .request-list-item.clickable-hist-row {
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .request-meta {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .dark-mode .request-meta {
+            color: #b0bec5;
+        }
+
+        .request-status {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.85em;
+            font-weight: 700;
+        }
+
+        .request-status.is-approved {
+            background: var(--success-50);
+            color: var(--success-800);
+        }
+
+        .request-status.is-rejected {
+            background: var(--danger-50);
+            color: var(--danger-800);
+        }
+
+        .request-status.is-pending {
+            background: var(--secondary-50);
+            color: var(--secondary-900);
+        }
+
+        .dark-mode .request-status.is-approved {
+            background: color-mix(in srgb, var(--success-main) 20%, transparent);
+            color: var(--success-text);
+        }
+
+        .dark-mode .request-status.is-rejected {
+            background: color-mix(in srgb, var(--danger-main) 20%, transparent);
+            color: var(--danger-text);
+        }
+
+        .dark-mode .request-status.is-pending {
+            background: color-mix(in srgb, var(--secondary-main) 20%, transparent);
+            color: var(--secondary-text);
+        }
+
         .sync-auth-container {
             display: flex;
             justify-content: space-between;
@@ -3090,7 +3208,7 @@
         }
 
         .course-button.btn-orange {
-            color: var(--warning-color);
+            color: var(--warning-text);
             border-color: transparent;
             background-color: var(--card-background);
         }
@@ -3127,7 +3245,7 @@
         }
 
         .theme-toggle:hover {
-            color: var(--secondary-color);
+            color: var(--secondary-text);
             background: none;
             box-shadow: none;
         }
@@ -3163,14 +3281,13 @@
 
         /* Dark Mode Theming for Coloured Elements */
         .dark-mode .module-header {
-            background-color: #2c3e50;
-            /* Dark blue-grey header */
+            background-color: var(--banner-from);
         }
 
-        /* Make timestamp tags a muted blue instead of grey */
+        /* Scan times in the accent colour, deepened for a dark page. */
         .dark-mode .time-tag {
-            background-color: #202c68e5;
-            color: #c0c8ff;
+            background-color: color-mix(in srgb, var(--accent-main) 26%, #1c1c1e);
+            color: var(--accent-text);
         }
 
         /* --- Muted Button Colours for Dark Mode --- */
@@ -3217,7 +3334,7 @@
         }
 
         .dark-mode .app-header {
-            background: linear-gradient(135deg, #2c3e50, var(--primary-900));
+            background: linear-gradient(135deg, var(--banner-from), var(--banner-to));
         }
 
         .dark-mode .module {
@@ -3248,7 +3365,7 @@
         }
 
         .dark-mode .logs-table tr.day-separator {
-            background-color: #2a3a8a;
+            background-color: color-mix(in srgb, var(--primary-main) 30%, #1c1c1e);
             color: #e0e0e0;
             border-top: 2px solid var(--primary-400);
         }
@@ -3283,7 +3400,7 @@
 
         .dark-mode .social-links a:hover,
         .dark-mode .theme-toggle:hover {
-            color: var(--secondary-color);
+            color: var(--secondary-text);
         }
 
         /* Full Screen Scan Announcement */
@@ -3512,7 +3629,7 @@
 
             .admin-pill-item {
                 background-color: var(--tertiary-50);
-                color: var(--primary-color);
+                color: var(--primary-text);
                 border: 1px solid var(--tertiary-100);
                 padding: 6px 12px;
                 border-radius: 50px;
@@ -3544,7 +3661,7 @@
             .admin-pill-item .remove-pill:hover {
                 opacity: 1;
                 background-color: rgba(255, 255, 255, 0.5);
-                color: var(--danger-color);
+                color: var(--danger-text);
             }
 
             .dark-mode .admin-pill-item {
@@ -3760,7 +3877,7 @@
         /* Fix icon color - arrows should be visible */
         .pagination-btn i,
         .pagination-btn svg {
-            color: var(--primary-color);
+            color: var(--primary-text);
         }
 
         .pagination-btn:hover {
@@ -3964,7 +4081,7 @@
             gap: 6px;
             padding: 3px 8px;
             background: color-mix(in srgb, var(--secondary-500) 12%, transparent);
-            color: #d35400;
+            color: var(--secondary-900);
             border: 1px dashed color-mix(in srgb, var(--secondary-500) 40%, transparent);
             border-radius: 6px;
             font-family: monospace;
@@ -3974,7 +4091,7 @@
 
         .dark-mode .unknown-name-badge {
             background: color-mix(in srgb, var(--secondary-500) 20%, transparent);
-            color: #f39c12;
+            color: var(--secondary-text);
             border-color: color-mix(in srgb, var(--secondary-500) 50%, transparent);
         }
 
@@ -4287,7 +4404,7 @@ button.top-bar-user:focus-visible {
 #register-uid-btn {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
     border-color: color-mix(in srgb, var(--primary-600) 35%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 #register-uid-btn:hover:not(:disabled) {
@@ -4394,7 +4511,7 @@ body.signed-out #main-container {
    mobile header rules shrink headings; !important keeps the card's proportions. */
 .signin-card h2 {
     margin: 0 0 6px;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-weight: 500;
     font-size: 1em !important;
 }
@@ -4410,7 +4527,7 @@ body.signed-out #main-container {
 }
 
 .stando-initial {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .signin-card .btn-google {
@@ -4633,7 +4750,7 @@ body.signed-out #main-container {
     border: 1.5px solid color-mix(in srgb, var(--primary-600) 30%, transparent);
     border-radius: 26px;
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-family: inherit;
     font-size: 0.95em;
     font-weight: 500;
@@ -4773,7 +4890,7 @@ body.signed-out #main-container {
 
 .dialog p.form-hint.is-error,
 .dark-mode .dialog p.form-hint.is-error {
-    color: var(--danger-color);
+    color: var(--danger-text);
 }
 
 /* Trusted devices: one line on why devices are trusted. */
@@ -5033,7 +5150,7 @@ body.signed-out #main-container {
 }
 
 .sp-empty.is-error {
-    color: var(--danger-color);
+    color: var(--danger-text);
 }
 
 .dark-mode .sp-header {
@@ -5180,14 +5297,14 @@ body.signed-out #main-container {
 .database-actions > .btn-blue {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
     border-color: color-mix(in srgb, var(--primary-600) 35%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .logs-actions > .btn-blue:hover:not(:disabled),
 .database-actions > .btn-blue:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-600) 16%, transparent);
     border-color: color-mix(in srgb, var(--primary-600) 45%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .logs-actions > .btn-green,
@@ -5380,7 +5497,7 @@ body.signed-out #main-container {
 .quiet-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
     border-color: color-mix(in srgb, var(--primary-600) 30%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
     filter: none;
     font-weight: 500;
@@ -5459,7 +5576,7 @@ body.signed-out #main-container {
 .row-menu-list button:hover:not(:disabled),
 .row-menu-list button:focus-visible {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     border-color: transparent;
     box-shadow: none;
     filter: none;
@@ -5683,14 +5800,14 @@ body.signed-out #main-container {
 .icon-only-btn:hover:not(:disabled),
 .icon-only-btn:active:not(:disabled) {
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
     filter: none;
     transform: none;
 }
 
 .dark-mode .icon-only-btn:hover:not(:disabled) {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .module-header .refresh-btn:hover:not(:disabled),
@@ -5709,7 +5826,7 @@ body.signed-out #main-container {
     padding: 1px 6px;
     border-radius: 4px;
     background: var(--tertiary-50);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.75em;
     font-weight: 700;
     text-transform: uppercase;
@@ -6227,7 +6344,7 @@ button.settings-group-label {
 button.settings-group-label:hover:not(:disabled),
 button.settings-group-label:active:not(:disabled) {
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
     filter: none;
     transform: none;
@@ -6247,7 +6364,7 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .dark-mode button.settings-group-label:hover:not(:disabled) {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .settings-device-note {
@@ -6789,7 +6906,7 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .dark-mode {
-    --dialog-head: linear-gradient(135deg, #2c3e50, var(--primary-900));
+    --dialog-head: linear-gradient(135deg, var(--banner-from), var(--banner-to));
 }
 
 .dialog-title,
@@ -7452,7 +7569,7 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .combo-option.is-selected {
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-weight: 600;
 }
 
@@ -7473,7 +7590,7 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .dark-mode .combo-option.is-selected {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .dark-mode .combo-chevron,
@@ -7506,7 +7623,7 @@ button.settings-group-label:active:not(:disabled) {
 .dialog .toggle-button:hover:not(.active):not(:disabled) {
     background-color: color-mix(in srgb, var(--primary-600) 5%, transparent) !important;
     border-color: color-mix(in srgb, var(--primary-600) 35%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
 }
 
@@ -7515,7 +7632,7 @@ button.settings-group-label:active:not(:disabled) {
 .dialog .toggle-button:active:not(:disabled) {
     background-color: color-mix(in srgb, var(--primary-600) 10%, transparent) !important;
     border-color: var(--primary-color);
-    color: var(--primary-color) !important;
+    color: var(--primary-text) !important;
     font-weight: 600;
     box-shadow: none;
     transform: none !important;
@@ -7552,7 +7669,7 @@ button.settings-group-label:active:not(:disabled) {
 .dialog .reason-card:active {
     background-color: color-mix(in srgb, var(--primary-600) 10%, transparent);
     border-color: var(--primary-color);
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
     transform: none;
 }
@@ -7600,11 +7717,11 @@ button.settings-group-label:active:not(:disabled) {
 
 .student-item-check {
     flex-shrink: 0;
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .student-item-check {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 /* --- Settings dialogs: a fixed height so switching tabs doesn't resize them.
@@ -7754,7 +7871,7 @@ body.is-admin .toolbar-menu.admin-only {
     border-radius: 16px;
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
     border-color: color-mix(in srgb, var(--primary-600) 30%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .logs-actions > .row-menu > .row-menu-btn,
@@ -8014,7 +8131,7 @@ body.is-admin .toolbar-menu.admin-only {
 .reg-notice > svg {
     flex-shrink: 0;
     margin-top: 3px;
-    color: var(--warning-color);
+    color: var(--warning-text);
 }
 
 .dark-mode .reg-notice {
@@ -8052,7 +8169,7 @@ body.is-admin .toolbar-menu.admin-only {
     padding: 8px 14px;
     border-radius: 18px;
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.875rem;
     font-weight: 600;
     line-height: 1.35;
@@ -8111,7 +8228,7 @@ body.is-admin .toolbar-menu.admin-only {
     border: 0;
     background: none;
     box-shadow: none;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font: inherit;
     font-size: 0.875rem;
     font-weight: 600;
@@ -8125,7 +8242,7 @@ body.is-admin .toolbar-menu.admin-only {
 }
 
 .dark-mode .dialog .reg-link {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .reg-result {
@@ -8143,7 +8260,7 @@ body.is-admin .toolbar-menu.admin-only {
 .reg-result > i,
 .reg-result > svg {
     margin-bottom: 4px;
-    color: var(--success-color);
+    color: var(--success-text);
     font-size: 1.8rem;
 }
 
@@ -8193,7 +8310,7 @@ body.is-admin .toolbar-menu.admin-only {
 }
 
 .reg-list li::marker {
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-weight: 700;
 }
 
@@ -8826,7 +8943,7 @@ html.scan-locked body {
     --sk-track: rgba(15, 23, 42, 0.06);
     --sk-thumb: #fff;
     --sk-thumb-shadow: 0 1px 2px rgba(15, 23, 42, 0.12), 0 2px 8px -2px rgba(15, 23, 42, 0.12);
-    --sk-pill: var(--tertiary-50);
+    --sk-pill: var(--accent-50);
     --sk-band: color-mix(in srgb, var(--primary-400) 5%, transparent);
     --sk-accent: color-mix(in srgb, var(--primary-600) 20%, transparent);
     --sk-on-primary: rgba(255, 255, 255, 0.2);
@@ -8856,11 +8973,11 @@ html.scan-locked body {
     --sk-track: rgba(255, 255, 255, 0.08);
     --sk-thumb: #3a3a3e;
     --sk-thumb-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-    --sk-pill: #202c68e5;
+    --sk-pill: color-mix(in srgb, var(--accent-main) 26%, #1c1c1e);
     --sk-band: color-mix(in srgb, var(--primary-400) 10%, transparent);
     --sk-accent: color-mix(in srgb, var(--primary-200) 28%, transparent);
     --sk-on-primary: rgba(255, 255, 255, 0.14);
-    --sk-banner: linear-gradient(135deg, #2c3e50, var(--primary-900));
+    --sk-banner: linear-gradient(135deg, var(--banner-from), var(--banner-to));
     --sk-tab-active: rgba(0, 0, 0, 0.25);
     --sk-scan: var(--primary-600);
     --sk-divider: rgba(255, 255, 255, 0.1);
@@ -9607,8 +9724,8 @@ html:not([data-stando-nfc]) .sk-nfc {
     .sk-track.is-letters > span {
         flex: 1 1 0;
         width: auto;
-        height: 38px;
-        border-radius: 13px;
+        height: 36px;
+        border-radius: 12px;
     }
 
     .sk-app > .sk-scan {
@@ -9843,7 +9960,7 @@ html:not([data-stando-nfc]) .sk-nfc {
     padding: 4px 8px;
     border-radius: 6px;
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.85em;
     font-weight: 600;
     line-height: 1.2;
@@ -9852,7 +9969,7 @@ html:not([data-stando-nfc]) .sk-nfc {
 
 .dark-mode .programme-badge {
     background: color-mix(in srgb, var(--primary-300) 18%, transparent);
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 /* Until the database has programmes, nothing about them shows. */
@@ -10050,12 +10167,12 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
 
 .list-panel .module-header-actions .refresh-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .list-panel .module-header-actions .refresh-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-300) 14%, transparent);
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .list-panel > .module-content {
@@ -10118,13 +10235,13 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
 .icon-select:hover,
 .icon-select:focus-within {
     border-color: var(--primary-color);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .icon-select.is-active {
     border-color: color-mix(in srgb, var(--primary-600) 35%, transparent);
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .icon-select {
@@ -10135,7 +10252,7 @@ body.on-student-list:not(.signed-out) :is(#course-buttons-container, #session-co
 
 .dark-mode .icon-select:is(:hover, :focus-within, .is-active) {
     border-color: var(--primary-light);
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .icon-select .sort-dropdown,
@@ -10812,7 +10929,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     padding: 9px 16px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.9375rem;
     font-weight: 600;
     line-height: 1.2;
@@ -11097,7 +11214,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .more-settings > summary:hover {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .more-settings > summary {
@@ -11146,7 +11263,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
    Courses under their programmes (only when someone has two or more)
    ========================================================================= */
 .programme-heading-code {
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-weight: 800;
     letter-spacing: 0.02em;
 }
@@ -11157,7 +11274,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .dark-mode .programme-heading-code {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .dark-mode .programme-heading-name {
@@ -11244,7 +11361,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .combo:focus-within > .combo-search-icon {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dialog .combo > .combo-input,
@@ -11265,7 +11382,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     padding: 2px 8px;
     border-radius: 6px;
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.8125rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
@@ -11279,7 +11396,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 .combo-check {
     flex-shrink: 0;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.8125rem;
     visibility: hidden;
 }
@@ -11308,7 +11425,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .dark-mode .combo-check {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 /* =========================================================================
@@ -11522,7 +11639,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
     select:not([multiple], .combo-native) option:checked {
         background: color-mix(in srgb, var(--primary-600) 10%, transparent);
-        color: var(--primary-color);
+        color: var(--primary-text);
         font-weight: 600;
     }
 
@@ -11539,7 +11656,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     select:not([multiple], .combo-native) option::checkmark {
         order: 1;
         margin-left: auto;
-        color: var(--primary-color);
+        color: var(--primary-text);
     }
 
     select:not([multiple], .combo-native) option:disabled {
@@ -11608,7 +11725,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 /* The column the list is sorted by reads in the app's colour. */
 :is(.logs-table, .database-table) th.sortable:has(:is(.fa-sort-up, .fa-sort-down)) {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 :is(.logs-table, .database-table) th.sortable:has(:is(.fa-sort-up, .fa-sort-down)) .sort-icon {
@@ -11622,7 +11739,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 @media (hover: hover) {
     :is(.logs-table, .database-table) th.sortable:hover {
-        color: var(--primary-color);
+        color: var(--primary-text);
     }
 
     :is(.logs-table, .database-table) th.sortable:hover .sort-icon {
@@ -11630,7 +11747,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     }
 
     .dark-mode :is(.logs-table, .database-table) th.sortable:hover {
-        color: var(--primary-light);
+        color: var(--primary-light-text);
     }
 }
 
@@ -11863,7 +11980,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .programme-chip strong {
-    color: var(--primary-color);
+    color: var(--primary-text);
     white-space: nowrap;
 }
 
@@ -11924,25 +12041,27 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 /* =========================================================================
-   A course's appearance (its settings → Appearance)
+   A course's appearance (its settings → Appearance), as in Syllabase
    The icon with its preview and a link to Font Awesome's icons, one swatch per
-   colour (swatch, code, name), and a small Stando repainted as they change.
+   colour (swatch, code, name), and the course repainted as they change.
    ========================================================================= */
-/* Side by side, as in Syllabase: each colour a swatch, its code and its name,
-   fewer per row on narrow screens. */
 .theme-label-note {
     margin-left: 6px;
-    color: #9e9e9e;
+    color: #bdbdbd;
     font-weight: 600;
     letter-spacing: 0.02em;
 }
 
-/* The five side by side at every width, as in Syllabase. */
+.dark-mode .theme-label-note {
+    color: #78909c;
+}
+
+/* The five side by side. */
 .theme-colours {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
-    margin: 0 0 14px;
+    margin: 0 0 4px;
 }
 
 .theme-colour {
@@ -11978,12 +12097,18 @@ body:not(.is-admin) .list-toolbar .database-actions {
     border-radius: 7px;
 }
 
+.theme-colour input[type="color"]:disabled {
+    cursor: default;
+}
+
 .dialog .theme-colour .theme-hex {
     width: 100%;
     height: auto;
+    min-height: 0;
     margin: 0;
     padding: 5px 6px !important;
     border-radius: 8px;
+    box-shadow: none;
     font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
     font-size: 0.75rem;
     text-align: center;
@@ -11991,7 +12116,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 .dialog .theme-colour .theme-hex.is-invalid {
     border-color: var(--danger-color);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger-color) 18%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--danger-color) 15%, transparent);
 }
 
 .theme-colour-name {
@@ -12008,220 +12133,171 @@ body:not(.is-admin) .list-toolbar .database-actions {
 }
 
 .dialog p.theme-note {
-    margin: 8px 0 0 2px;
+    margin: 6px 0 0 2px;
 }
 
-/* The preview, drawn with the same recipes as the real parts. */
+/* The preview: the course's header, a day with its scan times and requests, and
+   a pill per colour, repainted from the swatches (bindAppearanceFields). */
 .theme-preview {
     overflow: hidden;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    border-radius: 16px;
-    background: #f4f4f4;
+    margin-top: 12px;
+    border: 1px solid #e0e0e0;
+    border-radius: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+    cursor: default;
     user-select: none;
 }
 
-.tp-banner {
+.tp-header {
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 14px 18px;
-    background: linear-gradient(135deg, var(--primary-color), var(--primary-dark));
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, var(--banner-from), var(--banner-to));
     color: #fff;
 }
 
-.tp-code {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
+.tp-icon {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    font-size: 1.5em;
+}
+
+.tp-head-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.tp-title {
+    overflow: hidden;
+    font-size: 0.88em;
+    font-weight: 700;
+    line-height: 1.2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-sub {
+    font-size: 0.7em;
     opacity: 0.85;
 }
 
-.tp-name {
-    font-size: 1.0625rem;
-    font-weight: 700;
+.tp-chip {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.18);
+    font-size: 0.68em;
 }
 
 .tp-body {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 14px;
+    gap: 8px;
+    padding: 10px 12px;
+    background: #fafafa;
+}
+
+/* As Syllabase's module headers: primary's dark shade into tertiary. */
+.tp-module {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 12px;
+    border-radius: 9px;
+    background: linear-gradient(135deg, var(--primary-dark), var(--tertiary-main));
+    color: #fff;
+    font-size: 0.72em;
+    font-weight: 600;
 }
 
 .tp-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
+    gap: 5px;
 }
 
-.tp-course,
-.tp-pill,
-.tp-date {
+.tp-time,
+.tp-badge,
+.tp-pill {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    box-sizing: border-box;
-    height: 32px;
-    padding: 0 12px;
-    font-size: 0.8125rem;
+    gap: 5px;
+    padding: 3px 11px;
+    border-radius: 20px;
+    font-size: 0.68em;
     font-weight: 600;
     white-space: nowrap;
 }
 
-/* As the course buttons: one segmented row, its ends rounded, the chosen one pressed. */
-.tp-row.is-segmented {
-    gap: 2px;
+.tp-time {
+    background: var(--accent-50);
+    color: var(--accent-800);
 }
 
-.tp-course {
-    border-radius: var(--border-radius-sm);
-    background: var(--card-background);
-    color: var(--primary-color);
-    box-shadow: var(--shadow-sm);
-}
-
-.tp-course:first-child {
-    border-radius: var(--border-radius-lg) var(--border-radius-sm) var(--border-radius-sm) var(--border-radius-lg);
-}
-
-.tp-course:last-child {
-    border-radius: var(--border-radius-sm) var(--border-radius-lg) var(--border-radius-lg) var(--border-radius-sm);
-}
-
-.tp-row .tp-course.is-active {
-    border-radius: var(--border-radius-lg);
-    background: var(--primary-50);
-    color: var(--primary-800);
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.15);
-}
-
-.tp-pill {
-    border: 1px solid;
-    border-radius: 999px;
-}
-
-.tp-pill b {
-    min-width: 20px;
-    padding: 0 6px;
-    border-radius: 999px;
-    background: var(--secondary-900);
-    color: #fff;
-    font-size: 0.75rem;
-    line-height: 20px;
-    text-align: center;
-}
-
-.tp-pill.is-secondary {
-    border-color: var(--secondary-300);
+.tp-badge {
+    border: 1px solid var(--secondary-300);
     background: var(--secondary-50);
     color: var(--secondary-900);
 }
 
-.tp-pill.is-tertiary {
-    border-color: color-mix(in srgb, var(--tertiary-500) 40%, transparent);
-    background: var(--tertiary-50);
-    color: var(--tertiary-800);
-}
-
-.tp-pill.is-success {
-    border-color: color-mix(in srgb, var(--success-color) 40%, transparent);
-    background: color-mix(in srgb, var(--success-color) 9%, transparent);
-    color: color-mix(in srgb, var(--success-color) 72%, #000);
-}
-
-.tp-pill.is-danger {
-    border-color: color-mix(in srgb, var(--danger-600) 35%, transparent);
-    background: color-mix(in srgb, var(--danger-600) 8%, transparent);
-    color: var(--danger-800);
-}
-
-.tp-date {
-    height: 30px;
-    border-radius: 20px;
-    background: var(--primary-color);
+.tp-badge b {
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--secondary-900);
     color: #fff;
 }
 
-.tp-scan {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    height: 44px;
-    margin-top: 2px;
-    border-radius: 22px;
-    background: var(--primary-color);
+.tp-pill {
     color: #fff;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--primary-color) 80%, transparent);
 }
 
-.tp-scan > span {
-    position: absolute;
-    left: 6px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-}
+.tp-pill.is-primary { background: var(--primary-main); }
+.tp-pill.is-secondary { background: var(--secondary-main); }
+.tp-pill.is-tertiary { background: var(--tertiary-main); }
+.tp-pill.is-accent { background: var(--accent-main); }
+.tp-pill.is-success { background: var(--success-main); }
 
 .dark-mode .theme-preview {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: #000;
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
-.dark-mode .tp-banner {
-    background: linear-gradient(135deg, #2c3e50, var(--primary-900));
+.dark-mode .tp-body {
+    background: #121212;
 }
 
-.dark-mode .tp-course {
-    background: #444;
-    color: #f0f0f0;
+.dark-mode .tp-module {
+    background: linear-gradient(135deg, var(--banner-from), color-mix(in srgb, var(--tertiary-main) 70%, #000));
 }
 
-.dark-mode .tp-row .tp-course.is-active {
-    background: var(--primary-color);
-    color: #fff;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.35);
+.dark-mode .tp-time {
+    background: color-mix(in srgb, var(--accent-main) 26%, #1c1c1e);
+    color: var(--accent-text);
 }
 
-.dark-mode .tp-pill.is-secondary {
-    border-color: color-mix(in srgb, var(--secondary-300) 40%, transparent);
-    background: color-mix(in srgb, var(--secondary-300) 12%, transparent);
-    color: var(--secondary-300);
+.dark-mode .tp-badge {
+    border-color: color-mix(in srgb, var(--secondary-main) 40%, transparent);
+    background: color-mix(in srgb, var(--secondary-main) 14%, transparent);
+    color: var(--secondary-text);
 }
 
-.dark-mode .tp-pill.is-tertiary {
-    border-color: color-mix(in srgb, var(--tertiary-300) 40%, transparent);
-    background: color-mix(in srgb, var(--tertiary-300) 12%, transparent);
-    color: var(--tertiary-300);
-}
-
-.dark-mode .tp-pill.is-success {
-    border-color: color-mix(in srgb, var(--success-color) 45%, transparent);
-    background: color-mix(in srgb, var(--success-color) 16%, transparent);
-    color: color-mix(in srgb, var(--success-color) 45%, #fff);
-}
-
-.dark-mode .tp-pill.is-danger {
-    border-color: color-mix(in srgb, var(--danger-400) 40%, transparent);
-    background: color-mix(in srgb, var(--danger-400) 14%, transparent);
-    color: var(--danger-200);
-}
-
-@media (max-width: 768px) {
+/* Phones: as Syllabase, fewer per row, so each name fits. */
+@media (max-width: 560px) {
     .theme-colours {
-        gap: 6px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
     }
 
-    .dialog .theme-colour .theme-hex {
-        padding: 5px 2px !important;
-        font-size: 0.6875rem;
+    .theme-colour {
+        flex: 1 1 88px;
     }
 }
 
@@ -12308,7 +12384,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     border: 1px solid color-mix(in srgb, var(--primary-color) 35%, transparent);
     border-radius: 16px;
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-family: inherit;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -12361,11 +12437,11 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 .bulk-action > :is(i, svg) {
     flex-shrink: 0;
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .bulk-action.is-success > :is(i, svg) {
-    color: var(--success-color);
+    color: var(--success-text);
 }
 
 .bulk-action.is-warning > :is(i, svg) {
@@ -12662,10 +12738,6 @@ body.is-selecting #scanner-tab {
    Under programme headings they have a quiet "Group" label of their own.
    ========================================================================= */
 #session-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0 6px 8px;
     color: #78909c;
     font-size: 0.75rem;
     font-weight: 700;
@@ -12709,14 +12781,14 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 #session-controls .course-button:hover:not(.active) {
-    background: rgba(255, 255, 255, 0.55);
-    color: var(--primary-color);
+    background: transparent;
+    color: var(--text-color);
 }
 
 #session-controls .course-button.active,
 #session-controls .course-button.active:hover {
     background: transparent;
-    color: var(--primary-color);
+    color: var(--primary-text);
     box-shadow: none;
     transform: none;
 }
@@ -12766,8 +12838,8 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 .dark-mode #session-controls .course-button:hover:not(.active) {
-    background: rgba(255, 255, 255, 0.06);
-    color: #eceff1;
+    background: transparent;
+    color: #fff;
 }
 
 .dark-mode #session-controls .course-button.active,
@@ -12882,8 +12954,8 @@ body.on-student-list:not(.signed-out) #session-label {
    Course tabs, as in Syllabase
    Grey, flat tabs in segmented rows (each line rounded at its ends). Hovering
    rounds a tab and rings it; the chosen tab takes the app's colour, drops its
-   icon and grows to the course's full name. Each programme's label sits above its
-   own row of courses. A course's copy under another programme is outlined and
+   icon and grows to the course's full name. Each programme's code leads its own
+   row of courses. A course's copy under another programme is outlined and
    muted; tapping it shows a note by the button (showCourseBubble).
    ========================================================================= */
 #course-buttons-container .course-button,
@@ -13006,35 +13078,120 @@ body.on-student-list:not(.signed-out) #session-label {
     }
 }
 
-/* Programmes stacked: each label above its own row of courses, so every programme
-   starts a line of its own; each row keeps its own rounded ends (updateCourseButtonRows). */
+/* Programmes: each led by its code in bold (BA CE), the full name on hover, as
+   small as the Group label. On a computer the codes stand in a column of their
+   own and the courses beside them; "Group" takes the same column for the groups
+   below. On a phone each code, and Group, is centred on a line of its own
+   between two hairlines. Each row keeps its own rounded ends
+   (updateCourseButtonRows). */
 #course-buttons-container.is-grouped {
     flex-direction: column;
     flex-wrap: nowrap;
     align-items: stretch;
-    gap: 14px;
+    gap: 8px;
+}
+
+#course-buttons-container.is-grouped .course-group {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
 }
 
 #course-buttons-container.is-grouped .course-group-buttons {
     display: flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: 6px 2px;
+    min-width: 0;
+}
+
+#course-buttons-container .course-group-label,
+#session-label {
+    display: flex;
+    flex: 0 0 84px;
+    align-items: center;
+    box-sizing: border-box;
+    min-height: 38px;
+    margin: 0;
+    padding-left: 6px;
+    line-height: 1.2;
 }
 
 #course-buttons-container .course-group-label {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin: 0 6px 8px;
-    color: var(--primary-color);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    line-height: 1.2;
-    white-space: nowrap;
+    color: var(--primary-text);
+    font-size: 0.75rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
 }
 
-.dark-mode #course-buttons-container .course-group-label {
-    color: var(--primary-200);
+#session-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+}
+
+/* On a computer the Group row reads as one more line of the column. */
+@media (min-width: 769px) {
+    #course-buttons-container.is-grouped {
+        margin-bottom: 12px;
+    }
+}
+
+#session-row > #session-controls {
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-bottom: 20px;
+}
+
+@media (max-width: 768px) {
+    #course-buttons-container.is-grouped {
+        gap: 12px;
+    }
+
+    #course-buttons-container.is-grouped .course-group,
+    #session-row {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+    }
+
+    #course-buttons-container .course-group-label,
+    #session-label {
+        flex: none;
+        justify-content: center;
+        gap: 10px;
+        min-height: 0;
+        padding: 0 4px;
+        white-space: nowrap;
+    }
+
+    #course-buttons-container .course-group-label::before,
+    #course-buttons-container .course-group-label::after,
+    #session-label::before,
+    #session-label::after {
+        content: '';
+        flex: 1 1 auto;
+        height: 1px;
+        background: rgba(15, 23, 42, 0.1);
+    }
+
+    .dark-mode #course-buttons-container .course-group-label::before,
+    .dark-mode #course-buttons-container .course-group-label::after,
+    .dark-mode #session-label::before,
+    .dark-mode #session-label::after {
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    .app-header,
+    #course-buttons-container,
+    #session-row > #session-controls {
+        margin-bottom: 16px;
+    }
+
+    .scan-buttons {
+        margin-top: 0;
+        margin-bottom: 18px;
+    }
 }
 
 /* Phones: 44px tall, to be tapped (the groups match, below). */
@@ -13131,19 +13288,19 @@ body.on-student-list:not(.signed-out) #session-label {
     #session-controls .course-button,
     #session-controls .course-button:hover,
     #session-controls .course-button:active {
-        height: 38px;
-        min-height: 38px;
+        height: 36px;
+        min-height: 36px;
         font-size: 0.875rem;
     }
 
     #session-category-group,
     #session-group-container {
         padding: 3px;
-        border-radius: 16px;
+        border-radius: 15px;
     }
 
     #session-controls :is(.course-button, .segment-thumb) {
-        border-radius: 13px !important;
+        border-radius: 12px !important;
     }
 }
 
@@ -13197,13 +13354,13 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 .dialog .segment-track > .course-button:hover:not(.active) {
-    background: rgba(255, 255, 255, 0.55);
-    color: var(--primary-color);
+    background: transparent;
+    color: var(--text-color);
 }
 
 .dialog .segment-track > .course-button.active,
 .dialog .segment-track > .course-button.active:hover {
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 /* The bulk dialogs' "Same as previous" / "Latest" has the track's first line; the
@@ -13222,8 +13379,8 @@ body.on-student-list:not(.signed-out) #session-label {
 }
 
 .dark-mode .dialog .segment-track > .course-button:hover:not(.active) {
-    background: rgba(255, 255, 255, 0.06);
-    color: #eceff1;
+    background: transparent;
+    color: #fff;
 }
 
 .dark-mode .dialog .segment-track > .course-button.active,
@@ -13241,7 +13398,7 @@ body.on-student-list:not(.signed-out) #session-label {
     padding: 1px 8px;
     border-radius: 999px;
     background: color-mix(in srgb, var(--primary-color) 10%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-size: 0.75rem;
     font-weight: 600;
 }
@@ -13446,12 +13603,12 @@ body.on-student-list:not(.signed-out) #session-label {
 
 .request-panel .panel-close-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-600) 8%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
 }
 
 .dark-mode .request-panel .panel-close-btn:hover:not(:disabled) {
     background: color-mix(in srgb, var(--primary-300) 14%, transparent);
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 .request-panel .scope-switch {
@@ -13486,7 +13643,7 @@ body.on-student-list:not(.signed-out) #session-label {
     }
 
     .request-panel .module-header-actions .quiet-btn:hover:not(:disabled) {
-        color: var(--primary-color);
+        color: var(--primary-text);
     }
 }
 
@@ -13512,7 +13669,7 @@ body.on-student-list:not(.signed-out) #session-label {
     padding: 0 10px;
     border-radius: 999px;
     background: var(--tertiary-50);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-family: 'Google Sans Flex', sans-serif;
     font-size: 0.8125rem;
     font-weight: 500;
@@ -13804,7 +13961,7 @@ body.on-student-list:not(.signed-out) #session-label {
     border: 0;
     border-radius: 16px;
     background: color-mix(in srgb, var(--primary-600) 10%, transparent);
-    color: var(--primary-color);
+    color: var(--primary-text);
     font-family: inherit;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -14046,21 +14203,105 @@ body.is-assistant .sync-auth-container {
 }
 
 /* =========================================================================
-   A course's settings: its sections (People, Dates, Appearance), the staff
-   lists to tick, and a course icon with its preview and Font Awesome's search.
+   A course's settings: wide on a computer, its parts in cards as in
+   Syllabase's course editor. Course and Dates on the left, Sections and People
+   on the right, Appearance across both; on a phone one column, in that order
+   but with Dates after People. Then the staff list to tick, and a course icon
+   with its preview and Font Awesome's search.
    ========================================================================= */
+.dialog.course-editor {
+    max-width: 980px;
+}
+
+.editor-columns {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    gap: 14px;
+}
+
+.editor-column {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+.editor-section {
+    overflow: hidden;
+    min-width: 0;
+    border: 1px solid #e0e0e0;
+    border-radius: 15px;
+    background: var(--card-background);
+}
+
+.editor-columns + .editor-section {
+    margin-top: 14px;
+}
+
 .dialog .editor-section-title {
-    margin: 18px 0 10px;
-    padding-top: 14px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
-    color: var(--primary-color);
-    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 8px 16px;
+    border-bottom: 1px solid #e8eaf0;
+    background: #f7f8fc;
+    color: #9e9e9e;
+    font-size: 0.72rem;
     font-weight: 700;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    user-select: none;
+}
+
+.editor-section-body {
+    padding: 14px 16px;
+}
+
+.editor-section-body > :last-child,
+.editor-section-body > .form-group:last-child,
+.editor-section-body .appearance-fields > .form-group:last-child {
+    margin-bottom: 0;
+}
+
+/* Two fields side by side: the code and its EIS ID, and the dates. */
+.editor-pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0 12px;
+}
+
+.dark-mode .editor-section {
+    border-color: rgba(255, 255, 255, 0.1);
+    background: rgba(255, 255, 255, 0.02);
 }
 
 .dark-mode .dialog .editor-section-title {
-    border-top-color: rgba(255, 255, 255, 0.1);
-    color: var(--primary-light);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+    color: #90a4ae;
+}
+
+@media (max-width: 760px) {
+    .editor-columns {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .editor-column {
+        display: contents;
+    }
+
+    .editor-section.is-details { order: 1; }
+    .editor-section.is-sections { order: 2; }
+    .editor-section.is-people { order: 3; }
+    .editor-section.is-dates { order: 4; }
+
+    .editor-section-body {
+        padding: 12px;
+    }
 }
 
 .dialog p.editor-note {
@@ -14169,8 +14410,8 @@ body.is-assistant .sync-auth-container {
     align-items: center;
     justify-content: center;
     width: 32px;
-    color: var(--primary-color);
-    font-size: 1.6rem;
+    color: var(--primary-text);
+    font-size: 1.8rem;
 }
 
 .icon-find-link {
@@ -14181,7 +14422,7 @@ body.is-assistant .sync-auth-container {
     width: 36px;
     height: 36px;
     border: 1px solid #e0e0e0;
-    border-radius: 12px;
+    border-radius: 10px;
     color: #9e9e9e;
     font-size: 0.85rem;
     text-decoration: none;
@@ -14190,7 +14431,12 @@ body.is-assistant .sync-auth-container {
 
 .icon-find-link:hover {
     border-color: var(--primary-color);
-    color: var(--primary-color);
+    color: var(--primary-text);
+}
+
+.dark-mode .icon-find-link:hover {
+    border-color: var(--tertiary-text);
+    color: var(--tertiary-text);
 }
 
 .dark-mode .icon-find-link {
@@ -14199,11 +14445,7 @@ body.is-assistant .sync-auth-container {
 }
 
 .dark-mode .fa-preview {
-    color: var(--primary-light);
-}
-
-.tp-course-icon {
-    display: inline-flex;
+    color: var(--primary-text);
 }
 
 .dialog .link-btn,
@@ -14214,7 +14456,7 @@ body.is-assistant .sync-auth-container {
     border: 0;
     background: none;
     box-shadow: none;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font: inherit;
     font-weight: 600;
     text-decoration: underline;
@@ -14225,7 +14467,7 @@ body.is-assistant .sync-auth-container {
 }
 
 .dark-mode .dialog .link-btn {
-    color: var(--primary-light);
+    color: var(--primary-light-text);
 }
 
 /* =========================================================================
@@ -14250,7 +14492,7 @@ body.is-assistant .sync-auth-container {
     border-radius: 999px;
     background: color-mix(in srgb, var(--primary-600) 6%, var(--card-background));
     box-shadow: none;
-    color: var(--primary-color);
+    color: var(--primary-text);
     font: inherit;
     font-size: 0.8125rem;
     font-weight: 600;
@@ -14364,4 +14606,22 @@ body.is-assistant .sync-auth-container {
 
 .scan-lock .scan-lock-device[hidden] {
     display: none;
+}
+
+/* A minute without a scan or a touch dims the lock screen (wakeScanLock in
+   scripts.js); a card or a touch brings it back at once. */
+.scan-lock::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    background: #000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+}
+
+.scan-lock.is-dimmed::after {
+    opacity: 0.72;
+    transition-duration: 1.5s;
 }

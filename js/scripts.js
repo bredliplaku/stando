@@ -4,9 +4,6 @@ let isGlobalAdmin = false;
 let adminCourses = [];
 // Courses where a teaching assistant records attendance; they are students everywhere else.
 let assistantCourses = [];
-// A teaching assistant (staff role Assistant), with courses or not: their profile
-// lists the devices where their staff card signs them in.
-let isTeachingAssistant = false;
 const CLIENT_ID = '740588046540-npg0crodtcuinveu6bua9rd6c3hb2s1m.apps.googleusercontent.com';
 const LOGS_STORAGE_KEY = 'attendance_logs';
 // Storage bucket for absence attachments (limits enforced by the bucket)
@@ -922,11 +919,9 @@ async function showAbsenceHistoryDialog() {
             }
 
             container.innerHTML = filtered.map(req => {
-                // Determine status color/icon
-                let statusBadge = '';
-                if (req.status === 'Approved') statusBadge = `<span style="color:var(--success-color); font-weight:bold; font-size:0.85em; background:#e8f5e9; padding:2px 8px; border-radius:10px;">Approved</span>`;
-                else if (req.status === 'Rejected') statusBadge = `<span style="color:var(--danger-color); font-weight:bold; font-size:0.85em; background:#ffebee; padding:2px 8px; border-radius:10px;">Rejected</span>`;
-                else statusBadge = `<span style="color:var(--warning-color); font-weight:bold; font-size:0.85em; background:#fff3e0; padding:2px 8px; border-radius:10px;">Pending</span>`;
+                // The status in its colour (styles.css, .request-status).
+                const status = req.status === 'Approved' || req.status === 'Rejected' ? req.status : 'Pending';
+                const statusBadge = `<span class="request-status is-${status.toLowerCase()}">${status}</span>`;
 
                 // --- Session Badge ---
                 let sessionBadge = '';
@@ -935,13 +930,13 @@ async function showAbsenceHistoryDialog() {
                 }
 
                 return `
-        <div class="request-list-item clickable-hist-row" style="border:1px solid #eee; padding:10px; margin-bottom:8px; border-radius:8px; cursor:pointer;">
+        <div class="request-list-item clickable-hist-row">
             <div style="flex-grow:1;">
                 <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
                     <span><strong>${escapeHtml(req.studentName)}</strong>${programmeById(studentProgrammeId(req.studentEmail)) ? ` ${programmeBadgeHtml(studentProgrammeId(req.studentEmail))}` : ''}</span>
                     ${statusBadge}
                 </div>
-                <div class="meta-parts" style="font-size:0.9em; color:#666;">
+                <div class="meta-parts request-meta">
                     ${courseCellHtml(req.course, sessionBadge ? ` ${sessionBadge}` : '')}
                     <span>${escapeHtml(req.absenceDate)}</span>
                 </div>
@@ -1039,7 +1034,6 @@ async function checkAdminStatus() {
         isGlobalAdmin = result.isGlobalAdmin;
         adminCourses = result.courses;
         assistantCourses = result.assistantCourses || [];
-        isTeachingAssistant = !!result.isAssistant || assistantCourses.length > 0;
 
         console.log('Admin status:', {
             isAdmin,
@@ -2088,8 +2082,16 @@ function enhanceSearchSelect(select) {
     const groupOf = option => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.label : '';
     const groupCodeOf = option => option.parentElement?.tagName === 'OPTGROUP' ? option.parentElement.dataset.code || '' : '';
     const choices = () => [...select.options].filter(option => option.value && !option.disabled);
-    const selectedLabel = () => select.value ? select.selectedOptions[0]?.textContent || '' : '';
-    const showSelected = () => { input.value = selectedLabel(); };
+    // A chosen programme shows by its code (BA CE); its full name is in the list and on hover.
+    const shortCode = select.classList.contains('programme-select');
+    const selectedLabel = () => {
+        const option = select.value ? select.selectedOptions[0] : null;
+        return (shortCode && option?.dataset.code) || option?.textContent || '';
+    };
+    const showSelected = () => {
+        input.value = selectedLabel();
+        input.title = select.value ? select.selectedOptions[0]?.textContent || '' : '';
+    };
     showSelected();
     const codeHtml = (text, code) => code && text.startsWith(code)
         ? `<strong>${escapeHtml(code)}</strong>${escapeHtml(text.slice(code.length))}`
@@ -2508,7 +2510,7 @@ function openTrustedDevicesSettings() {
 }
 
 // This device with Register, a hint, and the trusted devices (renderTrustedDevices):
-// in Settings, and in a teaching assistant's profile.
+// in Settings for staff, and in a student's profile.
 function trustedDevicesHtml(hint) {
     return `
                 <div class="settings-device-note">
@@ -2529,7 +2531,10 @@ function trustedDevicesSectionHtml() {
     return `
         <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
             <div class="settings-scroll">
-                ${trustedDevicesHtml(`Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}${isAdmin ? ' On the row of this device, <strong>Fingerprint or PIN</strong> lets the scan lock open with the lock of the device itself.' : ''}`)}
+                ${trustedDevicesHtml((isGlobalAdmin
+        ? 'Attendance is scanned only on trusted devices. You see everyone’s; a device you register is trusted for everyone, as a class tablet is.'
+        : 'Attendance is scanned only on trusted devices: the ones you register, and the class devices an administrator registered. Only you see and change yours.') +
+        ' On the row of this device, <strong>Fingerprint or PIN</strong> lets the scan lock open with the lock of the device itself.')}
             </div>
         </div>`;
 }
@@ -2540,12 +2545,17 @@ function renderTrustedDevices(devices) {
     closeRowMenus();
     const myId = getDeviceFingerprint();
     const me = String(currentUser?.email || '').toLowerCase();
-    // An assistant lists only their own devices; someone else may have trusted this one.
-    const isRegistered = devices.some(d => d.id === myId) || cachedDeviceTrust() === true;
+    // Each person registers a device for themselves; an administrator sees everyone's
+    // rows, a device registered by several people once for each.
+    const isRegistered = devices.some(d => d.id === myId && String(d.owner || '').toLowerCase() === me);
 
     const regBtn = document.getElementById('register-this-device-btn');
     if (regBtn) {
         regBtn.disabled = isRegistered;
+        // A class device an administrator registered is trusted already; registering
+        // it too gives it a name and settings of one's own.
+        regBtn.title = !isRegistered && cachedDeviceTrust() === true
+            ? 'An administrator trusted this device for everyone. Register it to keep your own settings on it.' : '';
         regBtn.innerHTML = isRegistered
             ? '<i class="fa-solid fa-check-circle" aria-hidden="true"></i> Trusted'
             : '<i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Register This Device';
@@ -2553,9 +2563,10 @@ function renderTrustedDevices(devices) {
         regBtn.classList.toggle('btn-blue', !isRegistered);
     }
 
-    // On this device's row a lecturer turns unlocking the scan lock with the
-    // device's own fingerprint, face or PIN on or off (the key stays on the device).
-    const lockSwitch = isAdmin && deviceUnlockAvailable ? `
+    // On this device's own row, whoever scans (lecturers, teaching assistants) turns
+    // unlocking the scan lock with the device's fingerprint, face or PIN on or off
+    // (the key stays on the device, for their account).
+    const lockSwitch = canRecordAnywhere() && deviceUnlockAvailable ? `
                     <label class="device-lock-switch" title="Unlock the scan lock with this device's fingerprint, face or PIN">
                         <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>Fingerprint or PIN</span>
                         <input type="checkbox" role="switch" class="switch-input" aria-label="Unlock the scan lock with fingerprint or PIN" data-no-dirty${deviceUnlockId() ? ' checked' : ''}>
@@ -2570,7 +2581,7 @@ function renderTrustedDevices(devices) {
                     <span class="settings-row-people">${mine ? 'Registered by you' : escapeHtml(d.owner)}</span>
                 </div>
                 <div class="settings-row-meta">
-                    <span class="settings-row-sub">${escapeHtml(d.date)}</span>${d.id === myId ? lockSwitch : ''}
+                    <span class="settings-row-sub">${escapeHtml(d.date)}</span>${d.id === myId && mine ? lockSwitch : ''}
                 </div>
                 ${isGlobalAdmin || mine ? `<div class="card-actions">
                     ${rowEditButtonHtml(`Rename ${d.name}`, 'rename-device-btn', attrs)}
@@ -3083,77 +3094,99 @@ function showCourseEditorDialog(courseName, info = null) {
     dialog.innerHTML = `
     <h3 class="dialog-title"><i class="fa-solid fa-book-open"></i> ${title}</h3>
     <div class="dialog-content">
-        ${isGlobalAdmin ? '' : '<p class="form-hint editor-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> You can change this course\'s programmes, sections and archiving. The rest is set by an administrator.</p>'}
+        ${isGlobalAdmin ? '' : '<p class="form-hint editor-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> You can change this course’s programmes, sections and archiving. The rest is set by an administrator.</p>'}
 
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-name">Course Code <span class="required">*</span></label>
-            <input id="edit-c-name" class="form-control" value="${escapeHtml(cleanCourseName)}" ${off} placeholder="e.g. CE 101">
-        </div>
-
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-title">Course Name <span class="required">*</span></label>
-            <input id="edit-c-title" class="form-control" value="${escapeHtml(val(data.title))}" ${off} maxlength="150">
-        </div>
-
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-eis">EIS ID</label>
-            <input id="edit-c-eis" class="form-control" value="${escapeHtml(val(data.eisId))}" placeholder="e.g. 12345" ${off}>
-        </div>
-
-        ${programmesFieldHtml('edit-c-programmes', data.programmeIds || [])}
-
-        <div class="form-group">
-            <label class="dialog-label-fixed">Sections</label>
-            <div style="display:flex; flex-direction:column; gap:10px; min-width:0;">
-                <div id="section-builder-list" class="admin-pills-list" style="width:100%; box-sizing:border-box; min-height:40px; border-radius:8px; padding:5px; font-size:0.85em;"></div>
-
-                <div class="admin-tool-bar" style="flex-direction:column; gap:8px; align-items:stretch; padding:10px;">
-                    <div id="new-sec-cat" class="course-buttons-container segmented-choices" style="margin:0; width:100%; display:flex;">
-                        <div class="course-button active" data-val="Theory" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-book tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Theory">Theory</span></div>
-                        <div class="course-button" data-val="Lab" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-desktop tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Lab">Lab</span></div>
-                        <div class="course-button" data-val="Practice" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-pen-to-square tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Practice">Practice</span></div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
-                        <div id="new-sec-grp" class="course-buttons-container segmented-choices" style="margin:0; flex-wrap:nowrap; flex:1;">
-                            ${groupButtonsHtml}
+        <div class="editor-columns">
+            <div class="editor-column">
+                <section class="editor-section is-details">
+                    <h4 class="editor-section-title"><i class="fa-solid fa-book-open" aria-hidden="true"></i>Course</h4>
+                    <div class="editor-section-body">
+                        <div class="editor-pair">
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-name">Course Code <span class="required">*</span></label>
+                                <input id="edit-c-name" class="form-control" value="${escapeHtml(cleanCourseName)}" ${off} placeholder="e.g. CE 101">
+                            </div>
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-eis">EIS ID</label>
+                                <input id="edit-c-eis" class="form-control" value="${escapeHtml(val(data.eisId))}" placeholder="e.g. 12345" ${off}>
+                            </div>
                         </div>
-                        <button type="button" id="btn-add-section" class="btn-green btn-sm" style="padding:8px 15px; flex-shrink:0; margin-left:10px; font-size:0.85em;">
-                            <i class="fa-solid fa-plus"></i> Add
-                        </button>
+                        <div class="form-group">
+                            <label class="dialog-label-fixed" for="edit-c-title">Course Name <span class="required">*</span></label>
+                            <input id="edit-c-title" class="form-control" value="${escapeHtml(val(data.title))}" ${off} maxlength="150">
+                        </div>
+                        ${programmesFieldHtml('edit-c-programmes', data.programmeIds || [])}
+                        ${!isNew ? switchRowHtml('edit-c-archived', data.archived, 'Archived', 'Hidden from lists. Its records stay.') : ''}
                     </div>
-                </div>
+                </section>
+
+                <section class="editor-section is-dates">
+                    <h4 class="editor-section-title"><i class="fa-solid fa-calendar-days" aria-hidden="true"></i>Dates</h4>
+                    <div class="editor-section-body">
+                        <div class="editor-pair">
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-start">Start Date</label>
+                                <input type="date" id="edit-c-start" class="form-control" value="${formatDate(data.startDate)}" ${off}>
+                            </div>
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-end">End Date</label>
+                                <input type="date" id="edit-c-end" class="form-control" value="${formatDate(data.endDate)}" ${off}>
+                            </div>
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-holiday-start">Holiday Start</label>
+                                <input type="date" id="edit-c-holiday-start" class="form-control" value="${formatDate(data.holidayStartDate)}" ${off}>
+                            </div>
+                            <div class="form-group">
+                                <label class="dialog-label-fixed" for="edit-c-holidays">Holiday Weeks</label>
+                                <input type="number" id="edit-c-holidays" class="form-control" value="${escapeHtml(val(data.holidayWeeks))}" ${off}>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="editor-column">
+                <section class="editor-section is-sections">
+                    <h4 class="editor-section-title"><i class="fa-solid fa-layer-group" aria-hidden="true"></i>Sections</h4>
+                    <div class="editor-section-body">
+                        <div style="display:flex; flex-direction:column; gap:10px; min-width:0;">
+                            <div id="section-builder-list" class="admin-pills-list" style="width:100%; box-sizing:border-box; min-height:40px; border-radius:8px; padding:5px; font-size:0.85em;"></div>
+
+                            <div class="admin-tool-bar" style="flex-direction:column; gap:8px; align-items:stretch; padding:10px;">
+                                <div id="new-sec-cat" class="course-buttons-container segmented-choices" style="margin:0; width:100%; display:flex;">
+                                    <div class="course-button active" data-val="Theory" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-book tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Theory">Theory</span></div>
+                                    <div class="course-button" data-val="Lab" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-desktop tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Lab">Lab</span></div>
+                                    <div class="course-button" data-val="Practice" role="button" tabindex="0" style="flex:1; text-align:center; padding:6px; font-size:0.85em; min-width:0;"><i class="fa-solid fa-pen-to-square tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Practice">Practice</span></div>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; align-items:center; width:100%;">
+                                    <div id="new-sec-grp" class="course-buttons-container segmented-choices" style="margin:0; flex-wrap:nowrap; flex:1;">
+                                        ${groupButtonsHtml}
+                                    </div>
+                                    <button type="button" id="btn-add-section" class="btn-green btn-sm" style="padding:8px 15px; flex-shrink:0; margin-left:10px; font-size:0.85em;">
+                                        <i class="fa-solid fa-plus"></i> Add
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="editor-section is-people">
+                    <h4 class="editor-section-title"><i class="fa-solid fa-user-group" aria-hidden="true"></i>People</h4>
+                    <div class="editor-section-body">
+                        ${peopleHtml}
+                        ${isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records here, and change only the ones they made.</p>' : ''}
+                    </div>
+                </section>
             </div>
         </div>
 
-        ${!isNew ? switchRowHtml('edit-c-archived', data.archived, 'Archived', 'Hidden from lists. Its records stay.') : ''}
-
-        <h4 class="editor-section-title">People</h4>
-        ${peopleHtml}
-        ${isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records here, and change only the ones they made.</p>' : ''}
-
-        <h4 class="editor-section-title">Dates</h4>
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-start">Start Date</label>
-            <input type="date" id="edit-c-start" class="form-control" value="${formatDate(data.startDate)}" ${off}>
-        </div>
-
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-end">End Date</label>
-            <input type="date" id="edit-c-end" class="form-control" value="${formatDate(data.endDate)}" ${off}>
-        </div>
-
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-holiday-start">Holiday Start</label>
-            <input type="date" id="edit-c-holiday-start" class="form-control" value="${formatDate(data.holidayStartDate)}" ${off}>
-        </div>
-
-        <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-holidays">Holiday Weeks</label>
-            <input type="number" id="edit-c-holidays" class="form-control" value="${escapeHtml(val(data.holidayWeeks))}" ${off}>
-        </div>
-
-        <h4 class="editor-section-title">Appearance</h4>
-        ${appearanceFieldsHtml(data, { code: cleanCourseName, title: data.title, editable: isGlobalAdmin })}
+        <section class="editor-section is-appearance">
+            <h4 class="editor-section-title"><i class="fa-solid fa-palette" aria-hidden="true"></i>Appearance</h4>
+            <div class="editor-section-body">
+                ${appearanceFieldsHtml(data, { code: cleanCourseName, title: data.title, editable: isGlobalAdmin })}
+            </div>
+        </section>
     </div>
     <div class="dialog-actions">
         ${(!isNew && isGlobalAdmin) ? '<button type="button" id="delete-course-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>' : ''}
@@ -3569,8 +3602,8 @@ function refreshOpenSettings() {
 }
 
 // A student's profile: who they are, whether their Student ID card is registered
-// (its Card ID hidden, like a password), a teaching assistant's trusted devices,
-// and their absence requests.
+// (its Card ID hidden, like a password), the devices where their card signs them
+// in, and their absence requests.
 async function showStudentProfileDialog() {
     const cardCount = ownStudentCardCount();
     const email = String(currentUser.email || '').toLowerCase();
@@ -3618,11 +3651,10 @@ async function showStudentProfileDialog() {
                     <button type="button" class="btn-blue btn-sm" data-action="register">Register</button>
                 </div>`}
             </section>
-            ${isTeachingAssistant ? `
             <section class="sp-section sp-devices" aria-labelledby="sp-devices-title">
-                <h4 class="sp-section-title" id="sp-devices-title">Staff card sign-in</h4>
-                ${trustedDevicesHtml('Your staff card signs you in only on a trusted device, so a card someone else picks up opens nothing. Trust your own phone here.')}
-            </section>` : ''}
+                <h4 class="sp-section-title" id="sp-devices-title">Card sign-in</h4>
+                ${trustedDevicesHtml('Your card signs you in only on a device you trusted, so a card someone else picks up opens nothing. Trust your own phone here; only you see your devices.')}
+            </section>
             <section class="sp-section" aria-labelledby="sp-requests-title">
                 <div class="sp-section-head">
                     <h4 class="sp-section-title" id="sp-requests-title">Absence requests</h4>
@@ -3638,10 +3670,8 @@ async function showStudentProfileDialog() {
         </div>`;
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
-    if (isTeachingAssistant) {
-        bindTrustedDevicesSection(dialog);
-        reloadTrustedDevices();
-    }
+    bindTrustedDevicesSection(dialog);
+    reloadTrustedDevices();
 
     const close = () => {
         backdrop.remove();
@@ -3931,21 +3961,21 @@ function showStudentImportGuide() {
 
 // ============================================================
 // COURSE APPEARANCE
-// Each course has an icon, on its course button, and five colours. Administrators
-// set them in the course's settings (courses.icon and courses.theme, from
-// supabase/migrations/assistants_and_course_appearance.sql). While a course is on
-// screen the page takes its colours, for everyone. A colour left as Stando's sets
-// nothing, so the stylesheet's own shades show; a chosen one sets --<family>-main
-// and .theme-<family>, and the stylesheet mixes the family's other shades from it
-// (styles.css, "Theme colours"). This browser keeps the last course's colours to
-// paint them before the courses load (index.html, embed.js).
+// Each course has an icon, on its course button, and five colours, the same five
+// as Syllabase's. Administrators set them in the course's settings (courses.icon
+// and courses.theme). While a course is on screen the page takes its colours, for
+// everyone. A colour left as Stando's sets nothing, so the stylesheet's own shades
+// show; a chosen one sets --<family>-main and .theme-<family>, and the stylesheet
+// mixes the family's other shades from it, light and dark (styles.css, "Theme
+// colours"). Red, for deleting, is the same in every course. This browser keeps
+// the last course's colours to paint them before the courses load (index.html, embed.js).
 // ============================================================
 const THEME_FAMILIES = [
-    { id: 'primary', label: 'Primary', hint: 'Header and buttons', fallback: '#3949ab' },
+    { id: 'primary', label: 'Primary', hint: 'Header, course buttons and dates', fallback: '#3949ab' },
     { id: 'secondary', label: 'Secondary', hint: 'Requests and warnings', fallback: '#fb8c00' },
     { id: 'tertiary', label: 'Tertiary', hint: 'Information', fallback: '#2196f3' },
-    { id: 'success', label: 'Success', hint: 'Adding and approving', fallback: '#43a047' },
-    { id: 'danger', label: 'Danger', hint: 'Deleting and rejecting', fallback: '#f44336' }
+    { id: 'accent', label: 'Accent', hint: 'Scan times', fallback: '#1e88e5' },
+    { id: 'success', label: 'Success', hint: 'Adding and approving', fallback: '#43a047' }
 ];
 const COLOUR_THEME_KEY = 'stando_colours';
 const DEFAULT_COURSE_ICON = 'fa-solid fa-table-list';
@@ -4008,30 +4038,30 @@ function faIconHtml(cls, extraClass = '') {
     return `<i class="${escapeHtml(faIconClass(cls) || DEFAULT_COURSE_ICON)}${extraClass ? ` ${extraClass}` : ''}" aria-hidden="true"></i>`;
 }
 
-// A small Stando in the course's colours: the banner, the course buttons (this
-// one with its icon), a request, information, a day's date, Add, Delete and Start Scanning.
+// The course in its colours, drawn as Syllabase's preview: the header with the
+// course's icon, a day heading with its scan times, and a pill per colour.
 function themePreviewHtml({ code = 'CE 121', title = 'Civil Engineering Drawing', icon = '' } = {}) {
     const now = new Date();
     const date = [now.getDate(), now.getMonth() + 1].map(n => String(n).padStart(2, '0')).join('-') + `-${now.getFullYear()}`;
     return `
         <div class="theme-preview theme-scope" aria-hidden="true">
-            <div class="tp-banner"><span class="tp-code">${escapeHtml(code || 'CE 121')}</span><span class="tp-name">${escapeHtml(title || code || 'Course')}</span></div>
+            <div class="tp-header">
+                <span class="tp-icon" data-icon-preview>${faIconHtml(icon)}</span>
+                <div class="tp-head-text">
+                    <div class="tp-title">${escapeHtml(title || code || 'Course')}</div>
+                    <div class="tp-sub">${escapeHtml(code || 'CE 121')}, Attendance</div>
+                </div>
+                <span class="tp-chip"><i class="fa-solid fa-wifi" aria-hidden="true"></i> Scanning</span>
+            </div>
             <div class="tp-body">
-                <div class="tp-row is-segmented">
-                    <span class="tp-course is-active"><span class="tp-course-icon" data-icon-preview>${faIconHtml(icon)}</span> ${escapeHtml(code || 'CE 121')}</span>
-                    <span class="tp-course"><i class="${DEFAULT_COURSE_ICON}"></i> CE 101</span>
-                    <span class="tp-course"><i class="${DEFAULT_COURSE_ICON}"></i> MATH 101</span>
+                <div class="tp-module"><i class="fa-solid fa-calendar-day" aria-hidden="true"></i>${date} — Theory A</div>
+                <div class="tp-row">
+                    <span class="tp-time">09:00</span><span class="tp-time">09:10</span><span class="tp-time">09:15</span>
+                    <span class="tp-badge"><i class="fa-solid fa-hand-point-up" aria-hidden="true"></i> Requests <b>3</b></span>
                 </div>
                 <div class="tp-row">
-                    <span class="tp-pill is-secondary"><i class="fa-solid fa-hand-point-up"></i> Requests <b>3</b></span>
-                    <span class="tp-pill is-tertiary"><i class="fa-solid fa-circle-info"></i> Information</span>
+                    ${THEME_FAMILIES.map(family => `<span class="tp-pill is-${family.id}">${family.label}</span>`).join('')}
                 </div>
-                <div class="tp-row">
-                    <span class="tp-date"><i class="fa-solid fa-calendar-day"></i> ${date}</span>
-                    <span class="tp-pill is-success"><i class="fa-solid fa-plus"></i> Add</span>
-                    <span class="tp-pill is-danger"><i class="fa-solid fa-trash"></i> Delete</span>
-                </div>
-                <div class="tp-scan"><span><i class="fa-solid fa-wifi"></i></span>Start Scanning</div>
             </div>
         </div>`;
 }
@@ -4046,16 +4076,15 @@ function appearanceFieldsHtml(data, { code, title, editable }) {
     return `
         <div class="appearance-fields">
             <div class="form-group">
-                <label class="dialog-label-fixed" for="edit-c-icon">Icon <span class="theme-label-note">Font Awesome class or &lt;i&gt; tag</span></label>
+                <label class="dialog-label-fixed" for="edit-c-icon">Course Icon <span class="theme-label-note">Font Awesome class or &lt;i&gt; tag, e.g. fa-solid fa-cube</span></label>
                 <div class="icon-input-wrap">
                     <input type="text" id="edit-c-icon" class="form-control" value="${escapeHtml(icon)}" placeholder="${DEFAULT_COURSE_ICON}" spellcheck="false" autocomplete="off"${off}>
                     <span class="fa-preview" data-icon-preview>${faIconHtml(icon)}</span>
                     <a class="icon-find-link" href="${FA_SEARCH_URL}" target="_blank" rel="noopener noreferrer" title="Find an icon on Font Awesome" aria-label="Find an icon on Font Awesome"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></a>
                 </div>
             </div>
-            <p class="form-hint">On the course's button. Empty for the usual list icon.</p>
             <div class="form-group">
-                <label class="dialog-label-fixed">Colours <span class="theme-label-note">pick a swatch or type a code</span></label>
+                <label class="dialog-label-fixed">Theme Colours <span class="theme-label-note">pick a swatch or type a hex value</span></label>
                 <div class="theme-colours">
                     ${THEME_FAMILIES.map(family => `
                     <div class="theme-colour" title="${family.label}: ${family.hint.toLowerCase()}">
@@ -4064,9 +4093,9 @@ function appearanceFieldsHtml(data, { code, title, editable }) {
                         <span class="theme-colour-name">${family.label}</span>
                     </div>`).join('')}
                 </div>
+                ${themePreviewHtml({ code, title, icon })}
+                <p class="form-hint theme-note">Live preview of the course with these colours. Everyone sees them while this course is open.${editable ? ' <button type="button" class="link-btn" id="theme-reset-btn">Reset to default colours</button>' : ''}</p>
             </div>
-            ${themePreviewHtml({ code, title, icon })}
-            <p class="form-hint theme-note">Live preview. While this course is open, the page takes these colours for everyone.${editable ? ' <button type="button" class="link-btn" id="theme-reset-btn">Reset to Stando\'s colours</button>' : ''}</p>
         </div>`;
 }
 
@@ -5058,7 +5087,6 @@ async function onSuccessfulAuth(isRestore = false) {
             isGlobalAdmin = bootData.adminStatus.isGlobalAdmin || false;
             adminCourses = bootData.adminStatus.courses || [];
             assistantCourses = bootData.adminStatus.assistantCourses || [];
-            isTeachingAssistant = !!bootData.adminStatus.isAssistant || assistantCourses.length > 0;
             console.log('Admin status:', { isAdmin, isGlobalAdmin, adminCourses, assistantCourses });
         }
 
@@ -8200,15 +8228,15 @@ async function callSupabase(action, payload = {}) {
             }));
 
         case 'registerDevice_Admin': {
-            // Asked of the database: an assistant sees only their own devices, and
-            // one someone else trusted counts too.
-            const { data: trusted, error: trustError } = await supabaseClient.rpc('device_is_trusted', { p_device_id: payload.deviceId });
-            if (trustError) throw new Error(trustError.message);
-            if (trusted) throw new Error('Device already registered.');
+            // Several people may register the same device, once each.
+            const owner = await sbSessionEmail();
+            const own = sbUnwrap(await supabaseClient.from('trusted_devices')
+                .select('id').eq('device_id', payload.deviceId).ilike('owner', owner));
+            if (own?.length) throw new Error('You already registered this device.');
             sbUnwrap(await supabaseClient.from('trusted_devices').insert({
                 name: payload.deviceName,
                 device_id: payload.deviceId,
-                owner: await sbSessionEmail(),
+                owner,
                 registered_at: localDateString()
             }));
             return { result: 'success' };
@@ -8592,7 +8620,6 @@ async function handleManualRefresh(buttonId) {
 
             if (fetchedCourseDict && typeof fetchedCourseDict === 'object') {
                 assistantCourses = bootData.adminStatus?.assistantCourses || [];
-                isTeachingAssistant = !!bootData.adminStatus?.isAssistant || assistantCourses.length > 0;
                 // Update the global availableCourses list (exclude archived)
                 availableCourses = Object.keys(fetchedCourseDict).filter(c => !courseInfoMap[c]?.archived);
 
@@ -9113,8 +9140,9 @@ function updateAuthUI() {
         // Hide course buttons
         if (courseButtonsContainer) courseButtonsContainer.style.display = 'none';
 
-        // A student's card read here greets them by name, as a check that it
-        // works. Its Card ID stays hidden.
+        // A card read here signs in on a device trusted for its owner (kiosk-login);
+        // elsewhere a student's card greets them by name, as a check that it works,
+        // and says how to sign in with it. Its Card ID stays hidden.
         if (signedOutCard) {
             let notSignedInMsg = notSignedInMsgElement;
             if (!notSignedInMsg) {
@@ -9128,7 +9156,8 @@ function updateAuthUI() {
             notSignedInMsg.innerHTML = signedOutCard.checking
                 ? '<p><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Checking card…</p>'
                 : signedOutCard.name
-                    ? '<p class="card-greeting"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Hello, <strong></strong></span></p>'
+                    ? `<p class="card-greeting"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Hello, <strong></strong></span></p>
+                       <p>To sign in with your card on this phone, sign in once and trust it in your profile.</p>`
                     : `<p><i class="fa-solid fa-id-card" aria-hidden="true"></i> This card isn't registered yet.</p>
                        <p>Sign in, then choose <strong>Register Card ID</strong>.</p>`;
             if (signedOutCard.name) notSignedInMsg.querySelector('strong').textContent = signedOutCard.name;
@@ -9272,7 +9301,6 @@ function setupAuthStateTracking() {
             isGlobalAdmin = false;
             adminCourses = [];
             assistantCourses = [];
-            isTeachingAssistant = false;
             currentUser = null;
             currentCourse = '';
             courseData = {};
@@ -12186,6 +12214,7 @@ function updateLogsList() {
                 timeTag.setAttribute('class', 'time-tag');
                 if (log.manual === true || log.manual === 'true') {
                     timeTag.classList.add('manual', 'excused');
+                    timeTag.title = 'Justified absence';
 
                     // Add click listener with 'warning' style and specific name
                     timeTag.addEventListener('click', (e) => {
@@ -12530,7 +12559,8 @@ function bindProgrammesField(box) {
     const render = () => {
         const chosen = readProgrammesField(box).map(programmeById).sort(compareProgrammes);
         chips.innerHTML = chosen.length
-            ? chosen.map(p => `<span class="programme-chip"><strong>${escapeHtml(p.code)}</strong>${p.name ? ` <span>${escapeHtml(p.name)}</span>` : ''}<button type="button" class="programme-chip-remove" data-id="${p.id}" title="Remove ${escapeHtml(p.code)}" aria-label="Remove ${escapeHtml(p.code)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></span>`).join('')
+            // A chosen programme by its code alone; its full name shows on hover and in the list.
+            ? chosen.map(p => `<span class="programme-chip"${p.name ? ` title="${escapeHtml(programmeOptionLabel(p))}"` : ''}><strong>${escapeHtml(p.code)}</strong><button type="button" class="programme-chip-remove" data-id="${p.id}" title="Remove ${escapeHtml(p.code)}" aria-label="Remove ${escapeHtml(p.code)}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></span>`).join('')
             : '<span class="programme-chips-empty">No programme yet</span>';
         [...select.options].forEach(option => { if (option.value) option.disabled = chosen.some(p => String(p.id) === option.value); });
     };
@@ -13382,7 +13412,7 @@ async function handleNfcReading({ serialNumber }) {
         try {
             const myDeviceId = getDeviceFingerprint();
             const convertedCardId = convertUidToExternalId(serialNumber);
-            // Ask the kiosk-login Edge Function if this UID belongs to a staff member
+            // Ask the kiosk-login Edge Function whose card this is, and whether this device is trusted for them
             const { data, error } = await supabaseClient.functions.invoke('kiosk-login', {
                 body: { uid: serialNumber, convertedId: convertedCardId, deviceId: myDeviceId }
             });
@@ -13419,7 +13449,7 @@ async function handleNfcReading({ serialNumber }) {
                 if (data.message) showNotification('warning', 'Staff Sign-In', data.message);
                 showSignedOutCard(null);
             } else {
-                // Any other card: its student is greeted by name.
+                // A student's card on a device they have not trusted: greeted by name.
                 const name = data?.student?.name || '';
                 playSound(!!name);
                 showSignedOutCard({ name });
@@ -13671,9 +13701,9 @@ function isScanLockScreenShown() {
     return !!document.getElementById('scan-lock');
 }
 
-// Only administrators record attendance, and hashing needs a secure context (as NFC does).
+// For whoever records attendance (teaching assistants too); hashing needs a secure context (as NFC does).
 function scanLockAvailable() {
-    return isSignedIn && isAdmin && !!scanLockAccount() && !!supabaseClient && !!window.crypto?.subtle;
+    return isSignedIn && canRecordAnywhere() && !!scanLockAccount() && !!supabaseClient && !!window.crypto?.subtle;
 }
 
 async function hashScanLockValue(value, salt) {
@@ -13905,9 +13935,10 @@ async function startScanningLocked() {
     if (!lockReady) {
         if (!scanLockUnavailableShown) {
             scanLockUnavailableShown = true;
+            const devices = isAdmin ? 'Settings → Trusted Devices' : 'your profile';
             showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
-                ? 'To lock Stando while scanning, add your card in Settings → Staff, or turn on unlocking with this device in Settings → Trusted Devices.'
-                : 'To lock Stando while scanning, ask an administrator to add your staff card, or turn on unlocking with this device in Settings → Trusted Devices.', 10000);
+                ? `To lock Stando while scanning, add your card in Settings → Staff, or turn on Fingerprint or PIN for this device in ${devices}.`
+                : `To lock Stando while scanning, ask an administrator to add your staff card, or turn on Fingerprint or PIN for this device in ${devices}.`, 10000);
         }
         return;
     }
@@ -14068,6 +14099,7 @@ function showScanLockScreen() {
             if (event.key === 'Escape') closeScanLockList();
         });
         bindScanLockSwipe(screen);
+        bindScanLockDimming(screen);
         document.body.appendChild(screen);
         document.documentElement.classList.add('scan-locked');
         setScanLockInert(true);
@@ -14075,14 +14107,47 @@ function showScanLockScreen() {
         scanLockClockInterval = setInterval(updateScanLockScreen, 1000);
     }
     updateScanLockScreen();
+    wakeScanLock();
     // Without the attendance scanner (another tab, or after a reload), listen for the unlock card.
     if (!nfcReader) startScanLockReader();
     screen.focus({ preventScroll: true });
 }
 
+// --- Dimming: a minute without a scan or a touch dims the lock screen (less
+// light, and less wear on an AMOLED screen, which the clock's small drift every
+// two minutes also spares). A card or a touch wakes it; the first touch on a
+// dimmed screen only wakes it, so it never presses what lies under the finger.
+const SCAN_LOCK_DIM_MS = 60000;
+let scanLockDimTimer = null;
+
+function wakeScanLock() {
+    const screen = document.getElementById('scan-lock');
+    if (!screen) return;
+    screen.classList.remove('is-dimmed');
+    clearTimeout(scanLockDimTimer);
+    scanLockDimTimer = setTimeout(() => screen.classList.add('is-dimmed'), SCAN_LOCK_DIM_MS);
+}
+
+function bindScanLockDimming(screen) {
+    let wakingTap = false;
+    screen.addEventListener('pointerdown', () => {
+        wakingTap = screen.classList.contains('is-dimmed');
+        wakeScanLock();
+    }, true);
+    screen.addEventListener('click', (event) => {
+        if (!wakingTap) return;
+        wakingTap = false;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        if (scanLockSession) fillScreenForScanning();
+    }, true);
+    screen.addEventListener('keydown', wakeScanLock, true);
+}
+
 function hideScanLockScreen() {
     const screen = document.getElementById('scan-lock');
     if (!screen) return;
+    clearTimeout(scanLockDimTimer);
     stopScanLockReader();
     clearInterval(scanLockClockInterval);
     scanLockClockInterval = null;
@@ -14138,6 +14203,7 @@ function updateScanLockScreen() {
 function flashScanLockStatus(message) {
     const status = document.querySelector('#scan-lock .scan-lock-status');
     if (!status) return;
+    wakeScanLock();
     status.dataset.message = '1';
     status.querySelector('.scan-lock-status-text').textContent = message;
     clearTimeout(status._timer);
@@ -14183,6 +14249,7 @@ let scanLockListTimer = null;
 const SCAN_LOCK_LIST_IDLE_MS = 20000; // An open list folds away after this long untouched
 
 function noteScanLockScan(scan) {
+    wakeScanLock();
     scanLockScans.unshift(scan);
     updateScanLockScreen();
     const items = document.querySelector('#scan-lock .scan-lock-sheet:not([hidden]) .scan-lock-list-items');
@@ -14424,8 +14491,12 @@ function setupScanLock() {
         if (event.key === SCAN_LOCK_KEY || event.key === null) syncScanLockFromStorage();
     });
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') noteScanLockHidden();
-        else noteScanLockReturn();
+        if (document.visibilityState === 'hidden') {
+            noteScanLockHidden();
+        } else {
+            noteScanLockReturn();
+            wakeScanLock();
+        }
     });
     window.addEventListener('pagehide', noteScanLockHidden);
 }
@@ -14900,7 +14971,7 @@ function populateCourseButtons() {
                 const section = document.createElement('section');
                 section.className = 'course-group';
                 section.setAttribute('aria-label', group.programme ? programmeOptionLabel(group.programme) : 'Other courses');
-                section.innerHTML = `<span class="course-group-label"${group.programme?.name ? ` title="${escapeHtml(programmeOptionLabel(group.programme))}"` : ''}><i class="fa-solid fa-graduation-cap" aria-hidden="true"></i>${escapeHtml(group.programme ? group.programme.code : 'Other courses')}</span><div class="course-group-buttons"></div>`;
+                section.innerHTML = `<span class="course-group-label"${group.programme?.name ? ` title="${escapeHtml(programmeOptionLabel(group.programme))}"` : ''}>${escapeHtml(group.programme ? group.programme.code : 'Other')}</span><div class="course-group-buttons"></div>`;
                 const row = section.querySelector('.course-group-buttons');
                 group.courses.forEach(course => row.appendChild(makeButton(byCourse.get(course), group.programme ? `p${group.programme.id}` : 'other')));
                 courseButtonsContainer.appendChild(section);

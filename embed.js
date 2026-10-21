@@ -97,7 +97,7 @@
         // The colours of the course open last in this browser, as index.html does.
         try {
             const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');
-            for (const family of ['primary', 'secondary', 'tertiary', 'success', 'danger']) {
+            for (const family of ['primary', 'secondary', 'tertiary', 'accent', 'success']) {
                 if (!/^#[0-9a-f]{6}$/.test(colours[family])) continue;
                 root.style.setProperty('--' + family + '-main', colours[family]);
                 root.classList.add('theme-' + family);

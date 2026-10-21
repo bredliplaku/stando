@@ -134,45 +134,56 @@ Deno.serve(async (req) => {
       ]),
     );
 
+    // 2. A card signs in only on a device trusted for its owner: one they
+    // registered, or, for staff, a class device a global administrator
+    // registered. A card someone else picked up opens nothing on their own phone,
+    // and a student's card never signs in on a class tablet.
+    const devIdTrimmed = String(deviceId ?? "").trim();
+    const trustedFor = async (email: string, classDevices: boolean) => {
+      const { data, error } = await admin.rpc("device_trusted_for", {
+        p_device_id: devIdTrimmed,
+        p_email: email,
+        p_class_devices: classDevices,
+      });
+      if (error) throw error;
+      return data === true;
+    };
+
     const { data: staffRows, error: staffErr } = await admin
       .from("staff")
       .select("name,email")
       .in("uid", candidateUids);
     if (staffErr) throw staffErr;
-    if (!staffRows || staffRows.length === 0) {
-      // A student's card is greeted by name on the sign-in page, as a check that
-      // it works. Only the name is returned, never the card's other details.
+    let person = staffRows?.[0] as { name: string | null; email: string } | undefined;
+
+    if (!person) {
+      // A student's card: greeted by name on the sign-in page, as a check that it
+      // works, and signed in on a device the student trusted (their profile).
+      // Only the name is returned, never the card's other details.
       const findStudent = async (column: "uids" | "hardware_uids") => {
-        const { data, error } = await admin.from("students").select("name").overlaps(column, candidateUids).limit(1);
+        const { data, error } = await admin.from("students").select("name,email").overlaps(column, candidateUids).limit(1);
         if (error) throw error;
-        return data?.[0]?.name as string | undefined;
+        return data?.[0] as { name: string; email: string } | undefined;
       };
-      const studentName = (await findStudent("uids")) ?? (await findStudent("hardware_uids"));
-      return json({
-        result: "not_admin",
-        message: "UID not recognized as staff.",
-        ...(studentName ? { student: { name: studentName } } : {}),
-      });
-    }
-
-    const { name, email } = staffRows[0];
-
-    // 2. Staff cards sign in only on a trusted device, a teaching assistant's
-    // too: a card someone else picked up opens nothing on their own phone.
-    const devIdTrimmed = String(deviceId ?? "").trim();
-    const { data: devices, error: devErr } = await admin
-      .from("trusted_devices")
-      .select("id")
-      .eq("device_id", devIdTrimmed);
-    if (devErr) throw devErr;
-    if (!devices || devices.length === 0) {
+      const student = (await findStudent("uids")) ?? (await findStudent("hardware_uids"));
+      if (!student?.email || !(await trustedFor(student.email, false))) {
+        return json({
+          result: "not_admin",
+          message: "UID not recognized as staff.",
+          ...(student?.name ? { student: { name: student.name } } : {}),
+        });
+      }
+      person = student;
+    } else if (!(await trustedFor(person.email, true))) {
       return json({
         result: "error",
         message: "Device not trusted. Sign in with Google to register this device.",
       });
     }
 
-    // 3. Mint a one-time token (creating the auth user on first kiosk login)
+    const { name, email } = person;
+
+    // 3. Mint a one-time token (creating the auth user on first card sign-in)
     let link = await admin.auth.admin.generateLink({ type: "magiclink", email });
     if (link.error && /not found/i.test(link.error.message ?? "")) {
       const { error: createErr } = await admin.auth.admin.createUser({
@@ -192,7 +203,7 @@ Deno.serve(async (req) => {
         email,
         name,
         picture:
-          "https://ui-avatars.com/api/?name=" + encodeURIComponent(name) + "&background=random",
+          "https://ui-avatars.com/api/?name=" + encodeURIComponent(name ?? email) + "&background=random",
       },
     });
   } catch (e) {
