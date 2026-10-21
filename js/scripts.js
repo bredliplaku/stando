@@ -4828,8 +4828,7 @@ function copyToClipboard(text) {
 * Sets up event listeners, checks NFC support, and prepares the UI.
 */
 function init() {
-    const hasStoredSession =
-        Object.keys(localStorage).some(k => k.startsWith('sb-') && k.includes('auth-token'));
+    const hasStoredSession = Object.keys(localStorage).some(isStoredSessionKey);
     if (!hasStoredSession) {
         localStorage.removeItem('last_active_course');
     }
@@ -7868,7 +7867,10 @@ function sbUnwrap({ data, error }) {
 const SB_MISSING_COLUMN = ['42703', 'PGRST204'];
 
 async function sbSessionEmail() {
-    const { data: { session } } = await supabaseClient.auth.getSession();
+    const { data: { session }, error } = await supabaseClient.auth.getSession();
+    // A token that could not be refreshed (offline, say) is not a sign-out: the
+    // session stays for when the connection is back. A revoked one signs out by itself.
+    if (error) throw error;
     if (!session) {
         handleSignoutClick();
         throw new Error("User not signed in or token expired.");
@@ -9003,7 +9005,25 @@ function handleSignoutClick() {
         google.accounts.id.disableAutoSelect();
     }
 
-    supabaseClient.auth.signOut({ scope: 'local' }).finally(() => window.location.reload());
+    // Online, the session also ends on the server. Offline that fails (supabase-js
+    // first refreshes an expired token) and keeps the session, so it is removed
+    // from this device either way; a server that does not answer gets 3 seconds.
+    const serverSignOut = navigator.onLine
+        ? Promise.race([supabaseClient.auth.signOut({ scope: 'local' }), new Promise(resolve => setTimeout(resolve, 3000))])
+        : Promise.resolve();
+    serverSignOut.catch(() => {}).finally(() => {
+        Object.keys(localStorage).filter(isStoredSessionKey).forEach(key => localStorage.removeItem(key));
+        // The scan lock goes with the session, but stays on screen until the page reloads.
+        window.removeEventListener('beforeunload', scanLockBeforeUnload);
+        endScanLockSession();
+        writeScanLockState(null);
+        window.location.reload();
+    });
+}
+
+// supabase-js keeps the session as sb-<project>-auth-token, with its helpers beside it.
+function isStoredSessionKey(key) {
+    return /^sb-.+-auth-token/.test(key || '');
 }
 
 // ============================================================
@@ -9069,7 +9089,6 @@ function isIdleSessionStale() {
 function signOutForInactivity() {
     hideIdleCountdown();
     try { sessionStorage.setItem(IDLE_SIGNED_OUT_KEY, '1'); } catch { /* The message is optional. */ }
-    clearScanLock();
     handleSignoutClick();
 }
 
@@ -9497,6 +9516,16 @@ function setupAuthStateTracking() {
             showNotification('warning', 'Session Expired', 'Please sign in again to continue.');
             updateAuthUI();
         }
+    });
+
+    // Signing out in another tab removes the stored session, which supabase-js
+    // does not report here when offline. This tab reloads signed out, its lock
+    // on screen until then.
+    window.addEventListener('storage', (event) => {
+        if (!isSignedIn || event.newValue !== null || !/^sb-.+-auth-token$/.test(event.key || '')) return;
+        isSignedIn = false;
+        window.removeEventListener('beforeunload', scanLockBeforeUnload);
+        window.location.reload();
     });
 }
 
@@ -14428,7 +14457,7 @@ function handleScanLockClick(event) {
     } else if (key === 'close-list') {
         closeScanLockList();
     } else if (key === 'signout') {
-        clearScanLock();
+        // The lock stays until the session is gone, which offline takes a moment.
         handleSignoutClick();
     }
 }
