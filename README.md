@@ -88,9 +88,7 @@ their programme; an administrator can change it when approving the card.
 **New cards** shows each card's Card ID with the UID it was read from; the Card
 ID is always worked out from the UID. A card scanned by a friend says so, for
 example "Scanned by Ana Hoxha for Arben Krasniqi". Approving opens with **Use UID** on; turn it off to save the Card ID
-only. This needs
-[supabase/migrations/registration_card_uid.sql](supabase/migrations/registration_card_uid.sql);
-requests sent before this change show the Card ID alone.
+only.
 
 On the sign-in page, a student's card is greeted with their name, as a check
 that it works; a staff card signs in. The greeting needs the current
@@ -197,10 +195,7 @@ whose courses are all in one programme sees no grouping. The course buttons
 show each programme's code before its courses, and the chosen course shows its
 full name. The copy of a shared course you choose is selected and its other copy
 is outlined (tapping it says where it is already selected); the group buttons
-(Theory, Lab, A, B) get their own **Group** label. This needs
-[supabase/migrations/course_programmes.sql](supabase/migrations/course_programmes.sql),
-then [course_programmes_multiple.sql](supabase/migrations/course_programmes_multiple.sql)
-for more than one programme per course.
+(Theory, Lab, A, B) get their own **Group** label.
 
 Programmes are listed A–Z by code everywhere. In a programme or course list,
 typing a code (`BA CE`) shows just that programme, or its courses.
@@ -225,7 +220,12 @@ no lock screen), choose the group, **Add** records, use **Add 1 hour** and
 **Delete my latest time** on the rows they recorded, and send an unknown card's
 **Register student** request. They have no Edit, no ⋯ menu and no Add to EIS.
 Everywhere else they are a student. A lecturer's change to a record makes it
-the lecturer's. Their staff card signs them in on any device.
+the lecturer's.
+
+Their staff card signs them in only on a trusted device, so a card someone else
+picks up opens nothing. They trust their own phone in their profile (**Staff
+card sign-in**), where they also rename or remove it; they see only their own
+devices.
 
 ### Course icon and colours
 
@@ -238,10 +238,6 @@ warnings), tertiary (information), success (adding and approving) and danger
 (deleting and rejecting). While a course is open, the page takes its colours,
 for everyone; **Reset to Stando's colours** puts the defaults back. Lecturers
 see their courses' appearance without changing it.
-
-Teaching assistants, the icon and the colours need
-[supabase/migrations/assistants_and_course_appearance.sql](supabase/migrations/assistants_and_course_appearance.sql);
-until it runs, those fields stay hidden.
 
 ### Staff names and email signatures
 
@@ -290,8 +286,8 @@ After changing a function, open it in **Supabase → Edge Functions**, replace
 click **Deploy updates**. Each file is self-contained. With the CLI:
 `supabase functions deploy send-email` (or `kiosk-login`).
 
-Database changes are in [supabase/migrations](supabase/migrations/): run a new
-file once in **Supabase → SQL Editor** before publishing the app that needs it.
+Database changes go in `supabase/migrations/`: run a new file once in
+**Supabase → SQL Editor** before publishing the app that needs it.
 
 ### Addresses
 

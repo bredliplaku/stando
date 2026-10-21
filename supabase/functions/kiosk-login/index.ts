@@ -70,7 +70,7 @@ function corsHeaders(req: Request): Record<string, string> {
 }
 
 // Brute-force guard: this endpoint is unauthenticated by design (it IS the
-// login step), and student UIDs need no trusted-device check, so it's the
+// login step), and a student's card is greeted on any device, so it's the
 // one place in the app reachable by a caller with no credentials at all.
 const RATE_LIMIT_WINDOW_SECONDS = 60;
 const RATE_LIMIT_MAX_ATTEMPTS = 5;
@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
 
     const { data: staffRows, error: staffErr } = await admin
       .from("staff")
-      .select("name,email,role")
+      .select("name,email")
       .in("uid", candidateUids);
     if (staffErr) throw staffErr;
     if (!staffRows || staffRows.length === 0) {
@@ -155,23 +155,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { name, email, role } = staffRows[0];
+    const { name, email } = staffRows[0];
 
-    // 2. Lecturers and administrators may only log in from a trusted device;
-    // teaching assistants ("Student" before the assistants migration) anywhere.
-    if (role !== "Assistant" && role !== "Student") {
-      const devIdTrimmed = String(deviceId ?? "").trim();
-      const { data: devices, error: devErr } = await admin
-        .from("trusted_devices")
-        .select("id")
-        .eq("device_id", devIdTrimmed);
-      if (devErr) throw devErr;
-      if (!devices || devices.length === 0) {
-        return json({
-          result: "error",
-          message: "Device not trusted. Sign in with Google to register this device.",
-        });
-      }
+    // 2. Staff cards sign in only on a trusted device, a teaching assistant's
+    // too: a card someone else picked up opens nothing on their own phone.
+    const devIdTrimmed = String(deviceId ?? "").trim();
+    const { data: devices, error: devErr } = await admin
+      .from("trusted_devices")
+      .select("id")
+      .eq("device_id", devIdTrimmed);
+    if (devErr) throw devErr;
+    if (!devices || devices.length === 0) {
+      return json({
+        result: "error",
+        message: "Device not trusted. Sign in with Google to register this device.",
+      });
     }
 
     // 3. Mint a one-time token (creating the auth user on first kiosk login)

@@ -4,6 +4,9 @@ let isGlobalAdmin = false;
 let adminCourses = [];
 // Courses where a teaching assistant records attendance; they are students everywhere else.
 let assistantCourses = [];
+// A teaching assistant (staff role Assistant), with courses or not: their profile
+// lists the devices where their staff card signs them in.
+let isTeachingAssistant = false;
 const CLIENT_ID = '740588046540-npg0crodtcuinveu6bua9rd6c3hb2s1m.apps.googleusercontent.com';
 const LOGS_STORAGE_KEY = 'attendance_logs';
 // Storage bucket for absence attachments (limits enforced by the bucket)
@@ -46,8 +49,8 @@ let criticalErrorsOnly = true;
 let signedOutCard = null; // The last card read on the sign-in page: { name }, empty when unregistered
 let courseIDMap = {}; // Object to store course information - name to ID mapping
 let courseInfoMap = {};
-// Study programmes [{ id, code, name, archived }], sorted by code; null until the
-// database has them (supabase/migrations/course_names_and_programmes.sql).
+// Study programmes [{ id, code, name, archived }], sorted by code; null until they
+// load (or when they cannot), which hides them.
 let programmeList = null;
 let dbProgrammeFilter = ''; // Student List: '' for all, 'none', or a programme id
 let courseDictionary = {};
@@ -331,7 +334,7 @@ function showStaffEditorDialog(staffData = null) {
                     <option value="Assistant" ${roleVal === 'Assistant' ? 'selected' : ''}>Teaching Assistant</option>
                 </select>
             </div>
-            <p class="form-hint"><strong>Lecturer:</strong> can log in on trusted devices only and manages their courses. <strong>Teaching Assistant:</strong> a student who scans and adds records in the courses assigned to them in a course's settings; everywhere else they are a student.</p>
+            <p class="form-hint"><strong>Lecturer:</strong> can log in on trusted devices only and manages their courses. <strong>Teaching Assistant:</strong> a student who scans and adds records in the courses assigned to them in a course's settings; everywhere else they are a student. Their card signs them in only on a device they trusted in their profile.</p>
 
             ${cardFieldsHtml('staff-card', splitCardValue(uidVal))}
 
@@ -1036,6 +1039,7 @@ async function checkAdminStatus() {
         isGlobalAdmin = result.isGlobalAdmin;
         adminCourses = result.courses;
         assistantCourses = result.assistantCourses || [];
+        isTeachingAssistant = !!result.isAssistant || assistantCourses.length > 0;
 
         console.log('Admin status:', {
             isAdmin,
@@ -2503,10 +2507,10 @@ function openTrustedDevicesSettings() {
     setTimeout(() => document.getElementById('register-this-device-btn')?.focus({ preventScroll: true }), 150);
 }
 
-function trustedDevicesSectionHtml() {
+// This device with Register, a hint, and the trusted devices (renderTrustedDevices):
+// in Settings, and in a teaching assistant's profile.
+function trustedDevicesHtml(hint) {
     return `
-        <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            <div class="settings-scroll">
                 <div class="settings-device-note">
                     <div class="settings-device-id">
                         <strong>This device</strong>
@@ -2516,9 +2520,16 @@ function trustedDevicesSectionHtml() {
                         <i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Register This Device
                     </button>
                 </div>
-                <p class="settings-device-hint">Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}</p>
+                <p class="settings-device-hint">${hint}</p>
                 <div class="settings-group-label">Trusted devices</div>
-                <div id="devices-tbody" class="settings-list"></div>
+                <div id="devices-tbody" class="settings-list"></div>`;
+}
+
+function trustedDevicesSectionHtml() {
+    return `
+        <div id="sect-devices" class="settings-section" style="display:none; flex-direction:column; height:100%;">
+            <div class="settings-scroll">
+                ${trustedDevicesHtml(`Attendance is scanned only on trusted devices.${isGlobalAdmin ? '' : ' You can rename or remove the devices you registered.'}`)}
             </div>
         </div>`;
 }
@@ -2529,7 +2540,8 @@ function renderTrustedDevices(devices) {
     closeRowMenus();
     const myId = getDeviceFingerprint();
     const me = String(currentUser?.email || '').toLowerCase();
-    const isRegistered = devices.some(d => d.id === myId);
+    // An assistant lists only their own devices; someone else may have trusted this one.
+    const isRegistered = devices.some(d => d.id === myId) || cachedDeviceTrust() === true;
 
     const regBtn = document.getElementById('register-this-device-btn');
     if (regBtn) {
@@ -2570,7 +2582,8 @@ function renderTrustedDevices(devices) {
 
 async function reloadTrustedDevices() {
     try {
-        renderTrustedDevices(await callWebApp('getTrustedDevices'));
+        const [devices] = await Promise.all([callWebApp('getTrustedDevices'), checkDeviceTrusted()]);
+        renderTrustedDevices(devices);
     } catch (error) {
         showNotification('error', 'Error', 'Failed to load trusted devices: ' + error.message);
     }
@@ -2662,7 +2675,9 @@ function bindTrustedDevicesSection(dialog) {
         onSave: async (deviceName) => {
             await callWebApp('registerDevice_Admin', { deviceName, deviceId: getDeviceFingerprint() }, 'POST');
             rememberDeviceTrust(true);
-            showNotification('success', 'Registered', 'Device is now trusted. You can start scanning.');
+            showNotification('success', 'Registered', isAdmin
+                ? 'Device is now trusted. You can start scanning.'
+                : 'Device is now trusted. Your staff card signs you in on it.');
             await reloadTrustedDevices();
         }
     });
@@ -2794,8 +2809,7 @@ function showSettingsDialog(initialTab = 'sect-courses') {
     const staffSearch = dialog.querySelector('#staff-search-input');
     staffSearch.addEventListener('input', () => renderStaffInSettings(staffList, staffSearch.value));
 
-    // Lecturers read the staff list without its cards (getStaffDirectory); without
-    // that function in the database yet, their Staff tab stays hidden.
+    // Lecturers read the staff list without its cards (getStaffDirectory).
     const load = async () => {
         try {
             const [, people, programmes] = await Promise.all([
@@ -2810,9 +2824,6 @@ function showSettingsDialog(initialTab = 'sect-courses') {
                 renderProgrammesInSettings(programmeSearch?.value || '');
             }
             staffList = people.staff || [];
-            const staffTab = dialog.querySelector('.settings-tab-btn[data-target="sect-staff"]');
-            staffTab.hidden = !people.staff;
-            if (staffTab.hidden && staffTab.classList.contains('active')) showSettingsTab(dialog, 'sect-courses');
             // Course rows show lecturers by name where the staff list knows them.
             settingsStaffNames = new Map(staffList
                 .filter(s => s && s.email && (s.name || s.googleName))
@@ -3041,9 +3052,7 @@ function showCourseEditorDialog(courseName, info = null) {
             <input id="edit-c-eis" class="form-control" value="${escapeHtml(val(data.eisId))}" placeholder="e.g. 12345" ${off}>
         </div>
 
-        ${!courseProgrammesSupported ? ''
-            : courseProgrammesMultiple ? programmesFieldHtml('edit-c-programmes', data.programmeIds || [])
-                : programmeFieldHtml('edit-c-programme', (data.programmeIds || [])[0], { required: false, placeholder: 'No programme' })}
+        ${programmesFieldHtml('edit-c-programmes', data.programmeIds || [])}
 
         <div class="form-group">
             <label class="dialog-label-fixed">Sections</label>
@@ -3072,8 +3081,8 @@ function showCourseEditorDialog(courseName, info = null) {
 
         <h4 class="editor-section-title">People</h4>
         ${peopleHtml('edit-c-lecturers', 'Lecturers', lecturers)}
-        ${courseExtrasSupported ? peopleHtml('edit-c-assistants', 'Teaching assistants', assistants) : ''}
-        ${courseExtrasSupported && isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records in this course, and add or delete times only on the records they made.</p>' : ''}
+        ${peopleHtml('edit-c-assistants', 'Teaching assistants', assistants)}
+        ${isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records in this course, and add or delete times only on the records they made.</p>' : ''}
 
         <h4 class="editor-section-title">Dates</h4>
         <div class="form-group">
@@ -3096,8 +3105,8 @@ function showCourseEditorDialog(courseName, info = null) {
             <input type="number" id="edit-c-holidays" class="form-control" value="${escapeHtml(val(data.holidayWeeks))}" ${off}>
         </div>
 
-        ${courseExtrasSupported ? `<h4 class="editor-section-title">Appearance</h4>
-        ${appearanceFieldsHtml(data, { code: cleanCourseName, title: data.title, editable: isGlobalAdmin })}` : ''}
+        <h4 class="editor-section-title">Appearance</h4>
+        ${appearanceFieldsHtml(data, { code: cleanCourseName, title: data.title, editable: isGlobalAdmin })}
     </div>
     <div class="dialog-actions">
         ${(!isNew && isGlobalAdmin) ? '<button type="button" id="delete-course-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>' : ''}
@@ -3268,11 +3277,9 @@ function showCourseEditorDialog(courseName, info = null) {
             adminEmails: isGlobalAdmin ? [...lecturers].join(', ') : (data.adminEmails || '')
         };
         if (!isNew) payload.archived = isArchived;
-        const programmeSelect = dialog.querySelector('#edit-c-programme');
-        if (programmeSelect) payload.programmeId = readProgrammeField(programmeSelect, false).id;
         const programmesField = dialog.querySelector('[data-programmes-field]');
         if (programmesField) payload.programmeIds = readProgrammesField(programmesField);
-        if (isGlobalAdmin && courseExtrasSupported) payload.assistantEmails = [...assistants].join(', ');
+        if (isGlobalAdmin) payload.assistantEmails = [...assistants].join(', ');
         if (isGlobalAdmin && appearance) Object.assign(payload, appearance.read());
 
         try {
@@ -3378,7 +3385,7 @@ function renderProgrammesInSettings(filterText = '') {
                     <span class="settings-row-title"><strong>${escapeHtml(p.code)}</strong>${p.archived ? ' <span class="settings-row-state">Archived</span>' : ''}</span>
                     ${p.name ? `<span class="settings-row-people" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>` : ''}
                 </div>
-                <div class="settings-row-meta"><span class="settings-row-sub">${listCountText(count, 'student')}</span>${courseProgrammesSupported ? `<span class="settings-row-sub">${listCountText(courses, 'course')}</span>` : ''}</div>
+                <div class="settings-row-meta"><span class="settings-row-sub">${listCountText(count, 'student')}</span><span class="settings-row-sub">${listCountText(courses, 'course')}</span></div>
                 ${isGlobalAdmin ? `<div class="card-actions">
                     ${rowEditButtonHtml(`Edit ${p.code}`, 'edit-programme-btn', `data-programme-id="${p.id}"`)}
                 </div>` : ''}
@@ -3517,7 +3524,8 @@ function refreshOpenSettings() {
 }
 
 // A student's profile: who they are, whether their Student ID card is registered
-// (its Card ID hidden, like a password), and their absence requests.
+// (its Card ID hidden, like a password), a teaching assistant's trusted devices,
+// and their absence requests.
 async function showStudentProfileDialog() {
     const cardCount = ownStudentCardCount();
     const email = String(currentUser.email || '').toLowerCase();
@@ -3565,6 +3573,11 @@ async function showStudentProfileDialog() {
                     <button type="button" class="btn-blue btn-sm" data-action="register">Register</button>
                 </div>`}
             </section>
+            ${isTeachingAssistant ? `
+            <section class="sp-section sp-devices" aria-labelledby="sp-devices-title">
+                <h4 class="sp-section-title" id="sp-devices-title">Staff card sign-in</h4>
+                ${trustedDevicesHtml('Your staff card signs you in only on a trusted device, so a card someone else picks up opens nothing. Trust your own phone here.')}
+            </section>` : ''}
             <section class="sp-section" aria-labelledby="sp-requests-title">
                 <div class="sp-section-head">
                     <h4 class="sp-section-title" id="sp-requests-title">Absence requests</h4>
@@ -3580,6 +3593,10 @@ async function showStudentProfileDialog() {
         </div>`;
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
+    if (isTeachingAssistant) {
+        bindTrustedDevicesSection(dialog);
+        reloadTrustedDevices();
+    }
 
     const close = () => {
         backdrop.remove();
@@ -4996,6 +5013,7 @@ async function onSuccessfulAuth(isRestore = false) {
             isGlobalAdmin = bootData.adminStatus.isGlobalAdmin || false;
             adminCourses = bootData.adminStatus.courses || [];
             assistantCourses = bootData.adminStatus.assistantCourses || [];
+            isTeachingAssistant = !!bootData.adminStatus.isAssistant || assistantCourses.length > 0;
             console.log('Admin status:', { isAdmin, isGlobalAdmin, adminCourses, assistantCourses });
         }
 
@@ -7602,9 +7620,6 @@ function sbUnwrap({ data, error }) {
     return data;
 }
 
-// The column or function a migration adds is missing until that migration runs.
-const SB_MISSING_COLUMN = ['42703', 'PGRST204'];
-
 async function sbSessionEmail() {
     const { data: { session }, error } = await supabaseClient.auth.getSession();
     // A token that could not be refreshed (offline, say) is not a sign-out: the
@@ -7632,8 +7647,7 @@ function sbMapCourseInfo(rows) {
             adminEmails: row.admin_emails || '',
             availableSections: row.available_sections || '',
             archived: row.archived || false,
-            programmeIds: Array.isArray(row.programme_ids) ? row.programme_ids.map(Number)
-                : row.programme_id != null ? [Number(row.programme_id)] : [],
+            programmeIds: Array.isArray(row.programme_ids) ? row.programme_ids.map(Number) : [],
             assistantEmails: row.assistant_emails || '',
             icon: row.icon || '',
             theme: row.theme && typeof row.theme === 'object' ? row.theme : {}
@@ -7642,12 +7656,6 @@ function sbMapCourseInfo(rows) {
     return courseInfoMap;
 }
 
-// Courses can name a programme once supabase/migrations/course_programmes.sql has run,
-// and several once course_programmes_multiple.sql has; they have teaching assistants,
-// an icon and colours once assistants_and_course_appearance.sql has.
-let courseProgrammesSupported = false;
-let courseProgrammesMultiple = false;
-let courseExtrasSupported = false;
 
 function sbMapDatabase(rows) {
     const database = {};
@@ -7699,9 +7707,8 @@ function staffDisplayName(staff) {
     return String(staff?.name || '').trim() || staff?.googleName || staff?.email || '';
 }
 
-// A staff role as stored: Global, Lecturer or Assistant. "Student", the
-// assistant's role before supabase/migrations/assistants_and_course_appearance.sql,
-// and anything unknown are assistants, who manage nothing.
+// A staff role as stored: Global, Lecturer or Assistant. Anything unknown is an
+// assistant, who manages nothing.
 function staffRole(role) {
     return role === 'Global' || role === 'Lecturer' ? role : 'Assistant';
 }
@@ -7717,17 +7724,9 @@ function sbMapDevices(rows) {
     }));
 }
 
-// Newer columns are asked for first and dropped while a migration has not run yet.
 async function sbGetCourseInfo() {
-    const columns = 'name,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,available_sections,archived';
-    for (const extra of [',title,programme_ids,assistant_emails,icon,theme', ',title,programme_ids', ',title,programme_id', ',title', '']) {
-        const result = await supabaseClient.from('courses').select(columns + extra);
-        if (SB_MISSING_COLUMN.includes(result.error?.code) && extra) continue;
-        courseProgrammesSupported = extra.includes('programme_id');
-        courseProgrammesMultiple = extra.includes('programme_ids');
-        courseExtrasSupported = extra.includes('assistant_emails');
-        return sbMapCourseInfo(sbUnwrap(result));
-    }
+    return sbMapCourseInfo(sbUnwrap(await supabaseClient.from('courses').select(
+        'name,title,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,assistant_emails,available_sections,archived,programme_ids,icon,theme')));
 }
 
 // Programmes A–Z by code; null when the database has none yet, which hides them.
@@ -7755,14 +7754,8 @@ async function sbSelectAll(queryFactory) {
 }
 
 async function sbGetDatabase() {
-    const studentQuery = columns => () => supabaseClient.from('students').select(columns).order('id');
-    let studentRows;
-    try {
-        studentRows = await sbSelectAll(studentQuery('id,name,email,uids,hardware_uids,programme_id'));
-    } catch (error) {
-        if (!SB_MISSING_COLUMN.includes(error.code)) throw error;
-        studentRows = await sbSelectAll(studentQuery('id,name,email,uids,hardware_uids'));
-    }
+    const studentRows = await sbSelectAll(() => supabaseClient.from('students')
+        .select('id,name,email,uids,hardware_uids,programme_id').order('id'));
 
     let staffRows = [];
     let staffProfiles = new Map();
@@ -7945,16 +7938,10 @@ async function callSupabase(action, payload = {}) {
         }
 
         case 'getPendingRegistrations': {
-            const query = columns => supabaseClient.from('registrations').select(columns)
-                .order('submitted_at', { ascending: true });
-            // Before the database has them, a request is read without its UID and source, then its programme.
-            let result;
-            for (const columns of ['id,name,uid,email,submitted_at,sent_by,programme_id,hardware_uid,source',
-                'id,name,uid,email,submitted_at,sent_by,programme_id', 'id,name,uid,email,submitted_at,sent_by']) {
-                result = await query(columns);
-                if (!SB_MISSING_COLUMN.includes(result.error?.code)) break;
-            }
-            return (sbUnwrap(result) || []).map(row => ({
+            const rows = sbUnwrap(await supabaseClient.from('registrations')
+                .select('id,name,uid,email,submitted_at,sent_by,programme_id,hardware_uid,source')
+                .order('submitted_at', { ascending: true }));
+            return (rows || []).map(row => ({
                 rowNumber: row.id,
                 name: row.name || '',
                 uid: row.uid || '',
@@ -8044,12 +8031,9 @@ async function callSupabase(action, payload = {}) {
             };
         }
 
-        // Lecturers' Settings → Staff: names, photos and roles, no cards. null until
-        // supabase/migrations/assistants_and_course_appearance.sql has run.
+        // Lecturers' Settings → Staff: names, photos and roles, no cards.
         case 'getStaffDirectory': {
-            const { data, error } = await supabaseClient.rpc('staff_directory');
-            if (error?.code === 'PGRST202') return null;
-            return (sbUnwrap({ data, error }) || []).map(row => {
+            return (sbUnwrap(await supabaseClient.rpc('staff_directory')) || []).map(row => {
                 const googlePhoto = normalizeGooglePhotoUrl(row.photo_url || '');
                 return {
                     name: row.name || '', email: row.email, role: staffRole(row.role),
@@ -8071,22 +8055,16 @@ async function callSupabase(action, payload = {}) {
                 : email;
             // The Card ID comes from the UID the card was read from, when there is one.
             const hardwareUid = normalizeUid(payload.hardwareUid);
-            const registration = {
+            sbUnwrap(await supabaseClient.from('registrations').insert({
                 name: payload.name || '',
                 uid: uidToCardId(hardwareUid) || payload.uid || '',
+                hardware_uid: hardwareUid || null,
                 email: payload.email || '',
+                programme_id: payload.programmeId || null,
                 submitted_at: new Date().toISOString(),
-                sent_by: sentBy
-            };
-            const programme = payload.programmeId ? { programme_id: payload.programmeId } : {};
-            const insert = row => supabaseClient.from('registrations').insert(row);
-            let result = await insert({ ...registration, ...programme, hardware_uid: hardwareUid || null, source: payload.source || null });
-            // Before the database has those columns, the uid column holds the UID itself (the
-            // Card ID follows from it); before programmes exist, the request goes without one.
-            const older = { ...registration, uid: hardwareUid || registration.uid };
-            if (SB_MISSING_COLUMN.includes(result.error?.code)) result = await insert({ ...older, ...programme });
-            if (payload.programmeId && SB_MISSING_COLUMN.includes(result.error?.code)) result = await insert(older);
-            sbUnwrap(result);
+                sent_by: sentBy,
+                source: payload.source || null
+            }));
             return { result: 'success', message: 'Registration submitted successfully' };
         }
 
@@ -8142,8 +8120,7 @@ async function callSupabase(action, payload = {}) {
             const role = staffRole(payload.role);
 
             // An empty name or photo means "use the one from their Google account".
-            // The photo is only sent when set or changed, so saving works the same
-            // until the photo_url column exists.
+            // The photo is only sent when set or changed.
             const row = { name: payload.name || null, uid: payload.uid, email: payload.email, role };
             if ('photoUrl' in payload) row.photo_url = payload.photoUrl || null;
             if (payload.actionType === 'add') {
@@ -8178,9 +8155,11 @@ async function callSupabase(action, payload = {}) {
             }));
 
         case 'registerDevice_Admin': {
-            const existing = sbUnwrap(await supabaseClient.from('trusted_devices')
-                .select('id').eq('device_id', payload.deviceId));
-            if (existing && existing.length > 0) throw new Error('Device already registered.');
+            // Asked of the database: an assistant sees only their own devices, and
+            // one someone else trusted counts too.
+            const { data: trusted, error: trustError } = await supabaseClient.rpc('device_is_trusted', { p_device_id: payload.deviceId });
+            if (trustError) throw new Error(trustError.message);
+            if (trusted) throw new Error('Device already registered.');
             sbUnwrap(await supabaseClient.from('trusted_devices').insert({
                 name: payload.deviceName,
                 device_id: payload.deviceId,
@@ -8568,6 +8547,7 @@ async function handleManualRefresh(buttonId) {
 
             if (fetchedCourseDict && typeof fetchedCourseDict === 'object') {
                 assistantCourses = bootData.adminStatus?.assistantCourses || [];
+                isTeachingAssistant = !!bootData.adminStatus?.isAssistant || assistantCourses.length > 0;
                 // Update the global availableCourses list (exclude archived)
                 availableCourses = Object.keys(fetchedCourseDict).filter(c => !courseInfoMap[c]?.archived);
 
@@ -9256,6 +9236,7 @@ function setupAuthStateTracking() {
             isGlobalAdmin = false;
             adminCourses = [];
             assistantCourses = [];
+            isTeachingAssistant = false;
             currentUser = null;
             currentCourse = '';
             courseData = {};
@@ -10204,52 +10185,6 @@ async function fetchCourseInfo() {
     } catch (e) {
         console.error('Error fetching course info:', e);
     }
-}
-
-/**
-        * Displays a custom, non-blocking alert dialog.
-        * @param {string} title - The title of the dialog. (This is now ignored but kept for compatibility)
-        * @param {string} message - The main text/HTML for the user.
-        */
-function showAlertDialog(title, message) {
-    openDialogMode(); // Prevent background scroll
-    const existingDialog = document.querySelector('.dialog-backdrop');
-    if (existingDialog) existingDialog.remove();
-
-    const dialogBackdrop = document.createElement('div');
-    dialogBackdrop.setAttribute('class', 'dialog-backdrop');
-
-    const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog');
-    dialog.setAttribute('role', 'dialog');
-    dialog.setAttribute('aria-modal', 'true');
-    dialog.innerHTML = `
-        <div class="dialog-content" style="padding-top: 10px;">${message}
-        </div><div class="dialog-actions">
-            <button id="dialog-ok-btn" class="btn-blue">OK</button>
-        </div>
-    `; // Removed title and <p> wrapper, adjusted padding
-
-    dialogBackdrop.appendChild(dialog);
-    document.body.appendChild(dialogBackdrop);
-
-    const closeDialog = () => {
-        // Add fade-out animation
-        dialog.classList.add('dialog-fade-out');
-        dialogBackdrop.classList.add('backdrop-fade-out'); // Also fade backdrop
-
-        setTimeout(() => {
-            if (document.body.contains(dialogBackdrop)) {
-                document.body.removeChild(dialogBackdrop);
-            }
-            closeDialogMode(); // Restore background scrolling
-        }, 300); // Match animation duration
-    };
-
-    document.getElementById('dialog-ok-btn').addEventListener('click', closeDialog);
-    dialogBackdrop.addEventListener('click', (e) => {
-        if (e.target === dialogBackdrop) closeDialog();
-    });
 }
 
 
@@ -13791,14 +13726,11 @@ async function canUnlockWithStaffCard() {
 
 // The e-mail of the lecturer whose staff card opens the lock for this course, or ''.
 async function verifyScanUnlockCard(serialNumber, course) {
-    const params = { p_card_ids: staffCardCandidates(serialNumber).slice(0, 8), p_device_id: getDeviceFingerprint() };
-    const { data, error } = await supabaseClient.rpc('verify_scan_unlock_card', { ...params, p_course: course });
-    if (!error) return String(data || '').toLowerCase();
-    // Until the database knows colleagues' cards, the lecturer's own card still works.
-    if (error.code !== 'PGRST202') throw error;
-    const own = await supabaseClient.rpc('verify_staff_card', params);
-    if (own.error) throw own.error;
-    return own.data === true ? scanLockAccount() : '';
+    const { data, error } = await supabaseClient.rpc('verify_scan_unlock_card', {
+        p_card_ids: staffCardCandidates(serialNumber).slice(0, 8), p_device_id: getDeviceFingerprint(), p_course: course
+    });
+    if (error) throw error;
+    return String(data || '').toLowerCase();
 }
 
 // The lecturer whose card this is, if it opens the lock, or ''. Online, the

@@ -320,7 +320,6 @@
             background: rgba(0, 0, 0, 0.6);
         }
 
-
         /* --- Modern Global Settings Revamp --- */
         .settings-modal-header {
             display: flex;
@@ -383,11 +382,6 @@
             background-color: #2c2c2e !important;
             color: white !important;
             border-color: #555 !important;
-        }
-
-        .admin-input-wrapper .input-with-icon {
-            flex-grow: 1;
-            position: relative;
         }
 
         .admin-pills-list:not(:empty) {
@@ -510,7 +504,6 @@
             animation: floatOnWater 4s ease-in-out infinite;
         }
 
-
         .collapsible-module .module-content {
             padding: 15px;
         }
@@ -570,14 +563,6 @@
             padding-left: 35px !important;
             width: 100%;
             box-sizing: border-box;
-        }
-
-        .admin-input-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            width: 100%;
-            margin-bottom: 10px;
         }
 
         .dark-mode .settings-modal-header {
@@ -693,46 +678,6 @@
         .sync-status.success i,
         .sync-status.success svg {
             color: var(--success-color);
-        }
-
-        @keyframes dialog-fade-out {
-            from {
-                transform: scale(1);
-                opacity: 1;
-            }
-
-            to {
-                transform: scale(0.95);
-                opacity: 0;
-            }
-        }
-
-        .dialog.dialog-fade-out {
-            animation: dialog-fade-out 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
-
-        .dialog-backdrop.backdrop-fade-out {
-            animation: backdrop-fade-out 0.3s ease forwards;
-        }
-
-        .dialog-disclaimer {
-            /* Light orange */
-            border-left: 3px solid var(--warning-color);
-            color: var(--text-color);
-            opacity: 0.9;
-            line-height: 1.5;
-            /* Slant -10 (Max italic), slightly narrower */
-            font-variation-settings: "slnt" -10, "wdth" 95, "wght" 450;
-        }
-
-        @keyframes backdrop-fade-out {
-            from {
-                opacity: 1;
-            }
-
-            to {
-                opacity: 0;
-            }
         }
 
         @keyframes spin {
@@ -1019,30 +964,6 @@
         .dark-mode input:disabled,
         .dark-mode select:disabled {
             background-color: #3a3a3c !important;
-        }
-
-        .uid-badge {
-            background-color: #e0e0e042;
-            color: #333;
-            border-radius: 4px;
-            padding: 8px 5px;
-            font-family: monospace;
-            font-size: 0.9em;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            line-height: 1;
-            min-width: 80px;
-            user-select: none;
-            /* Width 75 (Condensed), Weight 600 (SemiBold) */
-            font-variation-settings: "wdth" 75, "wght" 600, "GRAD" 0;
-            letter-spacing: 0.02em;
-            /* Add slight spacing for legibility */
-        }
-
-        .dark-mode .uid-badge {
-            background-color: #55555569;
-            color: #f0f0f0;
         }
 
         /* ===== Course button styles ===== */
@@ -1580,7 +1501,6 @@
             /* Add this */
         }
 
-
         .btn-orange {
             background-color: var(--secondary-600);
         }
@@ -1644,172 +1564,6 @@
         }
 
         /* Font-variation-settings removed from dark-mode body, h1, and h2 to keep typography weights identical to light mode, preventing layout reflow and width shifts. */
-
-        /* --- Student Profile Revamp --- */
-        .profile-header-section {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 25px;
-            padding-bottom: 20px;
-            border-bottom: 1px solid #eee;
-        }
-
-        .profile-name-large {
-            margin: 0;
-            font-size: 1.3em;
-            font-weight: 700;
-            color: var(--text-color);
-        }
-
-        .profile-email-large {
-            margin: 0;
-            font-size: 0.9em;
-            opacity: 0.7;
-            color: var(--text-color);
-        }
-
-        /* UID List styling */
-        .profile-uid-list {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            justify-content: center;
-            margin-bottom: 20px;
-            list-style: none;
-            padding: 0;
-        }
-
-        .profile-uid-badge {
-            font-family: monospace;
-            background-color: var(--primary-50);
-            color: var(--primary-color);
-            padding: 8px 12px;
-            border-radius: 8px;
-            font-size: 1em;
-            border: 1px solid var(--primary-100);
-            letter-spacing: 1px;
-        }
-
-        /* Request Cards */
-        .req-card {
-            background-color: var(--card-background);
-            border: 1px solid #eee;
-            border-radius: 12px;
-            padding: 15px;
-            margin-bottom: 12px;
-            position: relative;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
-            border-left: 4px solid transparent;
-            /* Color indicator */
-        }
-
-        .req-card:hover {
-            /* Hover effect removed as requested */
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
-        }
-
-        /* Status Colors */
-        .req-card.status-approved {
-            border-left-color: var(--success-color);
-        }
-
-        .req-card.status-rejected {
-            border-left-color: var(--danger-color);
-        }
-
-        .req-card.status-pending {
-            border-left-color: var(--warning-color);
-        }
-
-        .req-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-
-        .req-course {
-            font-weight: 700;
-            font-size: 1em;
-            color: var(--text-color);
-        }
-
-        .req-status-pill {
-            font-size: 0.75em;
-            font-weight: 700;
-            text-transform: uppercase;
-            padding: 2px 8px;
-            border-radius: 4px;
-        }
-
-        .status-approved .req-status-pill {
-            color: var(--success-color);
-            background: var(--success-50);
-        }
-
-        .status-rejected .req-status-pill {
-            color: var(--danger-color);
-            background: var(--danger-50);
-        }
-
-        .status-pending .req-status-pill {
-            color: var(--warning-color);
-            background: var(--secondary-50);
-        }
-
-        .req-details {
-            display: flex;
-            gap: 15px;
-            font-size: 0.9em;
-            opacity: 0.8;
-            margin-bottom: 8px;
-        }
-
-        .req-note {
-            font-size: 0.85em;
-            background: #f5f5f5;
-            padding: 8px;
-            border-radius: 6px;
-            color: var(--text-color);
-            margin-top: 8px;
-        }
-
-        /* Dark Mode Overrides */
-        .dark-mode .profile-header-section {
-            border-bottom-color: #444;
-        }
-
-        .dark-mode .profile-uid-badge {
-            background-color: #2c2c2e;
-            border-color: #444;
-            color: #fff;
-        }
-
-        .dark-mode .req-card {
-            border-color: #444;
-            background-color: #252525;
-        }
-
-        .dark-mode .req-note {
-            background-color: #333;
-        }
-
-        .dark-mode .status-approved .req-status-pill {
-            background: var(--success-900);
-            color: var(--success-200);
-        }
-
-        .dark-mode .status-rejected .req-status-pill {
-            background: var(--danger-900);
-            color: var(--danger-200);
-        }
-
-        .dark-mode .status-pending .req-status-pill {
-            background: var(--secondary-900);
-            color: var(--secondary-200);
-        }
 
         .field-action {
             display: flex;
@@ -2254,23 +2008,6 @@
             background-color: color-mix(in srgb, var(--primary-400) 4%, transparent);
         }
 
-        .database-table td.uid-cell {
-            text-align: left;
-            /* Align badges to the left */
-            gap: 2px;
-            /* This adds space between badges */
-        }
-
-        .uid-badge:first-child {
-            border-top-left-radius: var(--border-radius-sm);
-            border-bottom-left-radius: var(--border-radius-sm);
-        }
-
-        .uid-badge:last-child {
-            border-top-right-radius: var(--border-radius-sm);
-            border-bottom-right-radius: var(--border-radius-sm);
-        }
-
         .name-cell {
             font-weight: 500;
         }
@@ -2373,7 +2110,6 @@
             align-items: center;
         }
 
-
         .time-tag {
             background-color: var(--tertiary-50);
             border-radius: 4px;
@@ -2397,7 +2133,6 @@
             font-family: 'Google Sans Flex', sans-serif;
             font-variation-settings: "ROND" 100, "wdth" 95, "wght" 500;
         }
-
 
         .time-tag:hover {
             border: 1px solid var(--primary-color);
@@ -2433,8 +2168,6 @@
         td span[style*="text-transform:uppercase"] {
             white-space: nowrap;
         }
-
-
 
         .actions-cell .btn-icon {
             width: 30px;
@@ -2714,7 +2447,6 @@
             overscroll-behavior: contain;
         }
 
-
         /* Ensure content has breathing room */
         .dialog-content {
             overflow-y: auto;
@@ -2724,10 +2456,6 @@
         .dialog-loader,
         .dialog-main-content {
             transition: opacity 0.25s ease-out;
-        }
-
-        .dialog-loader.fade-out {
-            opacity: 0;
         }
 
         .dialog-title {
@@ -2778,25 +2506,6 @@
             /* Reset alignment */
             flex-basis: auto;
             /* Reset flex basis from old styles */
-        }
-
-        /* This class makes all controls take the remaining space */
-        .form-group-control {
-            flex-grow: 1;
-            flex-basis: 0;
-            min-width: 150px;
-            /* Prevents controls from getting too squished */
-        }
-
-        /* Aligns the hour buttons correctly */
-        .form-group-control.toggle-button-group {
-            margin-top: 0;
-            padding: 0;
-        }
-
-        /* Ensure textareas use the full space */
-        .form-group-control.form-control {
-            width: 100%;
         }
 
         .reason-grid {
@@ -3096,7 +2805,6 @@
             cursor: not-allowed;
         }
 
-
         .dark-mode .toggle-button {
             background-color: #2c2c2e;
             border-color: #444;
@@ -3338,12 +3046,6 @@
             /* Was 20px */
             margin-bottom: 8px;
             /* Was 15px */
-        }
-
-        .dialog-disclaimer {
-            padding: 8px 12px;
-            margin-bottom: 10px;
-            font-size: 0.85em;
         }
 
         .request-list-item {
@@ -3794,24 +3496,6 @@
 
             .settings-search-input {
                 font-size: 0.9em;
-            }
-
-            .admin-input-wrapper {
-                display: flex;
-                align-items: center;
-                gap: 10px;
-                width: 100%;
-                margin-bottom: 10px;
-            }
-
-            .admin-input-wrapper .input-with-icon {
-                flex-grow: 1;
-            }
-
-            .admin-input-wrapper .btn-icon {
-                flex-shrink: 0;
-                width: 42px;
-                height: 42px;
             }
 
             .admin-pills-list {
@@ -4326,8 +4010,6 @@
    and the last line left-aligned. Phones, notifications and short notes stay
    left-aligned: justified narrow lines open wide gaps between words. --- */
 .dialog-content > p,
-.dialog-disclaimer,
-.req-note,
 .website-download .website-download-copy p {
     text-wrap: pretty;
 }
@@ -4335,7 +4017,6 @@
 /* Hints under fields sit in a narrow column, so they stay left-aligned too. */
 @media (min-width: 600px) {
     .dialog-content > p:not(.form-hint),
-    .dialog-disclaimer,
     .website-download .website-download-copy p {
         text-align: justify;
         -webkit-hyphens: auto;
@@ -5260,7 +4941,6 @@ body.signed-out #main-container {
     white-space: nowrap;
 }
 
-.sp-pill.is-ok,
 .sp-pill.status-approved {
     background: color-mix(in srgb, var(--success-500) 14%, transparent);
     color: var(--success-800);
@@ -5381,7 +5061,6 @@ body.signed-out #main-container {
     color: #b0bec5;
 }
 
-.dark-mode .sp-pill.is-ok,
 .dark-mode .sp-pill.status-approved {
     background: color-mix(in srgb, var(--success-300) 16%, transparent);
     color: var(--success-200);
@@ -5404,7 +5083,6 @@ body.signed-out #main-container {
 .dark-mode .sp-empty {
     border-color: rgba(255, 255, 255, 0.14);
 }
-
 
 /* --- Tabs: the selected tab drops its icon and shows a bold, centred label --- */
 .tab-icon {
@@ -6724,9 +6402,7 @@ button.settings-group-label:active:not(:disabled) {
     user-select: none;
 }
 
-.form-section-title:first-child,
-.dialog-disclaimer + .form-section-title,
-.profile-header-section + .form-section-title {
+.form-section-title:first-child {
     padding-top: 0;
     border-top: none;
 }
@@ -6913,7 +6589,6 @@ button.settings-group-label:active:not(:disabled) {
 .database-table th,
 .cat-label,
 .day-separator-date,
-.req-status-pill,
 .logs-count,
 .entry-count,
 .course-group-label,
@@ -6928,9 +6603,7 @@ button.settings-group-label:active:not(:disabled) {
 }
 
 .badge,
-.req-status-pill,
 .cat-label,
-.uid-badge,
 .time-tag,
 .day-separator-date,
 .btn-text,
@@ -7339,7 +7012,7 @@ button.settings-group-label:active:not(:disabled) {
 
 /* Fields: white and fully rounded, a hairline border and a soft shadow; focus
    turns the border indigo. */
-.dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
+.dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
     box-sizing: border-box;
     min-height: 42px;
     padding: 10px 16px;
@@ -7355,20 +7028,20 @@ button.settings-group-label:active:not(:disabled) {
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
+.dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
     border-color: var(--primary-color);
     background-color: var(--card-background);
     box-shadow: 0 2px 8px color-mix(in srgb, var(--primary-600) 18%, transparent);
 }
 
-.dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
+.dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)) {
     border-color: rgba(255, 255, 255, 0.14);
     background-color: rgba(255, 255, 255, 0.05);
     color: #f0f0f0;
     box-shadow: none;
 }
 
-.dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.number-input-field, .stepper-input, .settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
+.dark-mode .dialog :is(.form-control, textarea, select, input[type="text"], input[type="email"], input[type="number"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="tel"], input[type="url"], input[type="password"], input[type="search"]):where(:not(.settings-search-input, .filter-input, .settings-sort-select, .sort-dropdown)):focus {
     border-color: var(--primary-light);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
 }
@@ -7407,10 +7080,6 @@ button.settings-group-label:active:not(:disabled) {
 
 .dialog .input-with-icon:not(:has(> .fa-magnifying-glass)) > input {
     padding-left: 16px !important;
-}
-
-.dialog .admin-input-wrapper {
-    gap: 8px;
 }
 
 /* --- Buttons in dialogs, as in Syllabase: rounded, a darker edge and a soft
@@ -7466,7 +7135,7 @@ button.settings-group-label:active:not(:disabled) {
     font-size: 0.9em;
 }
 
-:is(.dialog-actions, .dialog-content) :is(button.btn-blue, button.btn-primary) {
+:is(.dialog-actions, .dialog-content) button.btn-blue {
     background: var(--primary-color);
     border-color: var(--primary-800);
     color: #fff;
@@ -7897,19 +7566,6 @@ button.settings-group-label:active:not(:disabled) {
     background-color: color-mix(in srgb, var(--primary-300) 24%, transparent);
     border-color: var(--primary-light);
     color: var(--primary-50);
-}
-
-/* Notices inside dialogs. */
-.dialog-disclaimer {
-    border: 1px solid color-mix(in srgb, var(--secondary-600) 28%, transparent);
-    border-left-width: 3px;
-    border-radius: 10px;
-    background-color: color-mix(in srgb, var(--secondary-600) 7%, transparent);
-}
-
-.dark-mode .dialog-disclaimer {
-    border-color: color-mix(in srgb, var(--secondary-300) 30%, transparent);
-    background-color: color-mix(in srgb, var(--secondary-300) 8%, transparent);
 }
 
 /* A person's role repeats under their name only on phones (see the phone rules). */
@@ -12012,7 +11668,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
 
 /* Content decides alignment and wrapping: dates, times, hours, IDs and badges
    stay on one line; names and courses may wrap; actions sit at the right. */
-:is(.logs-table, .database-table) :is(.date-col, .date-cell, .times-cell, .id-cell, .programme-cell, .actions-cell, .reason-col) {
+:is(.logs-table, .database-table) :is(.date-col, .date-cell, .times-cell, .id-cell, .programme-cell, .actions-cell) {
     white-space: nowrap;
 }
 
