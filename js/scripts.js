@@ -2,6 +2,8 @@
 let isAdmin = false;
 let isGlobalAdmin = false;
 let adminCourses = [];
+// Courses where a teaching assistant records attendance; they are students everywhere else.
+let assistantCourses = [];
 const CLIENT_ID = '740588046540-npg0crodtcuinveu6bua9rd6c3hb2s1m.apps.googleusercontent.com';
 const LOGS_STORAGE_KEY = 'attendance_logs';
 // Storage bucket for absence attachments (limits enforced by the bucket)
@@ -295,7 +297,7 @@ function showStaffEditorDialog(staffData = null) {
     const googlePhoto = isEdit ? (staffData.googlePhoto || '') : '';
 
     // Default to 'Lecturer' if adding new
-    const roleVal = isEdit ? staffData.role : 'Lecturer';
+    const roleVal = isEdit ? staffRole(staffData.role) : 'Lecturer';
 
     dialog.innerHTML = `
         <h3 class="dialog-title"><i class="fa-solid ${icon}" aria-hidden="true"></i> ${title}</h3>
@@ -326,10 +328,10 @@ function showStaffEditorDialog(staffData = null) {
                 <select id="staff-role" class="form-control">
                     <option value="Global" ${roleVal === 'Global' ? 'selected' : ''}>Administrator</option>
                     <option value="Lecturer" ${roleVal === 'Lecturer' ? 'selected' : ''}>Lecturer</option>
-                    <option value="Student" ${roleVal === 'Student' ? 'selected' : ''}>Student</option>
+                    <option value="Assistant" ${roleVal === 'Assistant' ? 'selected' : ''}>Teaching Assistant</option>
                 </select>
             </div>
-            <p class="form-hint"><strong>Lecturer:</strong> can log in on trusted devices only and manages their courses. <strong>Student:</strong> can log in on any device and sees only their attendance.</p>
+            <p class="form-hint"><strong>Lecturer:</strong> can log in on trusted devices only and manages their courses. <strong>Teaching Assistant:</strong> a student who scans and adds records in the courses assigned to them in a course's settings; everywhere else they are a student.</p>
 
             ${cardFieldsHtml('staff-card', splitCardValue(uidVal))}
 
@@ -417,11 +419,7 @@ function showStaffEditorDialog(staffData = null) {
                 showNotification('success', 'Success', `Staff member ${isEdit ? 'updated' : 'added'}.`);
 
                 dialogBackdrop.remove();
-                if (!refreshOpenSettings()) {
-                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                    closeDialogMode();
-                    showGlobalSettingsDialog('sect-staff');
-                }
+                refreshOpenSettings();
             } catch (err) {
                 showNotification('error', 'Error', err.message);
                 btn.disabled = false;
@@ -551,8 +549,8 @@ function renderSessionControls(courseName) {
     const controls = document.getElementById('session-controls');
     const catGroup = document.getElementById('session-category-group');
 
-    // Safety check
-    if (!courseInfoMap || !courseInfoMap[courseName]) {
+    // Only those who record attendance in the course choose its group.
+    if (!courseInfoMap || !courseInfoMap[courseName] || (isSignedIn && !isAdmin && !canRecordInCourse(courseName))) {
         controls.style.display = 'none';
         document.getElementById('session-label')?.setAttribute('hidden', '');
         return;
@@ -1015,7 +1013,7 @@ function renderTableSkeletons() {
     // size of a time) and, for the course's admins, Edit and ⋯.
     const timeRow = count => `<div class="time-row"><span class="cat-label"><span class="skeleton-bar skeleton-label"></span></span>` +
         `<div class="pills-wrapper">${'<span class="time-tag skeleton-pill">00:00</span>'.repeat(count)}</div></div>`;
-    const actionsCell = isAdminForCourse(currentCourse)
+    const actionsCell = canRecordInCourse(currentCourse)
         ? '<td class="actions-cell"><div class="actions-cell-content card-actions"><span class="skeleton-bar skeleton-edit"></span><span class="skeleton-bar skeleton-menu"></span></div></td>'
         : '';
     const selectCell = isBulkMode ? '<td class="select-column"></td>' : '';
@@ -1037,6 +1035,7 @@ async function checkAdminStatus() {
         isAdmin = result.isAdmin;
         isGlobalAdmin = result.isGlobalAdmin;
         adminCourses = result.courses;
+        assistantCourses = result.assistantCourses || [];
 
         console.log('Admin status:', {
             isAdmin,
@@ -1057,6 +1056,25 @@ async function checkAdminStatus() {
 function isAdminForCourse(courseName) {
     if (isGlobalAdmin) return true; // Global admins have access to all
     return adminCourses.includes(courseName);
+}
+
+// A teaching assistant's course: they scan, add records, and add or delete
+// times on the records they made. Nothing else of a lecturer's.
+function isAssistantForCourse(courseName) {
+    return !!courseName && !isAdminForCourse(courseName) && assistantCourses.includes(courseName);
+}
+
+function canRecordInCourse(courseName) {
+    return !!courseName && (isAdminForCourse(courseName) || assistantCourses.includes(courseName));
+}
+
+function canRecordAnywhere() {
+    return isAdmin || assistantCourses.length > 0;
+}
+
+// Whether a record was made by the signed-in account (an assistant acts only on those).
+function isOwnLog(log) {
+    return !!currentUser?.email && String(log?.updatedBy || '').toLowerCase() === currentUser.email.toLowerCase();
 }
 
 /**
@@ -1265,10 +1283,13 @@ function toggleAdminView(viewId, open) {
  * @param {Object} group - The log group to add the time to.
  */
 function addPlusOneHourLog(group) {
-    if (!isAdmin) return;
+    if (!canRecordInCourse(currentCourse)) return;
+    // An assistant adds to their own times only.
+    const logs = isAssistantForCourse(currentCourse) ? group.originalLogs.filter(isOwnLog) : group.originalLogs;
+    if (!logs.length) return;
 
     // Find the full log object with the latest timestamp
-    const latestLog = group.originalLogs.reduce((prev, current) =>
+    const latestLog = logs.reduce((prev, current) =>
         (prev.timestamp > current.timestamp) ? prev : current
     );
 
@@ -1292,7 +1313,7 @@ function addPlusOneHourLog(group) {
 
     updateUI();
 
-    if (isOnline && isSignedIn && isAdmin) {
+    if (isOnline && isSignedIn) {
         syncLogsWithSheet().catch(err => {
             console.error('Error syncing after adding +1 hour log:', err);
         });
@@ -1699,6 +1720,10 @@ function setupEventListeners() {
     setupAbsenceHistory();
 
     // --- Global Click Interceptor for Backdrop & Cancel/Close Buttons ---
+    // A tap outside a dialog closes it as its × does, when the press began outside
+    // too (a text selection dragged out of a field is not a tap outside).
+    let pressedOn = null;
+    document.addEventListener('pointerdown', (e) => { pressedOn = e.target; }, true);
     document.addEventListener('click', (e) => {
         // 1. Backdrop click
         if (e.target.classList && e.target.classList.contains('dialog-backdrop')) {
@@ -1707,13 +1732,15 @@ function setupEventListeners() {
             e.preventDefault();
             e.stopPropagation();
             e.stopImmediatePropagation();
-            window.confirmCloseDialog(e.target);
+            if (pressedOn === e.target) dismissDialog(e.target);
             return;
         }
 
         // 2. Intercept Cancel / Close buttons inside any dialog (except confirmation modal)
         const confirmModal = e.target.closest('.confirmation-dialog, [role="alertdialog"]');
         if (confirmModal) return;
+        // Discarding from "Save changes?" closes the dialog its own way, without asking again.
+        if (e.target.closest('.dialog-backdrop')?._discarding) return;
 
         // Cancel and Close are the grey footer buttons (and the header's ×); a red
         // footer button is an action, such as Reject, and Back only steps back.
@@ -1756,7 +1783,7 @@ function setupEventListeners() {
                 }
                 e.preventDefault();
                 e.stopPropagation();
-                window.confirmCloseDialog(topBackdrop);
+                dismissDialog(topBackdrop);
                 return;
             }
         }
@@ -1769,23 +1796,7 @@ function setupEventListeners() {
             const openBackdrops = document.querySelectorAll('.dialog-backdrop');
             if (openBackdrops.length > 0) {
                 const topBackdrop = openBackdrops[openBackdrops.length - 1];
-                const topDialog = topBackdrop.querySelector('.dialog') || topBackdrop;
-
-                const saveBtn = topDialog.querySelector(
-                    '.dialog-actions #save-edit-c, .dialog-actions #save-staff-btn, .dialog-actions #save-edit-log-btn, ' +
-                    '.dialog-actions #confirm-db-entry-btn, .dialog-actions #confirm-add-btn, .dialog-actions #confirm-add-log-btn, ' +
-                    '.dialog-actions #save-manual-log-btn, .dialog-actions #submit-register-btn, .dialog-actions #submit-request-btn, ' +
-                    '.dialog-actions #dialog-confirm-btn, .dialog-actions #confirm-trust-btn, .dialog-actions #confirm-approve-btn, ' +
-                    '.dialog-actions #apply-btn, .dialog-actions #replace-btn, .dialog-actions #merge-logs-btn, .dialog-actions #merge-db-btn, ' +
-                    '.dialog-actions #save-settings-btn, .dialog-actions #save-custom-btn, .dialog-actions #confirm-reg-btn, ' +
-                    '.dialog-actions button.btn-green, .dialog-actions .btn-green, .dialog-actions button[type="submit"], ' +
-                    '#save-edit-c, #save-staff-btn, #save-edit-log-btn, #confirm-db-entry-btn, #confirm-add-btn, #confirm-add-log-btn, ' +
-                    '#save-manual-log-btn, #submit-register-btn, #submit-request-btn, #dialog-confirm-btn'
-                );
-
-                if (saveBtn && !saveBtn.disabled && saveBtn.offsetParent !== null) {
-                    saveBtn.click();
-                }
+                dialogSaveButton(topBackdrop.querySelector('.dialog') || topBackdrop)?.click();
                 return;
             }
 
@@ -1813,6 +1824,9 @@ function setupEventListeners() {
                 if (node.nodeType === 1) {
                     if (node.matches('select.programme-select, select.search-select')) enhanceSearchSelect(node);
                     node.querySelectorAll('select:is(.programme-select, .search-select):not([data-combo])').forEach(enhanceSearchSelect);
+                    // A footer drawn anew (a dialog's next step) gives up its Cancel to the × again.
+                    const host = node.closest('.dialog-backdrop');
+                    if (host && host !== node) markDialogDismiss(host);
                     const backdrops = node.classList?.contains('dialog-backdrop') ? [node] : node.querySelectorAll?.('.dialog-backdrop');
                     if (backdrops && backdrops.length > 0) {
                         backdrops.forEach(addDialogCloseButton);
@@ -1919,22 +1933,20 @@ function confirmCloseDialog(backdropOrDialog, onDismiss) {
         if (typeof onDismiss === 'function') {
             onDismiss();
         }
-        if (backdrop && document.body.contains(backdrop)) {
-            backdrop.dispatchEvent(new Event('dialogclose'));
-            backdrop.remove();
-            closeDialogMode();
+        if (!backdrop || !document.body.contains(backdrop)) return;
+        // Its own Cancel or Close closes it, so what it does on closing still happens.
+        const dismiss = backdrop.querySelector(':scope > .dialog > .dialog-actions .is-dismiss');
+        if (dismiss && !dismiss.disabled) {
+            backdrop._discarding = true;
+            dismiss.click();
         }
+        backdrop.remove();
+        closeDialogMode();
     };
 
     if (isDialogDirty(dialog)) {
-        showConfirmationDialog({
-            title: '<i class="fa-solid fa-triangle-exclamation" style="color:var(--warning-color);"></i> Discard Changes?',
-            message: 'You have unsaved changes. Are you sure you want to discard them?',
-            confirmText: 'Discard',
-            cancelText: 'Keep Editing',
-            isDestructive: true,
-            onConfirm: performClose
-        });
+        const save = dialogSaveButton(dialog);
+        showUnsavedChangesDialog({ onSave: save && (() => save.click()), onDiscard: performClose });
         return false;
     } else {
         performClose();
@@ -1943,28 +1955,83 @@ function confirmCloseDialog(backdropOrDialog, onDismiss) {
 }
 if (typeof window !== 'undefined') window.confirmCloseDialog = confirmCloseDialog;
 
-// A × at the end of a dialog's title bar, as in Syllabase. It presses the dialog's
-// own Cancel or Close, so whatever that does on closing still happens; without
-// one it closes the dialog (asking first when something was changed).
+// "Save changes?" when a dialog with changes is closed: Save presses the dialog's
+// own Save (which may still ask for something missing), Discard closes it, and
+// Keep editing (or Escape) goes back to it.
+function showUnsavedChangesDialog({ onSave, onDiscard }) {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'dialog-backdrop confirmation-backdrop';
+    backdrop.style.zIndex = '10050';
+    backdrop.innerHTML = `
+        <div class="dialog confirmation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="unsaved-title" aria-describedby="unsaved-text">
+            <h3 class="dialog-title" id="unsaved-title">Save changes?</h3>
+            <div class="dialog-content"><p id="unsaved-text">${onSave ? 'You changed something here. Save it before closing?' : 'You changed something here. Close without keeping it?'}</p></div>
+            <div class="dialog-actions">
+                <button type="button" class="btn-secondary" data-choice="keep">Keep editing</button>
+                <button type="button" class="btn-red" data-choice="discard">Discard</button>
+                ${onSave ? '<button type="button" class="btn-green" data-choice="save">Save</button>' : ''}
+            </div>
+        </div>`;
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', (event) => {
+        const choice = event.target.closest('[data-choice]')?.dataset.choice;
+        if (!choice) return;
+        backdrop.remove();
+        closeDialogMode();
+        if (choice === 'save') onSave();
+        else if (choice === 'discard') onDiscard();
+    });
+    backdrop.querySelector('[data-choice="save"], [data-choice="discard"]').focus({ preventScroll: true });
+}
+
+// A dialog's main action (Save, Add, Submit…), for Ctrl+S and "Save changes?".
+const DIALOG_SAVE = ['#save-edit-c', '#save-staff-btn', '#save-edit-log-btn', '#confirm-db-entry-btn', '#confirm-add-btn',
+    '#confirm-add-log-btn', '#save-manual-log-btn', '#submit-register-btn', '#submit-request-btn', '#dialog-confirm-btn',
+    '#confirm-trust-btn', '#confirm-approve-btn', '#apply-btn', '#replace-btn', '#merge-logs-btn', '#merge-db-btn',
+    '#save-settings-btn', '#save-custom-btn', '#confirm-reg-btn', 'button.btn-green', 'button[type="submit"]'].join(', ');
+
+function dialogSaveButton(dialog) {
+    const button = dialog?.querySelector(`.dialog-actions :is(${DIALOG_SAVE})`);
+    return button && !button.disabled && button.offsetParent !== null ? button : null;
+}
+
+// One way to close a dialog: the × in its title bar, as in Syllabase (Settings
+// and the student profile have their own). A tap outside and Escape do the same.
+// The footer's grey Cancel or Close steps aside for it (.is-dismiss, hidden) but
+// still does the closing, so whatever a dialog does then still happens; a dialog
+// with changes asks first (confirmCloseDialog). Back stays: it is a step, not a way out.
 // Confirmations and the idle warning keep their explicit buttons only.
+const DIALOG_DISMISS = 'button.btn-secondary:is([id*="cancel" i], [id*="close" i], [class*="cancel"], [data-action="cancel"], [data-action="close"])';
+
+function markDialogDismiss(backdrop) {
+    if (backdrop.matches('.confirmation-backdrop, .idle-backdrop')) return;
+    if (!backdrop.querySelector(':scope > .dialog > :is(.dialog-title, .settings-modal-header, .sp-header) :is(.dialog-close-x, .icon-only-btn)')) return;
+    backdrop.querySelectorAll(`:scope > .dialog > .dialog-actions ${DIALOG_DISMISS}`).forEach(button => button.classList.add('is-dismiss'));
+}
+
+function dismissDialog(backdrop) {
+    const dismiss = backdrop.querySelector(':scope > .dialog > .dialog-actions .is-dismiss, :scope > .dialog > :is(.settings-modal-header, .sp-header) .icon-only-btn');
+    if (dismiss && !dismiss.disabled) dismiss.click();
+    else confirmCloseDialog(backdrop);
+}
+
 function addDialogCloseButton(backdrop) {
     if (backdrop.matches('.confirmation-backdrop, .idle-backdrop')) return;
     const title = backdrop.querySelector(':scope > .dialog > .dialog-title');
-    if (!title || title.querySelector('.dialog-close-x')) return;
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'dialog-close-x';
-    button.title = 'Close';
-    button.setAttribute('aria-label', 'Close');
-    button.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
-    button.addEventListener('click', (event) => {
-        event.stopPropagation();
-        const dismiss = backdrop.querySelector(':scope > .dialog > .dialog-actions')?.querySelector(
-            'button[id*="cancel"]:not([hidden]), button[id*="close"]:not([hidden]), button[data-action="cancel"], button.btn-secondary:not([data-action="back"], [id*="back"])');
-        if (dismiss && !dismiss.disabled && dismiss.offsetParent !== null) dismiss.click();
-        else window.confirmCloseDialog(backdrop);
-    });
-    title.appendChild(button);
+    if (title && !title.querySelector('.dialog-close-x')) {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'dialog-close-x';
+        button.title = 'Close';
+        button.setAttribute('aria-label', 'Close');
+        button.innerHTML = '<i class="fa-solid fa-xmark" aria-hidden="true"></i>';
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            dismissDialog(backdrop);
+        });
+        title.appendChild(button);
+    }
+    markDialogDismiss(backdrop);
 }
 
 // Searchable selects (programmes, courses): a search box over the list. Typing
@@ -2343,10 +2410,12 @@ function compareCoursesForDisplay(aEntry, bEntry) {
     return courseCodeComparator(aEntry, bEntry);
 }
 
-// Settings for administrators, or for lecturers (their courses and trusted devices).
-function openSettingsDialog(tab) {
-    if (isGlobalAdmin) showGlobalSettingsDialog(tab);
-    else if (isAdmin) showAdminProfileDialog(tab);
+// Settings for administrators and lecturers. Already open, it only switches tab.
+function openSettingsDialog(tab = 'sect-courses') {
+    if (!isAdmin) return;
+    const open = document.querySelector('.dialog-backdrop .settings-dialog');
+    if (open) showSettingsTab(open, tab);
+    else showSettingsDialog(tab);
 }
 
 // The header and tabs stay put; only the chosen section fades in.
@@ -2375,21 +2444,7 @@ function bindSettingsTabs(dialog) {
             if (btn.classList.contains('active')) return;
 
             const activeSection = dialog.querySelector('.settings-section[style*="display: flex"], .settings-section[style*="display:flex"]');
-            let isSectionDirty = false;
-            if (activeSection) {
-                const inputs = activeSection.querySelectorAll('input, select, textarea');
-                for (const input of inputs) {
-                    if (input.id && (input.id.includes('search') || input.id.includes('filter'))) continue;
-                    if (input.disabled || input.readOnly) continue;
-                    if (input.type === 'checkbox' || input.type === 'radio') {
-                        if (input._initialChecked !== undefined && input.checked !== input._initialChecked) {
-                            isSectionDirty = true; break;
-                        }
-                    } else if (input._initialValue !== undefined && input.value !== input._initialValue) {
-                        isSectionDirty = true; break;
-                    }
-                }
-            }
+            const isSectionDirty = !!activeSection && isDialogDirty(activeSection);
 
             const switchTab = () => showSettingsTab(dialog, btn.dataset.target);
             if (isSectionDirty) {
@@ -2628,7 +2683,12 @@ function renameTrustedDevice(rowIndex, name) {
     });
 }
 
-function showGlobalSettingsDialog(initialTab = 'sect-courses') {
+// Settings, the same for administrators and lecturers: Courses, Programmes, Staff
+// and Trusted Devices. Lecturers list their own courses (archived ones too, to
+// bring one back) and change only their programmes, sections and archiving; the
+// Programmes and Staff tabs are theirs to read. An editor opened from Settings
+// opens above it and, on saving, only refreshes its lists (refreshOpenSettings).
+function showSettingsDialog(initialTab = 'sect-courses') {
     openDialogMode();
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
@@ -2636,191 +2696,152 @@ function showGlobalSettingsDialog(initialTab = 'sect-courses') {
     dialog.setAttribute('class', 'dialog settings-dialog');
     dialog.style.maxWidth = '1000px';
     dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'settings-title');
 
     // --- Variables for Bomb ---
     let avatarClickCount = 0;
     let lastAvatarClickTime = 0;
 
-    // --- HTML STRUCTURE ---
+    const tab = (target, icon, label) => `<button type="button" class="settings-tab-btn" data-target="${target}" role="tab" aria-selected="false"><i class="fa-solid ${icon} tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="${label}">${label}</span></button>`;
+    const search = (id, label) => `
+                <div class="input-with-icon search">
+                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                    <input type="search" id="${id}" class="settings-search-input" placeholder="${label}" aria-label="${label}">
+                </div>`;
+    const add = (id, icon, label) => isGlobalAdmin ? `
+                <button type="button" id="${id}" class="btn-green toolbar-add" title="${label}" aria-label="${label}">
+                    <i class="fa-solid ${icon}" aria-hidden="true"></i><span class="btn-text">${label}</span>
+                </button>` : '';
+    const section = (id, toolbar, listId) => `
+        <div id="${id}" class="settings-section" style="display:none; flex-direction:column; height:100%;">
+            <div class="settings-controls-bar list-toolbar">${toolbar}</div>
+            <div class="settings-scroll" id="${listId}"></div>
+        </div>`;
+
     dialog.innerHTML = `
     <div class="settings-modal-header">
         <div class="settings-modal-identity">
-            <div class="settings-avatar" id="admin-profile-pic-container">
+            <div class="settings-avatar" id="settings-profile-pic">
                 ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
             </div>
             <div class="settings-modal-heading">
-                <h3>Settings</h3>
-                <div class="settings-modal-sub">Administrator</div>
+                <h3 id="settings-title">Settings</h3>
+                <div class="settings-modal-sub">${isGlobalAdmin ? 'Administrator' : 'Lecturer'}</div>
             </div>
         </div>
         <button type="button" id="close-settings-btn" class="btn-icon icon-only-btn" title="Close" aria-label="Close settings"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
     </div>
 
     <div class="settings-tabs-container" role="tablist">
-        <button type="button" class="settings-tab-btn active" data-target="sect-courses" role="tab" aria-selected="true"><i class="fa-solid fa-book-open tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Courses">Courses</span></button>
-        ${programmeList ? '<button type="button" class="settings-tab-btn" data-target="sect-programmes" role="tab" aria-selected="false"><i class="fa-solid fa-graduation-cap tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Programmes">Programmes</span></button>' : ''}
-        <button type="button" class="settings-tab-btn" data-target="sect-staff" role="tab" aria-selected="false"><i class="fa-solid fa-user-tie tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Staff">Staff</span></button>
-        <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
-        ${themeTabHtml()}
+        ${tab('sect-courses', 'fa-book-open', isGlobalAdmin ? 'Courses' : 'My Courses')}
+        ${programmeList ? tab('sect-programmes', 'fa-graduation-cap', 'Programmes') : ''}
+        ${tab('sect-staff', 'fa-user-tie', 'Staff')}
+        ${tab('sect-devices', 'fa-laptop-code', 'Trusted Devices')}
     </div>
 
     <div class="dialog-content" style="padding:0; position:relative; display:flex; flex-direction:column; overflow:hidden;">
-
         <div id="settings-loader" class="settings-loader-overlay">
             <div class="loading-spinner"></div>
         </div>
-
-        <div id="sect-courses" class="settings-section" style="display:flex; flex-direction:column; height:100%;">
-            <div class="settings-controls-bar list-toolbar">
-                <div class="input-with-icon search">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <input type="search" id="course-search-input" class="settings-search-input" placeholder="Search courses" aria-label="Search courses">
-                </div>
-                ${settingsSortSelectHtml('settings-course-sort')}
-                <button type="button" id="add-new-course-btn" class="btn-green toolbar-add" title="New course" aria-label="New course">
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i><span class="btn-text">New Course</span>
-                </button>
-            </div>
-            <div class="settings-scroll" id="settings-courses-container"></div>
-        </div>
-
-        ${programmeList ? `
-        <div id="sect-programmes" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            <div class="settings-controls-bar list-toolbar">
-                <div class="input-with-icon search">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <input type="search" id="programme-search-input" class="settings-search-input" placeholder="Search programmes" aria-label="Search programmes">
-                </div>
-                <button type="button" id="add-programme-btn" class="btn-green toolbar-add" title="New programme" aria-label="New programme">
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i><span class="btn-text">New Programme</span>
-                </button>
-            </div>
-            <div class="settings-scroll" id="settings-programmes-container"></div>
-        </div>` : ''}
-
-        <div id="sect-staff" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            <div class="settings-controls-bar list-toolbar">
-                <div class="input-with-icon search">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <input type="search" id="staff-search-input" class="settings-search-input" placeholder="Search staff" aria-label="Search staff">
-                </div>
-                <button type="button" id="add-staff-btn" class="btn-green toolbar-add" title="Add staff" aria-label="Add staff">
-                    <i class="fa-solid fa-user-plus" aria-hidden="true"></i><span class="btn-text">Add Staff</span>
-                </button>
-            </div>
-            <div class="settings-scroll" id="settings-staff-container"></div>
-        </div>
-
+        ${section('sect-courses', search('course-search-input', 'Search courses') + settingsSortSelectHtml('settings-course-sort') +
+            add('add-new-course-btn', 'fa-plus', 'New Course'), 'settings-courses-container')}
+        ${programmeList ? section('sect-programmes', search('programme-search-input', 'Search programmes') +
+            add('add-programme-btn', 'fa-plus', 'New Programme'), 'settings-programmes-container') : ''}
+        ${section('sect-staff', search('staff-search-input', 'Search staff') + add('add-staff-btn', 'fa-user-plus', 'Add Staff'), 'settings-staff-container')}
         ${trustedDevicesSectionHtml()}
-        ${themeSectionHtml()}
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
 
-    StandoWebsite.addDownloadControl(dialog.querySelector('#sect-courses'), { forGlobalAdmin: true });
+    StandoWebsite.addDownloadControl(dialog.querySelector('#sect-courses'), { forGlobalAdmin: isGlobalAdmin });
 
     // --- BOMB LOGIC (Restored) ---
-    const profilePicContainer = dialog.querySelector('#admin-profile-pic-container');
-    if (profilePicContainer) {
-        profilePicContainer.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const now = Date.now();
-            if (now - lastAvatarClickTime > 1000) avatarClickCount = 0;
-            lastAvatarClickTime = now;
-            avatarClickCount++;
-            if (avatarClickCount === 5) {
-                profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:var(--danger-color); display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
-                profilePicContainer.onclick = confirmClearAllAppData;
-                avatarClickCount = 0;
-            }
-        });
-    }
+    const profilePicContainer = dialog.querySelector('#settings-profile-pic');
+    profilePicContainer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const now = Date.now();
+        if (now - lastAvatarClickTime > 1000) avatarClickCount = 0;
+        lastAvatarClickTime = now;
+        avatarClickCount++;
+        if (avatarClickCount === 5) {
+            profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:var(--danger-color); display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
+            profilePicContainer.onclick = confirmClearAllAppData;
+            avatarClickCount = 0;
+        }
+    });
 
-    // --- LOGIC ---
-
-    // 1. Tabs
     bindSettingsTabs(dialog);
-    if (initialTab !== 'sect-courses') showSettingsTab(dialog, initialTab);
+    showSettingsTab(dialog, dialog.querySelector(`#${initialTab}`) ? initialTab : 'sect-courses');
 
-    // 2. Search Listeners
-    const searchInput = document.getElementById('course-search-input');
-    if (searchInput) {
-        searchInput.addEventListener('input', (e) => {
-            renderCoursesInSettings(courseInfoMap, e.target.value);
-        });
-    }
-    bindSettingsSortSelect(dialog.querySelector('#settings-course-sort'),
-        () => renderCoursesInSettings(courseInfoMap, searchInput ? searchInput.value : ''));
+    // Administrators see every course; a lecturer the ones they teach.
+    const courseSearch = dialog.querySelector('#course-search-input');
+    const settingsCourses = () => isGlobalAdmin
+        ? courseInfoMap
+        : Object.fromEntries(adminCourses.filter(course => courseInfoMap[course]).map(course => [course, courseInfoMap[course]]));
+    const renderCourses = () => renderCoursesInSettings(settingsCourses(), courseSearch.value);
+    courseSearch.addEventListener('input', renderCourses);
+    bindSettingsSortSelect(dialog.querySelector('#settings-course-sort'), renderCourses);
 
-    const programmeSearchInput = dialog.querySelector('#programme-search-input');
-    if (programmeSearchInput) {
-        programmeSearchInput.addEventListener('input', () => renderProgrammesInSettings(programmeSearchInput.value));
-        dialog.querySelector('#add-programme-btn').onclick = () => showProgrammeEditorDialog(null);
+    const programmeSearch = dialog.querySelector('#programme-search-input');
+    if (programmeSearch) {
+        programmeSearch.addEventListener('input', () => renderProgrammesInSettings(programmeSearch.value));
         renderProgrammesInSettings();
     }
 
-    let loadedStaffList = [];
-    const staffSearchInput = document.getElementById('staff-search-input');
-    if (staffSearchInput) {
-        staffSearchInput.addEventListener('input', (e) => {
-            renderStaffInSettings(loadedStaffList, e.target.value);
-        });
-    }
+    let staffList = [];
+    const staffSearch = dialog.querySelector('#staff-search-input');
+    staffSearch.addEventListener('input', () => renderStaffInSettings(staffList, staffSearch.value));
 
-    // 3. Load Data
-    const loadSettingsData = async () => {
+    // Lecturers read the staff list without its cards (getStaffDirectory); without
+    // that function in the database yet, their Staff tab stays hidden.
+    const load = async () => {
         try {
-            const [courseInfo, globalData, programmes] = await Promise.all([
-                callWebApp('getCourseInfo', {}, 'POST'),
-                callWebApp('getGlobalSettingsData', {}, 'POST'),
+            const [, people, programmes] = await Promise.all([
+                fetchCourseInfo(),
+                isGlobalAdmin
+                    ? callWebApp('getGlobalSettingsData', {}, 'POST')
+                    : Promise.all([callWebApp('getStaffDirectory'), callWebApp('getTrustedDevices')]).then(([staff, devices]) => ({ staff, devices })),
                 callWebApp('getProgrammes')
             ]);
-
-            const loader = document.getElementById('settings-loader');
-            if (loader) loader.style.display = 'none';
-
-            courseInfoMap = courseInfo;
             if (programmes) {
                 setProgrammeList(programmes);
-                renderProgrammesInSettings(programmeSearchInput?.value || '');
+                renderProgrammesInSettings(programmeSearch?.value || '');
             }
-            loadedStaffList = globalData.staff || [];
+            staffList = people.staff || [];
+            const staffTab = dialog.querySelector('.settings-tab-btn[data-target="sect-staff"]');
+            staffTab.hidden = !people.staff;
+            if (staffTab.hidden && staffTab.classList.contains('active')) showSettingsTab(dialog, 'sect-courses');
             // Course rows show lecturers by name where the staff list knows them.
-            settingsStaffNames = new Map(loadedStaffList
+            settingsStaffNames = new Map(staffList
                 .filter(s => s && s.email && (s.name || s.googleName))
                 .map(s => [String(s.email).trim().toLowerCase(), staffDisplayName(s)]));
-
-            // Render Courses
-            renderCoursesInSettings(courseInfo, searchInput?.value || '');
-
-            // Render Staff (Grouped by position & sorted alphabetically ignoring titles)
-            renderStaffInSettings(loadedStaffList, staffSearchInput?.value || '');
-
-            renderTrustedDevices(globalData.devices || []);
-
+            renderCourses();
+            renderStaffInSettings(staffList, staffSearch.value);
+            renderTrustedDevices(people.devices || []);
         } catch (e) {
             console.error(e);
             showNotification('error', 'Error', 'Failed to load settings: ' + e.message);
-            const loader = document.getElementById('settings-loader');
+        } finally {
+            const loader = dialog.querySelector('#settings-loader');
             if (loader) loader.style.display = 'none';
         }
     };
+    load();
+    dialog._reload = load;
 
-    loadSettingsData();
-    dialog._reload = loadSettingsData;
-
-    // 4. Action Buttons
     bindTrustedDevicesSection(dialog);
-    bindThemeSection(dialog);
-    document.getElementById('add-staff-btn').onclick = () => showStaffEditorDialog(null);
-    document.getElementById('add-new-course-btn').onclick = () => showCourseEditorDialog(null);
+    if (isGlobalAdmin) {
+        dialog.querySelector('#add-programme-btn')?.addEventListener('click', () => showProgrammeEditorDialog(null));
+        dialog.querySelector('#add-staff-btn').onclick = () => showStaffEditorDialog(null);
+        dialog.querySelector('#add-new-course-btn').onclick = () => showCourseEditorDialog(null);
+    }
 
-    const close = () => {
-        document.body.removeChild(dialogBackdrop);
+    dialog.querySelector('#close-settings-btn').onclick = () => {
+        dialogBackdrop.remove();
         closeDialogMode();
     };
-    document.getElementById('close-settings-btn').onclick = close;
 }
 
 /**
@@ -2867,28 +2888,91 @@ window.deleteStaffKey = (rowIndex, name) => {
         isDestructive: true,
         onConfirm: () => {
             callWebApp('manageStaff_Admin', { actionType: 'delete', rowIndex }, 'POST')
-                .then(() => {
-                    if (refreshOpenSettings()) return;
-                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                    closeDialogMode();
-                    showGlobalSettingsDialog('sect-staff');
-                })
+                .then(() => refreshOpenSettings())
                 .catch(err => showNotification('error', 'Error', err.message));
         }
     });
 };
 
 
-// // --- 2. Course Editor (Renaming Support + Clean Code + Validation) ---
-function showCourseEditorDialog(courseName, courseData = null) {
+// A colleague's name by e-mail: from the staff list Settings loaded, else the
+// loaded student list (which includes staff), else the e-mail.
+function staffNameByEmail(email) {
+    const key = String(email || '').trim().toLowerCase();
+    return settingsStaffNames.get(key) || personNameByEmail(key);
+}
+
+// Administrators tick a course's lecturers and teaching assistants in a list of staff.
+function staffPickerHtml(id, label) {
+    return `
+        <div class="form-group staff-picker" id="${id}">
+            <label class="dialog-label-fixed" for="${id}-search">${label} <span class="theme-label-note staff-picker-count"></span></label>
+            <div class="input-with-icon">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="${id}-search" class="form-control" placeholder="Search staff" autocomplete="off">
+            </div>
+            <div class="student-list-container staff-picker-list" role="group" aria-label="${label}">
+                <div class="staff-picker-note"><div class="loading-spinner"></div></div>
+            </div>
+        </div>`;
+}
+
+// people: the staff offered; selected: a Set of e-mails, changed as rows are ticked.
+function bindStaffPicker(root, people, selected) {
+    const list = root.querySelector('.staff-picker-list');
+    const search = root.querySelector('input[type="search"]');
+    const count = root.querySelector('.staff-picker-count');
+    const render = () => {
+        const query = search.value.trim().toLowerCase();
+        const shown = people.filter(s => !query || staffDisplayName(s).toLowerCase().includes(query) ||
+            String(s.email || '').toLowerCase().includes(query));
+        count.textContent = `${selected.size} selected`;
+        list.innerHTML = shown.length ? '' : '<div class="staff-picker-note">No staff found</div>';
+        shown.forEach(staff => {
+            const email = String(staff.email || '').trim().toLowerCase();
+            const isSelected = selected.has(email);
+            const name = staffDisplayName(staff);
+            const row = document.createElement('div');
+            row.className = `student-item${isSelected ? ' selected' : ''}`;
+            row.setAttribute('role', 'checkbox');
+            row.setAttribute('aria-checked', String(isSelected));
+            row.tabIndex = 0;
+            row.innerHTML = `
+                ${userAvatarHtml(name, staff.photo, 'user-avatar settings-row-avatar')}
+                <div class="student-info">
+                    <div class="student-name">${escapeHtml(name)}</div>
+                    <div class="student-uid"><span class="role-chip">${escapeHtml(staffRoleLabel(staff.role))}</span>${escapeHtml(staff.email)}</div>
+                </div>
+                ${isSelected ? '<i class="fa-solid fa-check student-item-check" aria-hidden="true"></i>' : ''}`;
+            row.onclick = () => {
+                if (isSelected) selected.delete(email);
+                else selected.add(email);
+                render();
+                list.querySelector(`[data-email="${CSS.escape(email)}"]`)?.focus();
+            };
+            row.dataset.email = email;
+            list.appendChild(row);
+        });
+    };
+    search.addEventListener('input', render);
+    render();
+}
+
+function emailSet(list) {
+    return new Set(String(list || '').split(',').map(email => email.trim().toLowerCase()).filter(Boolean));
+}
+
+// A course's settings, from Settings (or New Course). Administrators change
+// everything. A course's lecturers change its programmes, sections and
+// archiving, and see the rest: its lecturers, teaching assistants and appearance.
+function showCourseEditorDialog(courseName, info = null) {
     const isNew = !courseName;
     const title = isNew ? 'New Course' : 'Edit Course';
-    const data = courseData || {};
+    const data = info || {};
     const val = (v) => v !== undefined && v !== null ? v : '';
 
-    // 1. LOGIC: Display clean course code (strip internal archive/EIS ID suffix)
+    // The course code as people write it, without the internal archive/EIS ID suffix.
     const cleanCourseName = isNew ? '' : getCleanCourseCode(courseName, data.eisId);
-    const displayCourseName = cleanCourseName;
 
     const formatDate = (d) => {
         if (!d) return '';
@@ -2903,50 +2987,33 @@ function showCourseEditorDialog(courseName, courseData = null) {
         } catch (e) { return ''; }
     };
 
-    const canEditSensitive = isGlobalAdmin;
-    const disabledAttr = canEditSensitive ? '' : 'disabled';
-    const readOnlyStyle = canEditSensitive ? '' : 'style="background-color:#f5f5f5; color:#666; cursor:not-allowed;"';
+    // Fields only administrators change.
+    const off = isGlobalAdmin ? '' : 'disabled';
 
     let currentSections = [];
     if (data.availableSections) {
         currentSections = data.availableSections.split(',').map(s => s.trim()).filter(Boolean);
     }
-
-    let currentAdmins = new Set();
-    if (data.adminEmails) {
-        data.adminEmails.split(',').forEach(e => currentAdmins.add(e.trim().toLowerCase()));
-    }
+    const lecturers = emailSet(data.adminEmails);
+    const assistants = emailSet(data.assistantEmails);
+    const initial = JSON.stringify([currentSections, [...lecturers], [...assistants]]);
 
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
     dialogBackdrop.style.zIndex = "10002";
     const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog');
+    dialog.setAttribute('class', 'dialog course-editor');
     dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
 
-    // --- ADMIN ACCESS HTML ---
-    let adminSectionHtml = '';
-    if (isGlobalAdmin) {
-        adminSectionHtml = `
-        <div class="form-group" style="margin-bottom:5px; margin-top:15px;">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-user-shield"></i> Admins</label>
-            <div class="input-with-icon" style="flex-grow:1;">
-                <i class="fa-solid fa-magnifying-glass"></i>
-                <input type="text" id="admin-search-input" class="form-control" placeholder="Search staff">
-            </div>
-        </div>
-        
-        <div style="position:relative;">
-            <div id="admin-staff-loader" style="position:absolute; inset:0; display:flex; justify-content:center; align-items:center; z-index:10; background:var(--card-background); border-radius:8px;">
-                <div class="loading-spinner" style="width:30px; height:30px; border-width:3px; margin:0;"></div>
-            </div>
-            <div id="admin-selection-list" class="student-list-container" style="margin-left:115px; height:200px; min-height:160px; margin-bottom:5px;"></div>
-        </div>
-        <div id="admin-count-hint" style="text-align:right; font-size:0.85em; color:var(--primary-color); font-weight:600;">${currentAdmins.size} selected</div>
-        <hr style="border:0; border-top:1px solid #eee; margin:15px 0;">`;
-    }
-
-    let eisWarning = !isGlobalAdmin ? `<small style="color:var(--warning-color); display:block; margin-top:4px;"><i class="fa-solid fa-lock"></i> Admin only.</small>` : '';
+    // Lecturers read who teaches and assists; administrators choose them.
+    const peopleHtml = (id, label, emails) => isGlobalAdmin ? staffPickerHtml(id, label) : `
+        <div class="form-group">
+            <label class="dialog-label-fixed">${label}</label>
+            <div class="admin-pills-list people-pills">${emails.size
+            ? [...emails].map(email => `<div class="admin-pill-item" title="${escapeHtml(email)}"><b>${escapeHtml(staffNameByEmail(email))}</b></div>`).join('')
+            : '<span class="people-pills-empty">None yet</span>'}</div>
+        </div>`;
 
     let groupButtonsHtml = '';
     for (let i = 0; i < 4; i++) {
@@ -2957,42 +3024,30 @@ function showCourseEditorDialog(courseName, courseData = null) {
     dialog.innerHTML = `
     <h3 class="dialog-title"><i class="fa-solid fa-book-open"></i> ${title}</h3>
     <div class="dialog-content">
-        
+        ${isGlobalAdmin ? '' : '<p class="form-hint editor-note"><i class="fa-solid fa-lock" aria-hidden="true"></i> You can change this course\'s programmes, sections and archiving. The rest is set by an administrator.</p>'}
+
         <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-name"><i class="fa-solid fa-heading"></i> Course Code <span class="required">*</span></label>
-            <div class="input-with-icon" style="flex-grow:1;">
-                <i class="fa-solid fa-font"></i>
-                <input id="edit-c-name" class="form-control" value="${escapeHtml(displayCourseName)}" ${disabledAttr} placeholder="e.g. CE 101">
-            </div>
+            <label class="dialog-label-fixed" for="edit-c-name">Course Code <span class="required">*</span></label>
+            <input id="edit-c-name" class="form-control" value="${escapeHtml(cleanCourseName)}" ${off} placeholder="e.g. CE 101">
         </div>
 
         <div class="form-group">
-            <label class="dialog-label-fixed" for="edit-c-title"><i class="fa-solid fa-book"></i> Course Name <span class="required">*</span></label>
-            <div class="input-with-icon" style="flex-grow:1;">
-                <i class="fa-solid fa-book"></i>
-                <input id="edit-c-title" class="form-control" value="${escapeHtml(val(data.title))}" ${disabledAttr} ${readOnlyStyle} maxlength="150">
-            </div>
+            <label class="dialog-label-fixed" for="edit-c-title">Course Name <span class="required">*</span></label>
+            <input id="edit-c-title" class="form-control" value="${escapeHtml(val(data.title))}" ${off} maxlength="150">
         </div>
 
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-fingerprint"></i> EIS ID</label>
-            <div style="flex-grow:1;">
-                <div class="input-with-icon">
-                    <i class="fa-solid fa-id-badge"></i>
-                    <input id="edit-c-eis" class="form-control" value="${escapeHtml(val(data.eisId))}" placeholder="e.g. 12345" ${disabledAttr} ${readOnlyStyle}>
-                </div>
-                ${eisWarning}
-            </div>
+            <label class="dialog-label-fixed" for="edit-c-eis">EIS ID</label>
+            <input id="edit-c-eis" class="form-control" value="${escapeHtml(val(data.eisId))}" placeholder="e.g. 12345" ${off}>
         </div>
 
-        ${!isGlobalAdmin || !courseProgrammesSupported ? ''
+        ${!courseProgrammesSupported ? ''
             : courseProgrammesMultiple ? programmesFieldHtml('edit-c-programmes', data.programmeIds || [])
                 : programmeFieldHtml('edit-c-programme', (data.programmeIds || [])[0], { required: false, placeholder: 'No programme' })}
 
-        <div class="form-group" style="align-items:flex-start; margin-top: 15px;">
-            <label class="dialog-label-fixed" style="margin-top:10px;"><i class="fa-solid fa-layer-group"></i> Sections</label>
-            
-            <div style="flex-grow:1; min-width:0; display:flex; flex-direction:column; gap:10px;">
+        <div class="form-group">
+            <label class="dialog-label-fixed">Sections</label>
+            <div style="display:flex; flex-direction:column; gap:10px; min-width:0;">
                 <div id="section-builder-list" class="admin-pills-list" style="width:100%; box-sizing:border-box; min-height:40px; border-radius:8px; padding:5px; font-size:0.85em;"></div>
 
                 <div class="admin-tool-bar" style="flex-direction:column; gap:8px; align-items:stretch; padding:10px;">
@@ -3005,7 +3060,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
                         <div id="new-sec-grp" class="course-buttons-container segmented-choices" style="margin:0; flex-wrap:nowrap; flex:1;">
                             ${groupButtonsHtml}
                         </div>
-                        <button id="btn-add-section" class="btn-green btn-sm" style="padding:8px 15px; flex-shrink:0; margin-left:10px; font-size:0.85em;">
+                        <button type="button" id="btn-add-section" class="btn-green btn-sm" style="padding:8px 15px; flex-shrink:0; margin-left:10px; font-size:0.85em;">
                             <i class="fa-solid fa-plus"></i> Add
                         </button>
                     </div>
@@ -3013,50 +3068,56 @@ function showCourseEditorDialog(courseName, courseData = null) {
             </div>
         </div>
 
-        ${adminSectionHtml}
+        ${!isNew ? switchRowHtml('edit-c-archived', data.archived, 'Archived', 'Hidden from lists. Its records stay.') : ''}
 
+        <h4 class="editor-section-title">People</h4>
+        ${peopleHtml('edit-c-lecturers', 'Lecturers', lecturers)}
+        ${courseExtrasSupported ? peopleHtml('edit-c-assistants', 'Teaching assistants', assistants) : ''}
+        ${courseExtrasSupported && isGlobalAdmin ? '<p class="form-hint">Teaching assistants scan and add records in this course, and add or delete times only on the records they made.</p>' : ''}
+
+        <h4 class="editor-section-title">Dates</h4>
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-regular fa-calendar"></i> Start Date</label>
-            <input type="date" id="edit-c-start" class="form-control" value="${formatDate(data.startDate)}" ${disabledAttr} ${readOnlyStyle}>
+            <label class="dialog-label-fixed" for="edit-c-start">Start Date</label>
+            <input type="date" id="edit-c-start" class="form-control" value="${formatDate(data.startDate)}" ${off}>
         </div>
 
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-regular fa-calendar-check"></i> End Date</label>
-            <input type="date" id="edit-c-end" class="form-control" value="${formatDate(data.endDate)}" ${disabledAttr} ${readOnlyStyle}>
+            <label class="dialog-label-fixed" for="edit-c-end">End Date</label>
+            <input type="date" id="edit-c-end" class="form-control" value="${formatDate(data.endDate)}" ${off}>
         </div>
 
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-plane-departure"></i> Hol. Start</label>
-            <input type="date" id="edit-c-holiday-start" class="form-control" value="${formatDate(data.holidayStartDate)}" ${disabledAttr} ${readOnlyStyle}>
+            <label class="dialog-label-fixed" for="edit-c-holiday-start">Holiday Start</label>
+            <input type="date" id="edit-c-holiday-start" class="form-control" value="${formatDate(data.holidayStartDate)}" ${off}>
         </div>
 
         <div class="form-group">
-            <label class="dialog-label-fixed"><i class="fa-solid fa-calendar-minus"></i> Hol. Weeks</label>
-            <div class="input-with-icon" style="flex-grow:1;">
-                <i class="fa-solid fa-hashtag"></i>
-                <input type="number" id="edit-c-holidays" class="form-control" value="${escapeHtml(val(data.holidayWeeks))}" ${disabledAttr} ${readOnlyStyle}>
-            </div>
+            <label class="dialog-label-fixed" for="edit-c-holidays">Holiday Weeks</label>
+            <input type="number" id="edit-c-holidays" class="form-control" value="${escapeHtml(val(data.holidayWeeks))}" ${off}>
         </div>
 
-        ${(!isNew && isGlobalAdmin) ? switchRowHtml('edit-c-archived', data.archived, 'Archived',
-            'Hidden from lists. Its records stay.') : ''}
-
+        ${courseExtrasSupported ? `<h4 class="editor-section-title">Appearance</h4>
+        ${appearanceFieldsHtml(data, { code: cleanCourseName, title: data.title, editable: isGlobalAdmin })}` : ''}
     </div>
     <div class="dialog-actions">
         ${(!isNew && isGlobalAdmin) ? '<button type="button" id="delete-course-btn" class="btn-red tint-danger" style="margin-right:auto;"><i class="fa-solid fa-trash" aria-hidden="true"></i> Delete</button>' : ''}
-        <button id="cancel-edit-c" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
-        <button id="save-edit-c" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Save</button>
+        <button type="button" id="cancel-edit-c" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
+        <button type="button" id="save-edit-c" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Save</button>
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
     bindProgrammesField(dialog.querySelector('[data-programmes-field]'));
+    // A lecturer sees the course's colours in the preview, without changing them.
+    const appearance = bindAppearanceFields(dialog);
+    // Sections and people are not fields, so leaving asks about them too.
+    dialog._checkDirty = () => JSON.stringify([currentSections, [...lecturers], [...assistants]]) !== initial;
 
     // --- Section Builder Logic ---
-    const sectionListContainer = document.getElementById('section-builder-list');
-    const catContainer = document.getElementById('new-sec-cat');
-    const grpContainer = document.getElementById('new-sec-grp');
-    const addSectionBtn = document.getElementById('btn-add-section');
+    const sectionListContainer = dialog.querySelector('#section-builder-list');
+    const catContainer = dialog.querySelector('#new-sec-cat');
+    const grpContainer = dialog.querySelector('#new-sec-grp');
+    const addSectionBtn = dialog.querySelector('#btn-add-section');
 
     let newSectionCat = 'Theory';
     let newSectionGrp = 'A';
@@ -3089,12 +3150,12 @@ function showCourseEditorDialog(courseName, courseData = null) {
         currentSections.forEach((sec, index) => {
             const pill = document.createElement('div');
             pill.setAttribute('class', 'admin-pill-item');
-            pill.innerHTML = `<b>${sec}</b> <i class="fa-solid fa-times remove-pill" style="margin-left:8px; cursor:pointer; color:var(--danger-color);" data-index="${index}"></i>`;
+            pill.innerHTML = `<b>${escapeHtml(sec)}</b> <i class="fa-solid fa-times remove-pill" style="margin-left:8px; cursor:pointer; color:var(--danger-color);" data-index="${index}"></i>`;
             sectionListContainer.appendChild(pill);
         });
         sectionListContainer.querySelectorAll('.remove-pill').forEach(btn => {
             btn.onclick = (e) => {
-                currentSections.splice(parseInt(e.target.dataset.index), 1);
+                currentSections.splice(parseInt(e.currentTarget.dataset.index), 1);
                 renderSections(); updateAvailableOptions();
             };
         });
@@ -3133,91 +3194,39 @@ function showCourseEditorDialog(courseName, courseData = null) {
         }
     };
 
-    // --- ADMIN STAFF PICKER LOGIC ---
+    // --- Lecturers and teaching assistants: ticked in the staff list ---
+    // Each list offers its own role, and anyone already chosen so they can be unticked.
     if (isGlobalAdmin) {
-        const listContainer = document.getElementById('admin-selection-list');
-        const searchInput = document.getElementById('admin-search-input');
-        const countHint = document.getElementById('admin-count-hint');
-        const loader = document.getElementById('admin-staff-loader');
-        let staffList = [];
-
-        // 1. Render Function
-        const renderStaffList = (filter = '') => {
-            listContainer.innerHTML = '';
-            const lowerFilter = filter.toLowerCase();
-            const filtered = staffList.filter(s =>
-                staffDisplayName(s).toLowerCase().includes(lowerFilter) ||
-                String(s.email || '').toLowerCase().includes(lowerFilter)
-            );
-
-            if (filtered.length === 0) {
-                listContainer.innerHTML = `<div style="padding:20px; text-align:center; opacity:0.6;">No staff found</div>`;
-                return;
-            }
-
-            filtered.forEach(staff => {
-                const emailLower = staff.email.toLowerCase();
-                const isSelected = currentAdmins.has(emailLower);
-
-                const div = document.createElement('div');
-                div.setAttribute('class', `student-item ${isSelected ? 'selected' : ''}`);
-                div.setAttribute('role', 'checkbox');
-                div.setAttribute('aria-checked', String(isSelected));
-                div.tabIndex = 0;
-                const shown = staffDisplayName(staff);
-
-                div.innerHTML = `
-                            ${userAvatarHtml(shown, staff.photo, 'user-avatar settings-row-avatar')}
-                            <div class="student-info" style="flex-grow:1;">
-                                <div class="student-name">${escapeHtml(shown)}</div>
-                                <div class="student-uid"><span class="role-chip">${escapeHtml(staff.role === 'Global' ? 'Administrator' : (staff.role || 'Staff'))}</span>${escapeHtml(staff.email)}</div>
-                            </div>
-                            ${isSelected ? '<i class="fa-solid fa-check student-item-check" aria-hidden="true"></i>' : ''}
-                        `;
-
-                div.onclick = () => {
-                    if (isSelected) currentAdmins.delete(emailLower);
-                    else currentAdmins.add(emailLower);
-                    renderStaffList(searchInput.value);
-                    countHint.textContent = `${currentAdmins.size} selected`;
-                };
-                listContainer.appendChild(div);
-            });
-        };
-
-        // 2. Fetch Data
         callWebApp('getGlobalSettingsData', {}, 'POST')
-            .then(data => {
-                if (loader) loader.style.display = 'none';
-                if (data && data.staff) {
-                    staffList = data.staff;
-                    staffList.sort((a, b) => compareLecturers(staffDisplayName(a), staffDisplayName(b)));
-                    renderStaffList();
-                }
+            .then(({ staff = [] }) => {
+                const sorted = [...staff].sort((a, b) => compareLecturers(staffDisplayName(a), staffDisplayName(b)));
+                const email = s => String(s.email || '').trim().toLowerCase();
+                bindStaffPicker(dialog.querySelector('#edit-c-lecturers'),
+                    sorted.filter(s => staffRole(s.role) !== 'Assistant' || lecturers.has(email(s))), lecturers);
+                const assistantPicker = dialog.querySelector('#edit-c-assistants');
+                if (assistantPicker) bindStaffPicker(assistantPicker,
+                    sorted.filter(s => staffRole(s.role) === 'Assistant' || assistants.has(email(s))), assistants);
             })
-            .catch(e => {
-                if (loader) loader.style.display = 'none';
-                listContainer.innerHTML = `<div class="error-message">Failed to load staff list.</div>`;
+            .catch(() => {
+                dialog.querySelectorAll('.staff-picker-list').forEach(list => {
+                    list.innerHTML = '<div class="staff-picker-note error-message">Failed to load the staff list.</div>';
+                });
             });
-
-        // 3. Search Listener
-        searchInput.addEventListener('input', (e) => renderStaffList(e.target.value));
     }
 
-    const close = () => document.body.removeChild(dialogBackdrop);
+    const close = () => dialogBackdrop.remove();
     dialog.querySelector('#cancel-edit-c').onclick = close;
 
     // --- Save Logic ---
     dialog.querySelector('#save-edit-c').onclick = async (e) => {
         const btn = e.currentTarget;
-        const nameInput = document.getElementById('edit-c-name');
+        const nameInput = dialog.querySelector('#edit-c-name');
         const rawName = nameInput.value.trim();
-        const isArchived = (isGlobalAdmin && !isNew && document.getElementById('edit-c-archived'))
-            ? document.getElementById('edit-c-archived').checked
-            : (data.archived || false);
-        const eisInput = document.getElementById('edit-c-eis');
+        const archivedSwitch = dialog.querySelector('#edit-c-archived');
+        const isArchived = archivedSwitch ? archivedSwitch.checked : (data.archived || false);
+        const eisInput = dialog.querySelector('#edit-c-eis');
         const eisVal = eisInput.value.trim();
-        const titleInput = document.getElementById('edit-c-title');
+        const titleInput = dialog.querySelector('#edit-c-title');
         const courseTitle = titleInput.value.replace(/\s+/g, ' ').trim();
         clearInputError(nameInput);
         clearInputError(eisInput);
@@ -3236,36 +3245,35 @@ function showCourseEditorDialog(courseName, courseData = null) {
             titleInput.focus();
             return;
         }
+        if (currentSections.length === 0) {
+            showNotification('error', 'Missing Data', 'Please add at least one section.');
+            return;
+        }
+        if (isGlobalAdmin && appearance && !appearance.validate()) return;
 
         btn.disabled = true;
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
-
-        if (currentSections.length === 0) {
-            showNotification('error', 'Missing Data', 'Please add at least one section.');
-            btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Save';
-            return;
-        }
-
-        const finalAdminString = Array.from(currentAdmins).join(', ');
 
         const payload = {
             originalName: courseName,
             courseName: systemName, // SEND UNDERSCORES
             courseTitle,
             defaultHours: data.defaultHours || '2',
-            startDate: document.getElementById('edit-c-start').value,
-            endDate: document.getElementById('edit-c-end').value,
-            holidayStartDate: document.getElementById('edit-c-holiday-start').value,
-            holidayWeeks: document.getElementById('edit-c-holidays').value,
+            startDate: dialog.querySelector('#edit-c-start').value,
+            endDate: dialog.querySelector('#edit-c-end').value,
+            holidayStartDate: dialog.querySelector('#edit-c-holiday-start').value,
+            holidayWeeks: dialog.querySelector('#edit-c-holidays').value,
             eisId: eisVal,
             availableSections: currentSections.join(', '),
-            adminEmails: isGlobalAdmin ? finalAdminString : (data.adminEmails || '')
+            adminEmails: isGlobalAdmin ? [...lecturers].join(', ') : (data.adminEmails || '')
         };
-        if (isGlobalAdmin && !isNew) payload.archived = isArchived;
+        if (!isNew) payload.archived = isArchived;
         const programmeSelect = dialog.querySelector('#edit-c-programme');
         if (programmeSelect) payload.programmeId = readProgrammeField(programmeSelect, false).id;
         const programmesField = dialog.querySelector('[data-programmes-field]');
         if (programmesField) payload.programmeIds = readProgrammesField(programmesField);
+        if (isGlobalAdmin && courseExtrasSupported) payload.assistantEmails = [...assistants].join(', ');
+        if (isGlobalAdmin && appearance) Object.assign(payload, appearance.read());
 
         try {
             const res = await callWebApp('saveCourseSettings_Admin', payload, 'POST');
@@ -3274,12 +3282,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
                 await refreshCoursePicker('Course saved.');
                 showNotification('success', 'Saved', 'Course updated.');
                 close();
-                if (!refreshOpenSettings()) {
-                    document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                    closeDialogMode();
-                    if (isGlobalAdmin) showGlobalSettingsDialog();
-                    else showAdminProfileDialog();
-                }
+                refreshOpenSettings();
             } else { throw new Error(res.message); }
         } catch (err) {
             showNotification('error', 'Save Failed', err.message);
@@ -3303,11 +3306,7 @@ function showCourseEditorDialog(courseName, courseData = null) {
                     await refreshCoursePicker('Course deleted.');
                     showNotification('delete', 'Deleted', 'Course and its logs removed.');
                     close();
-                    if (!refreshOpenSettings()) {
-                        document.querySelectorAll('.dialog-backdrop').forEach(el => el.remove());
-                        closeDialogMode();
-                        showGlobalSettingsDialog();
-                    }
+                    refreshOpenSettings();
                 }
             });
         };
@@ -3322,17 +3321,22 @@ async function refreshCoursePicker(savedMessage) {
             callWebApp('getCourseInfo'), callWebApp('getAvailableCourses')
         ]);
         courseInfoMap = info;
+        // A lecturer's courses, archived ones too: archiving can rename a course.
+        if (isAdmin && !isGlobalAdmin) adminCourses = Object.keys(courses);
         availableCourses = Object.keys(courses).filter(name => !info[name]?.archived);
         courseDictionary = Object.fromEntries(availableCourses.map(name => [name, courses[name]]));
         courseIDMap = Object.fromEntries(Object.entries(info).map(([name, metadata]) => [name, metadata.eisId]));
-        // A deleted or renamed course cannot stay selected; routing picks the next one.
-        if (currentCourse && !info[currentCourse]) {
+        // A deleted or renamed course cannot stay selected, nor one a lecturer
+        // archived; routing picks the next one.
+        if (currentCourse && (!info[currentCourse] || (!isGlobalAdmin && info[currentCourse].archived))) {
             if (!courseData[currentCourse]?.pending) delete courseData[currentCourse];
             if (guestCourse === currentCourse) guestCourse = null;
             currentCourse = '';
             window.location.hash = '';
             updateUI();
         }
+        // New colours or a new icon show at once.
+        if (currentCourse) applyCourseAppearance(currentCourse);
         populateCourseButtons();
     } catch (refreshError) {
         showNotification('warning', 'Refresh Needed', `${savedMessage} Reload the page to refresh the course list.`);
@@ -3375,9 +3379,9 @@ function renderProgrammesInSettings(filterText = '') {
                     ${p.name ? `<span class="settings-row-people" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</span>` : ''}
                 </div>
                 <div class="settings-row-meta"><span class="settings-row-sub">${listCountText(count, 'student')}</span>${courseProgrammesSupported ? `<span class="settings-row-sub">${listCountText(courses, 'course')}</span>` : ''}</div>
-                <div class="card-actions">
+                ${isGlobalAdmin ? `<div class="card-actions">
                     ${rowEditButtonHtml(`Edit ${p.code}`, 'edit-programme-btn', `data-programme-id="${p.id}"`)}
-                </div>
+                </div>` : ''}
             </div>`;
     };
     const group = (label, list) => `
@@ -3503,117 +3507,6 @@ function showProgrammeEditorDialog(programme) {
     };
 }
 
-// --- 3. Lecturer Settings: their courses and trusted devices ---
-function showAdminProfileDialog(initialTab = 'sect-my-courses') {
-    openDialogMode();
-
-    const dialogBackdrop = document.createElement('div');
-    dialogBackdrop.setAttribute('class', 'dialog-backdrop');
-    const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog settings-dialog');
-    dialog.style.maxWidth = '1000px';
-    dialog.setAttribute('role', 'dialog');
-
-    // --- Variables for Bomb ---
-    let avatarClickCount = 0;
-    let lastAvatarClickTime = 0;
-
-    // --- Header (Unified "Global Settings" Look) ---
-    const headerHtml = `
-    <div class="settings-modal-header">
-        <div class="settings-modal-identity">
-            <div class="settings-avatar" id="non-admin-profile-pic-container">
-                ${userAvatarHtml(currentUserDisplayName(), currentUserPhoto(), 'user-avatar user-avatar-lg')}
-            </div>
-            <div class="settings-modal-heading">
-                <h3>Settings</h3>
-                <div class="settings-modal-sub">Lecturer</div>
-            </div>
-        </div>
-        <button type="button" id="close-profile-btn" class="btn-icon icon-only-btn" title="Close" aria-label="Close settings"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
-    </div>
-    <div class="settings-tabs-container" role="tablist">
-        <button type="button" class="settings-tab-btn active" data-target="sect-my-courses" role="tab" aria-selected="true"><i class="fa-solid fa-book-open tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="My Courses">My Courses</span></button>
-        <button type="button" class="settings-tab-btn" data-target="sect-devices" role="tab" aria-selected="false"><i class="fa-solid fa-laptop-code tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Trusted Devices">Trusted Devices</span></button>
-        ${themeTabHtml()}
-    </div>`;
-
-    // --- HTML Structure (Unified with Global Settings) ---
-    dialog.innerHTML = `
-    ${headerHtml}
-    <div class="dialog-content" style="padding:0; position:relative; display:flex; flex-direction:column; overflow:hidden;">
-        <div id="profile-loader" class="settings-loader-overlay">
-            <div class="loading-spinner"></div>
-        </div>
-        <div id="sect-my-courses" class="settings-section" style="display:flex; flex-direction:column; height:100%;">
-            <div class="settings-controls-bar list-toolbar">
-                <div class="input-with-icon search">
-                    <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                    <input type="search" id="lecturer-course-search-input" class="settings-search-input" placeholder="Search courses" aria-label="Search courses">
-                </div>
-                ${settingsSortSelectHtml('lecturer-course-sort')}
-            </div>
-            <div class="settings-scroll" id="lecturer-courses-container"></div>
-        </div>
-        ${trustedDevicesSectionHtml()}
-        ${themeSectionHtml()}
-    </div>`;
-
-    dialogBackdrop.appendChild(dialog);
-    document.body.appendChild(dialogBackdrop);
-
-    StandoWebsite.addDownloadControl(dialog.querySelector('#lecturer-courses-container').parentElement);
-
-    // --- Bomb Logic ---
-    const profilePicContainer = dialog.querySelector('#non-admin-profile-pic-container');
-    profilePicContainer.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const now = Date.now();
-        if (now - lastAvatarClickTime > 1000) avatarClickCount = 0;
-        lastAvatarClickTime = now;
-        avatarClickCount++;
-        if (avatarClickCount === 5) {
-            profilePicContainer.innerHTML = `<div style="width:100%; height:100%; border-radius:50%; background:var(--danger-color); display:flex; align-items:center; justify-content:center; color:white; font-size:2em;"><i class="fa-solid fa-bomb"></i></div>`;
-            profilePicContainer.onclick = confirmClearAllAppData;
-            avatarClickCount = 0;
-        }
-    });
-
-    const close = () => {
-        document.body.removeChild(dialogBackdrop);
-        closeDialogMode();
-    };
-    dialog.querySelector('#close-profile-btn').onclick = close;
-
-    bindSettingsTabs(dialog);
-    if (initialTab !== 'sect-my-courses') showSettingsTab(dialog, initialTab);
-    bindTrustedDevicesSection(dialog);
-    bindThemeSection(dialog);
-    reloadTrustedDevices();
-
-    // --- Async Data Fetch ---
-    const searchInput = dialog.querySelector('#lecturer-course-search-input');
-    const renderMine = () => {
-        const myCourseDict = {};
-        availableCourses.forEach(c => {
-            if (courseInfoMap[c]) myCourseDict[c] = courseInfoMap[c];
-        });
-        renderCoursesInSettings(myCourseDict, searchInput ? searchInput.value : '', 'lecturer-courses-container');
-    };
-    searchInput?.addEventListener('input', renderMine);
-    bindSettingsSortSelect(dialog.querySelector('#lecturer-course-sort'), renderMine);
-    dialog._reload = async () => {
-        await fetchCourseInfo();
-        renderMine();
-    };
-    (async () => {
-        await fetchCourseInfo();
-        const loader = dialog.querySelector('#profile-loader');
-        if (loader) loader.style.display = 'none';
-        renderMine();
-    })();
-}
-
 // After an editor opened from Settings saves, Settings stays as it was (tab, search,
 // scroll) and only reads its lists again. false when no Settings is open.
 function refreshOpenSettings() {
@@ -3624,7 +3517,7 @@ function refreshOpenSettings() {
 }
 
 // A student's profile: who they are, whether their Student ID card is registered
-// (its Card ID hidden, like a password), their colours, and their absence requests.
+// (its Card ID hidden, like a password), and their absence requests.
 async function showStudentProfileDialog() {
     const cardCount = ownStudentCardCount();
     const email = String(currentUser.email || '').toLowerCase();
@@ -3672,18 +3565,6 @@ async function showStudentProfileDialog() {
                     <button type="button" class="btn-blue btn-sm" data-action="register">Register</button>
                 </div>`}
             </section>
-            ${colourThemeSupported ? `
-            <section class="sp-section" aria-labelledby="sp-theme-title">
-                <h4 class="sp-section-title" id="sp-theme-title">Theme</h4>
-                <div class="sp-card">
-                    <span class="sp-card-icon sp-theme-icon" aria-hidden="true"><i class="fa-solid fa-palette"></i></span>
-                    <span class="sp-card-text">
-                        <strong>Colours</strong>
-                        <span class="sp-swatches" aria-hidden="true">${THEME_FAMILIES.map(({ id }) => `<span style="background: var(--${id}-main)"></span>`).join('')}</span>
-                    </span>
-                    <button type="button" class="btn-blue btn-sm" data-action="theme" title="Choose Stando's colours; they follow your account">Change</button>
-                </div>
-            </section>` : ''}
             <section class="sp-section" aria-labelledby="sp-requests-title">
                 <div class="sp-section-head">
                     <h4 class="sp-section-title" id="sp-requests-title">Absence requests</h4>
@@ -3696,7 +3577,6 @@ async function showStudentProfileDialog() {
         </div>
         <div class="dialog-actions">
             <button type="button" class="btn-orange" data-action="request"><i class="fa-solid fa-hand-point-up" aria-hidden="true"></i> Request for Permission</button>
-            <button type="button" class="btn-secondary" data-action="close">Close</button>
         </div>`;
     backdrop.appendChild(dialog);
     document.body.appendChild(backdrop);
@@ -3711,7 +3591,6 @@ async function showStudentProfileDialog() {
         if (action === 'close') close();
         else if (action === 'register') { close(); showRegisterUIDDialog(); }
         else if (action === 'request') { close(); showRequestPermissionDialog(); }
-        else if (action === 'theme') { close(); showThemeDialog(); }
     });
     dialog.addEventListener('keydown', (event) => {
         if (event.key === 'Escape') close();
@@ -3989,14 +3868,15 @@ function showStudentImportGuide() {
 }
 
 // ============================================================
-// COLOUR THEME
-// Administrators and lecturers choose Stando's five colours in Settings → Theme.
-// The choice belongs to their account (public.user_preferences, from
-// supabase/migrations/user_theme.sql), so it follows them to every device and
-// website; this browser keeps a copy only to paint it before the account answers.
-// A colour left as Stando's sets nothing, so the stylesheet's own shades show; a
-// chosen one sets --<family>-main and .theme-<family>, and the stylesheet mixes
-// the family's other shades from it (styles.css, "Theme colours").
+// COURSE APPEARANCE
+// Each course has an icon, on its course button, and five colours. Administrators
+// set them in the course's settings (courses.icon and courses.theme, from
+// supabase/migrations/assistants_and_course_appearance.sql). While a course is on
+// screen the page takes its colours, for everyone. A colour left as Stando's sets
+// nothing, so the stylesheet's own shades show; a chosen one sets --<family>-main
+// and .theme-<family>, and the stylesheet mixes the family's other shades from it
+// (styles.css, "Theme colours"). This browser keeps the last course's colours to
+// paint them before the courses load (index.html, embed.js).
 // ============================================================
 const THEME_FAMILIES = [
     { id: 'primary', label: 'Primary', hint: 'Header and buttons', fallback: '#3949ab' },
@@ -4006,8 +3886,8 @@ const THEME_FAMILIES = [
     { id: 'danger', label: 'Danger', hint: 'Deleting and rejecting', fallback: '#f44336' }
 ];
 const COLOUR_THEME_KEY = 'stando_colours';
-let colourThemeSupported = false;
-let accountColourTheme = {};
+const DEFAULT_COURSE_ICON = 'fa-solid fa-table-list';
+const FA_SEARCH_URL = 'https://fontawesome.com/search?ic=free-collection';
 
 // "#abc", "abc" or "#AABBCC" → "#aabbcc"; anything else → ''.
 function normalizeHexColour(value) {
@@ -4037,57 +3917,48 @@ function applyColourTheme(theme, target = document.documentElement) {
     return clean;
 }
 
+// Paints the page and remembers the colours for the next start.
 function useColourTheme(theme) {
-    accountColourTheme = applyColourTheme(theme);
+    const clean = applyColourTheme(theme);
     try {
-        if (Object.keys(accountColourTheme).length) localStorage.setItem(COLOUR_THEME_KEY, JSON.stringify(accountColourTheme));
+        if (Object.keys(clean).length) localStorage.setItem(COLOUR_THEME_KEY, JSON.stringify(clean));
         else localStorage.removeItem(COLOUR_THEME_KEY);
-    } catch { /* The account still has it. */ }
+    } catch { /* Painted at the next course change instead. */ }
 }
 
-// After sign-in: everyone, students too, gets their own account's colours (the
-// row-level policies give each person only their own row).
-async function loadAccountColourTheme() {
-    const { data, error } = await supabaseClient.from('user_preferences').select('theme').maybeSingle();
-    if (error) {
-        colourThemeSupported = false;
-        console.warn('Colour theme unavailable:', error.message);
-        return;
-    }
-    colourThemeSupported = true;
-    useColourTheme(data?.theme);
+function applyCourseAppearance(course) {
+    useColourTheme(courseInfoMap[course]?.theme);
 }
 
-async function saveAccountColourTheme(theme) {
-    const userId = (await supabaseClient.auth.getSession()).data.session?.user?.id;
-    if (!userId) throw new Error('Sign in again to save your colours.');
-    const clean = cleanColourTheme(theme);
-    const { error } = await supabaseClient.from('user_preferences').upsert(
-        { user_id: userId, theme: Object.keys(clean).length ? clean : null, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id' });
-    if (error) throw new Error(error.message);
-    useColourTheme(clean);
+// Font Awesome icons, as in Syllabase: a field takes an icon's class
+// ("fa-solid fa-cube") or the tag Font Awesome copies
+// (<i class="fa-solid fa-cube"></i>) and keeps the class. '' when it is neither.
+function faIconClass(value) {
+    const text = String(value || '').trim();
+    const match = text.match(/class\s*=\s*["']([^"']*)["']/i);
+    const cls = (match ? match[1] : text.replace(/<\/?i\b[^>]*>/gi, '')).trim().replace(/\s+/g, ' ').toLowerCase();
+    return /^[a-z0-9 -]{1,100}$/.test(cls) ? cls : '';
 }
 
-function themeTabHtml() {
-    return colourThemeSupported
-        ? '<button type="button" class="settings-tab-btn" data-target="sect-theme" role="tab" aria-selected="false"><i class="fa-solid fa-palette tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Theme">Theme</span></button>'
-        : '';
+// A preview's markup. Font Awesome's script replaces each <i> with an <svg>, so
+// previews are redrawn with a new <i>; changing the class of the old one does nothing.
+function faIconHtml(cls, extraClass = '') {
+    return `<i class="${escapeHtml(faIconClass(cls) || DEFAULT_COURSE_ICON)}${extraClass ? ` ${extraClass}` : ''}" aria-hidden="true"></i>`;
 }
 
-// A small Stando in the chosen colours: the banner, course buttons, a request,
-// information, a day's date, Add, Delete and Start Scanning.
-function themePreviewHtml() {
+// A small Stando in the course's colours: the banner, the course buttons (this
+// one with its icon), a request, information, a day's date, Add, Delete and Start Scanning.
+function themePreviewHtml({ code = 'CE 121', title = 'Civil Engineering Drawing', icon = '' } = {}) {
     const now = new Date();
     const date = [now.getDate(), now.getMonth() + 1].map(n => String(n).padStart(2, '0')).join('-') + `-${now.getFullYear()}`;
     return `
-        <div class="theme-preview theme-scope" id="theme-preview" aria-hidden="true">
-            <div class="tp-banner"><span class="tp-code">CE 121</span><span class="tp-name">Civil Engineering Drawing</span></div>
+        <div class="theme-preview theme-scope" aria-hidden="true">
+            <div class="tp-banner"><span class="tp-code">${escapeHtml(code || 'CE 121')}</span><span class="tp-name">${escapeHtml(title || code || 'Course')}</span></div>
             <div class="tp-body">
                 <div class="tp-row is-segmented">
-                    <span class="tp-course is-active">CE 121</span>
-                    <span class="tp-course"><i class="fa-solid fa-table-list"></i> CE 101</span>
-                    <span class="tp-course"><i class="fa-solid fa-table-list"></i> MATH 101</span>
+                    <span class="tp-course is-active"><span class="tp-course-icon" data-icon-preview>${faIconHtml(icon)}</span> ${escapeHtml(code || 'CE 121')}</span>
+                    <span class="tp-course"><i class="${DEFAULT_COURSE_ICON}"></i> CE 101</span>
+                    <span class="tp-course"><i class="${DEFAULT_COURSE_ICON}"></i> MATH 101</span>
                 </div>
                 <div class="tp-row">
                     <span class="tp-pill is-secondary"><i class="fa-solid fa-hand-point-up"></i> Requests <b>3</b></span>
@@ -4103,73 +3974,55 @@ function themePreviewHtml() {
         </div>`;
 }
 
-// Settings → Theme for staff; students have the same in a dialog of its own.
-function themeSectionHtml() {
-    if (!colourThemeSupported) return '';
+// A course's icon and colours in its settings, with a live preview. Lecturers
+// see them; administrators change them (bindAppearanceFields).
+function appearanceFieldsHtml(data, { code, title, editable }) {
+    const off = editable ? '' : ' disabled';
+    const theme = cleanColourTheme(data?.theme);
+    const icon = faIconClass(data?.icon);
+    const value = family => theme[family.id] || family.fallback;
     return `
-        <div id="sect-theme" class="settings-section" style="display:none; flex-direction:column; height:100%;">
-            ${themeSettingsHtml('settings-scroll')}
-        </div>`;
-}
-
-// The colours, a preview in them, then Reset and Save (bindThemeSection).
-function themeSettingsHtml(className = '') {
-    const value = family => accountColourTheme[family.id] || family.fallback;
-    return `
-            <div class="theme-settings ${className}">
-                <div class="settings-group-label">Theme colours <span class="theme-label-note">pick a swatch or type a code</span></div>
+        <div class="appearance-fields">
+            <div class="form-group">
+                <label class="dialog-label-fixed" for="edit-c-icon">Icon <span class="theme-label-note">Font Awesome class or &lt;i&gt; tag</span></label>
+                <div class="icon-input-wrap">
+                    <input type="text" id="edit-c-icon" class="form-control" value="${escapeHtml(icon)}" placeholder="${DEFAULT_COURSE_ICON}" spellcheck="false" autocomplete="off"${off}>
+                    <span class="fa-preview" data-icon-preview>${faIconHtml(icon)}</span>
+                    <a class="icon-find-link" href="${FA_SEARCH_URL}" target="_blank" rel="noopener noreferrer" title="Find an icon on Font Awesome" aria-label="Find an icon on Font Awesome"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i></a>
+                </div>
+            </div>
+            <p class="form-hint">On the course's button. Empty for the usual list icon.</p>
+            <div class="form-group">
+                <label class="dialog-label-fixed">Colours <span class="theme-label-note">pick a swatch or type a code</span></label>
                 <div class="theme-colours">
                     ${THEME_FAMILIES.map(family => `
                     <div class="theme-colour" title="${family.label}: ${family.hint.toLowerCase()}">
-                        <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour (${family.hint.toLowerCase()})">
-                        <input type="text" class="form-control theme-hex" id="theme-${family.id}-code" value="${value(family)}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${family.label} colour code">
+                        <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour (${family.hint.toLowerCase()})"${off}>
+                        <input type="text" class="form-control theme-hex" id="theme-${family.id}-code" value="${value(family)}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${family.label} colour code"${off}>
                         <span class="theme-colour-name">${family.label}</span>
                     </div>`).join('')}
                 </div>
-                ${themePreviewHtml()}
-                <div class="theme-actions">
-                    <span class="theme-note">Live preview with these colours. They follow your account to every device.</span>
-                    <button type="button" id="theme-reset-btn" class="btn-secondary"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Reset</button>
-                    <button type="button" id="theme-save-btn" class="btn-blue"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i> Save</button>
-                </div>
-            </div>`;
+            </div>
+            ${themePreviewHtml({ code, title, icon })}
+            <p class="form-hint theme-note">Live preview. While this course is open, the page takes these colours for everyone.${editable ? ' <button type="button" class="link-btn" id="theme-reset-btn">Reset to Stando\'s colours</button>' : ''}</p>
+        </div>`;
 }
 
-// A student's colours: the Theme of Settings, opened from their profile. Saving closes it.
-function showThemeDialog() {
-    if (!colourThemeSupported) return;
-    openDialogMode();
-    const backdrop = document.createElement('div');
-    backdrop.className = 'dialog-backdrop';
-    const dialog = document.createElement('div');
-    dialog.className = 'dialog theme-dialog';
-    dialog.setAttribute('role', 'dialog');
-    dialog.setAttribute('aria-modal', 'true');
-    dialog.innerHTML = `
-        <h3 class="dialog-title"><i class="fa-solid fa-palette" aria-hidden="true"></i> Theme</h3>
-        <div class="dialog-content">${themeSettingsHtml()}</div>`;
-    backdrop.appendChild(dialog);
-    document.body.appendChild(backdrop);
-    bindThemeSection(dialog, () => {
-        backdrop.remove();
-        closeDialogMode();
-    });
-}
-
-// Picking a colour (or typing its code) repaints the preview; Save paints the page
-// and stores the colours in the account, then calls onSaved. Reset puts Stando's
-// colours back in the fields, for Save to keep.
-function bindThemeSection(dialog, onSaved) {
-    const section = dialog.querySelector('.theme-settings');
-    if (!section) return;
-    const preview = section.querySelector('#theme-preview');
+// Typing an icon or picking a colour (or typing its code) repaints the preview.
+// validate() checks the icon; read() gives { icon, theme } to save: the icon's
+// class ('' for the usual one) and the colours that differ from Stando's.
+function bindAppearanceFields(root) {
+    const section = root.querySelector('.appearance-fields');
+    if (!section) return null;
+    const preview = section.querySelector('.theme-preview');
+    const iconInput = section.querySelector('#edit-c-icon');
     const fields = THEME_FAMILIES.map(family => ({
         family,
         swatch: section.querySelector(`#theme-${family.id}`),
         code: section.querySelector(`#theme-${family.id}-code`)
     }));
-    const read = () => Object.fromEntries(fields.map(({ family, swatch }) => [family.id, swatch.value]));
-    const repaint = () => applyColourTheme(read(), preview);
+    const readTheme = () => Object.fromEntries(fields.map(({ family, swatch }) => [family.id, swatch.value]));
+    const repaint = () => applyColourTheme(readTheme(), preview);
     const set = (field, hex) => {
         field.swatch.value = hex;
         field.code.value = hex;
@@ -4186,25 +4039,27 @@ function bindThemeSection(dialog, onSaved) {
         });
         field.code.addEventListener('blur', () => set(field, field.swatch.value));
     });
-    section.querySelector('#theme-reset-btn').onclick = () => {
+    // A pasted tag becomes its class as it arrives; the previews follow.
+    iconInput.addEventListener('input', () => {
+        if (/[<>]|class\s*=/i.test(iconInput.value)) iconInput.value = faIconClass(iconInput.value);
+        clearInputError(iconInput);
+        const html = faIconHtml(iconInput.value);
+        section.querySelectorAll('[data-icon-preview]').forEach(el => { el.innerHTML = html; });
+    });
+    section.querySelector('#theme-reset-btn')?.addEventListener('click', () => {
         fields.forEach(field => set(field, field.family.fallback));
         repaint();
-    };
-    section.querySelector('#theme-save-btn').onclick = async (event) => {
-        const button = event.currentTarget;
-        button.disabled = true;
-        try {
-            await saveAccountColourTheme(read());
-            section.querySelectorAll('input').forEach(input => { input._initialValue = input.value; });
-            showNotification('success', 'Saved', 'Your colours are saved to your account.');
-            onSaved?.();
-        } catch (error) {
-            showNotification('error', 'Save Failed', error.message);
-        } finally {
-            button.disabled = false;
-        }
-    };
+    });
     repaint();
+    return {
+        validate() {
+            if (!iconInput.value.trim() || faIconClass(iconInput.value)) return true;
+            showInputError(iconInput, 'Use a Font Awesome class, such as fa-solid fa-cube.');
+            iconInput.focus();
+            return false;
+        },
+        read: () => ({ icon: faIconClass(iconInput.value), theme: cleanColourTheme(readTheme()) })
+    };
 }
 
 /**
@@ -5140,7 +4995,8 @@ async function onSuccessfulAuth(isRestore = false) {
             isAdmin = bootData.adminStatus.isAdmin || false;
             isGlobalAdmin = bootData.adminStatus.isGlobalAdmin || false;
             adminCourses = bootData.adminStatus.courses || [];
-            console.log('Admin status:', { isAdmin, isGlobalAdmin, adminCourses });
+            assistantCourses = bootData.adminStatus.assistantCourses || [];
+            console.log('Admin status:', { isAdmin, isGlobalAdmin, adminCourses, assistantCourses });
         }
 
         // A staff member's custom name (for example with a title) and photo replace
@@ -5156,7 +5012,6 @@ async function onSuccessfulAuth(isRestore = false) {
         });
         // Scanning needs a trusted device; knowing now lets it start offline later.
         if (isAdmin) checkDeviceTrusted();
-        loadAccountColourTheme().catch(error => console.warn('Colour theme unavailable:', error?.message || error));
 
         // 4. Process Available Courses from boot data
         const fetchedCourseDict = bootData.courses;
@@ -5233,6 +5088,7 @@ async function onSuccessfulAuth(isRestore = false) {
 
         // --- PHASE 2: SHOW THE APP ---
         isInitializing = false;
+        applyCourseAppearance(currentCourse);
         // A lock left on by this account covers the app before it is usable.
         restoreScanLock();
         showMainContent();
@@ -5282,7 +5138,7 @@ async function onSuccessfulAuth(isRestore = false) {
  */
 function courseStorageKey(courseName) {
     const account = (currentUser?.email || '').trim().toLowerCase();
-    const scope = isAdmin && isAdminForCourse(courseName) ? 'admin' : 'student';
+    const scope = canRecordInCourse(courseName) ? 'admin' : 'student';
     return account ? LOGS_STORAGE_KEY + '_account_' + encodeURIComponent(account) + '_' + scope + '_' + courseName : null;
 }
 
@@ -5396,35 +5252,10 @@ function updateRegisterCardButton() {
     button.setAttribute('aria-label', label);
 }
 
-// A friend's card travels as a code: eight letters and digits that can't be
-// confused (no 0, O, 1 or I), shown as two groups of four.
-function normalizeCardCode(value) {
-    return String(value || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
-}
-
-function formatCardCode(value) {
-    const code = normalizeCardCode(value).slice(0, 8);
-    return code.length > 4 ? `${code.slice(0, 4)}-${code.slice(4)}` : code;
-}
-
-// A typed Card ID: the digits a scan shows, or a colon-separated hardware UID.
-// Scanned 4-byte cards never exceed 16777215, so longer numbers are a printed number.
-// Digits carry no UID: its last byte cannot be worked out from the Card ID.
-function parseTypedCardId(value) {
-    const text = String(value || '').replace(/\s+/g, '').toLowerCase();
-    if (/^\d+$/.test(text)) {
-        const cardId = text.replace(/^0+(?=\d)/, '');
-        if (cardId.length > 8 || Number(cardId) < 1 || Number(cardId) > 0xFFFFFF) return null;
-        return { cardId, hardwareUid: '' };
-    }
-    if (/^([0-9a-f]{2}:){3,9}[0-9a-f]{2}$/.test(text)) {
-        return { cardId: convertUidToExternalId(text), hardwareUid: text };
-    }
-    return null;
-}
-
-// Students register their card by scanning it. Phones that cannot scan (iPhones)
-// are guided to have a friend's Android phone scan it, then type the Card ID.
+// Students register their card by scanning it. "Scan for a friend" goes through
+// the same steps for a classmate's card (an iPhone cannot scan): their name, email
+// and programme are typed in, and the request names them as the student and this
+// account as who scanned it. Phones that cannot scan are told to ask such a friend.
 function showRegisterUIDDialog() {
     if (!isSignedIn || isAdmin || !currentUser) return;
     // A student with a card registered may have a new one; helping a friend works either way.
@@ -5440,7 +5271,7 @@ function showRegisterUIDDialog() {
     dialog.setAttribute('aria-modal', 'true');
     dialog.setAttribute('aria-labelledby', 'reg-dialog-title');
     dialog.innerHTML = `
-        <h3 class="dialog-title" id="reg-dialog-title"><i class="fa-solid fa-id-card"></i> ${updating ? 'Update your card' : 'Register your card'}</h3>
+        <h3 class="dialog-title" id="reg-dialog-title"><i class="fa-solid fa-id-card"></i> <span class="reg-dialog-name"></span></h3>
         <div class="dialog-content reg-content"></div>
         <div class="dialog-actions"></div>`;
 
@@ -5453,15 +5284,15 @@ function showRegisterUIDDialog() {
     const isIos = /iPhone|iPad|iPod/i.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isAndroid = /Android/i.test(userAgent);
     let nfcController = null;
-    let ownCard = null;
-    let friendCard = null;
-    let friendCode = '';
-    let typedCardId = '';
+    let card = null;
+    let forFriend = false;
+    let friend = { name: '', email: '' };
     let manualReason = '';
     let currentStep = '';
-    // A student updating their card starts from the programme they have.
+    // A student updating their card starts from the programme they have; a friend's is chosen.
     const ownEntry = Object.values(databaseMap).find(entry => !entry?.isStaff && String(entry?.email || '').toLowerCase() === String(currentUser.email || '').toLowerCase());
-    let programmeId = programmeById(ownEntry?.programmeId) ? ownEntry.programmeId : null;
+    const ownProgrammeId = programmeById(ownEntry?.programmeId) ? ownEntry.programmeId : null;
+    let programmeId = ownProgrammeId;
 
     const stopReader = () => {
         if (nfcController) nfcController.abort();
@@ -5481,12 +5312,17 @@ function showRegisterUIDDialog() {
         <div class="reg-status is-ready" role="status" aria-live="polite"><span class="reg-status-dot" aria-hidden="true"></span><span class="reg-status-text">Ready to scan</span></div>
         <div class="reg-retry" hidden>
             <button type="button" class="btn-blue" data-action="retry">Try again</button>
-            <button type="button" class="reg-link" data-action="manual">Ask a friend to scan it instead</button>
+            <button type="button" class="reg-link" data-action="help">Ask a friend to scan it instead</button>
         </div>`;
+    // The small switch in the corner: a friend's card, and back to one's own.
+    const modeHtml = () => nfcSupported ? `
+        <div class="reg-mode-row"><button type="button" class="reg-mode" data-action="mode">${forFriend
+            ? '<i class="fa-solid fa-id-card" aria-hidden="true"></i> My own card'
+            : '<i class="fa-solid fa-user-group" aria-hidden="true"></i> Scan for a friend'}</button></div>` : '';
     const accountHtml = () => `<p class="reg-account">Sending as <strong>${escapeHtml(currentUser.name)}</strong><br>${escapeHtml(currentUser.email)}</p>`;
-    const programmeHtml = () => programmeFieldHtml('reg-programme', programmeId, { placeholder: 'Choose your programme' });
-    const progressHtml = (step) => `
-        <div class="reg-progress"><span class="is-active"></span><span class="${step === 2 ? 'is-active' : ''}"></span><em>Step ${step} of 2</em></div>`;
+    // What the administrator will read: the friend as the student, scanned by this account.
+    const friendNoteHtml = () => `<p class="reg-account">Sending for <strong class="reg-friend-who">${escapeHtml(friend.name || 'your friend')}</strong><br>Scanned by ${escapeHtml(currentUserDisplayName())}</p>`;
+    const programmeHtml = () => programmeFieldHtml('reg-programme', programmeId, { placeholder: forFriend ? 'Choose their programme' : 'Choose your programme' });
 
     const STATUS = {
         ready: ['is-ready', 'Ready to scan'],
@@ -5533,32 +5369,59 @@ function showRegisterUIDDialog() {
         });
     };
 
-    // A scanned card is sent as read; a typed code is turned into its card by the
-    // server, so the Card ID never reaches this phone.
-    const submit = (card, submitBtn, code = '') => {
+    // The card goes as read; a friend's with the name and email typed for them.
+    const submit = (submitBtn) => {
+        const programmeSelect = content.querySelector('#reg-programme');
+        if (!readProgrammeField(programmeSelect).ok) {
+            programmeSelect.focus();
+            return;
+        }
+        let name = currentUser.name;
+        let email = currentUser.email;
+        if (forFriend) {
+            const nameInput = content.querySelector('#reg-friend-name');
+            const emailInput = content.querySelector('#reg-friend-email');
+            clearInputError(nameInput);
+            clearInputError(emailInput);
+            name = nameInput.value.replace(/\s+/g, ' ').trim();
+            email = emailInput.value.trim().toLowerCase();
+            let valid = true;
+            if (!name) {
+                showInputError(nameInput, "Type your friend's name and surname.");
+                valid = false;
+            }
+            if (!isValidEmail(email)) {
+                showInputError(emailInput, "Type your friend's email.");
+                valid = false;
+            } else if (email === String(currentUser.email || '').toLowerCase()) {
+                showInputError(emailInput, 'That is your own email. For your own card, choose My own card.');
+                valid = false;
+            }
+            if (!valid) {
+                content.querySelector('[aria-invalid="true"]')?.focus();
+                return;
+            }
+        }
+
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Submitting...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending...';
         const restore = () => {
             submitBtn.disabled = false;
-            submitBtn.textContent = 'Submit';
+            submitBtn.textContent = forFriend ? 'Send' : 'Submit';
         };
 
-        callWebApp(code ? 'submitCardCode' : 'submitRegistration', code ? {
-            code,
-            name: currentUser.name,
-            programmeId
-        } : {
-            action: 'submitRegistration',
-            name: currentUser.name,
-            email: currentUser.email,
+        callWebApp('submitRegistration', {
+            name, email,
             uid: card.cardId,
             hardwareUid: card.hardwareUid,
             programmeId,
-            source: 'scan'
+            source: forFriend ? 'friend' : 'scan'
         }, 'POST')
             .then(data => {
                 if (data && data.result === 'success') {
-                    showNotification('success', 'Submission Sent!', 'Your card application has been sent for approval.');
+                    showNotification('success', 'Submission Sent!', forFriend
+                        ? `${name}'s card has been sent for approval.`
+                        : 'Your card application has been sent for approval.');
                     closeDialog();
                 } else {
                     const errorMessage = (data && data.message) ? data.message : 'An unknown error occurred.';
@@ -5574,174 +5437,71 @@ function showRegisterUIDDialog() {
     };
 
     const steps = {
-        // Android with NFC: scan your own card.
+        // Android with NFC: scan the card, one's own or a friend's.
         scan() {
             content.innerHTML = `
-                ${notice(updating ? 'Scan your new Student ID card.' : 'Scan your Student ID card.', 'Your Student ID No. printed on it is not the number Stando uses; the card is read from its chip.')}
+                ${modeHtml()}
+                ${forFriend
+                    ? notice("Scan your friend's Student ID card.", 'Then type their name and email. Nothing is sent as yours.')
+                    : notice(updating ? 'Scan your new Student ID card.' : 'Scan your Student ID card.', 'Your Student ID No. printed on it is not the number Stando uses; the card is read from its chip.')}
                 ${cardTapAnimationHtml()}
-                <p class="reg-instruction">Hold your card flat against the <strong>back of your phone</strong> and keep it still until it beeps.</p>
+                <p class="reg-instruction">Hold the card flat against the <strong>back of your phone</strong> and keep it still until it beeps.</p>
                 <p class="reg-hint">No beep? Slide the card slowly around the back, towards the camera.</p>
-                ${statusHtml}
-                <div class="reg-friend"><span>Helping a friend with an iPhone?</span><button type="button" class="reg-link" data-action="friend">Scan a friend's card</button></div>`;
+                ${statusHtml}`;
             actions.innerHTML = `<button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>`;
-            readCard(card => { ownCard = card; show('review'); });
+            readCard(read => { card = read; show('review'); });
         },
-        // Your own card: read, but shown hidden, like a password.
+        // The card read, hidden like a password; a friend's name and email under it.
         review() {
             content.innerHTML = `
-                <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">Card scanned</span><span class="reg-result-id is-masked" aria-label="Card ID hidden">••••••••</span></div>
-                <p class="reg-instruction">${!programmeHtml() ? 'Submit it' : programmeId ? 'Check your programme, then submit' : 'Choose your programme, then submit'} to send it for approval.</p>
+                ${modeHtml()}
+                <div class="reg-result"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span class="reg-result-label">${forFriend ? "Friend's card scanned" : 'Card scanned'}</span><span class="reg-result-id is-masked" aria-label="Card ID hidden">••••••••</span></div>
+                ${forFriend ? `
+                <div class="form-group">
+                    <label class="dialog-label-fixed" for="reg-friend-name">Their name <span class="required">*</span></label>
+                    <input type="text" id="reg-friend-name" class="form-control" placeholder="Name Surname" maxlength="120" autocomplete="off" value="${escapeHtml(friend.name)}">
+                </div>
+                <div class="form-group">
+                    <label class="dialog-label-fixed" for="reg-friend-email">Their email <span class="required">*</span></label>
+                    <input type="email" id="reg-friend-email" class="form-control" placeholder="nsurname@epoka.edu.al" autocomplete="off" value="${escapeHtml(friend.email)}">
+                </div>`
+                    : `<p class="reg-instruction">${!programmeHtml() ? 'Submit it' : programmeId ? 'Check your programme, then submit' : 'Choose your programme, then submit'} to send it for approval.</p>`}
                 ${programmeHtml()}
-                ${accountHtml()}
+                ${forFriend ? friendNoteHtml() : accountHtml()}
                 <div class="reg-center"><button type="button" class="btn-blue" data-action="rescan">Scan again</button></div>`;
             actions.innerHTML = `
                 <button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>
-                <button type="button" id="submit-register-btn" class="btn-green" data-action="submit">Submit</button>`;
+                <button type="button" id="submit-register-btn" class="btn-green" data-action="submit">${forFriend ? 'Send' : 'Submit'}</button>`;
+            if (forFriend && !isTouchDevice()) content.querySelector('#reg-friend-name').focus({ preventScroll: true });
         },
-        // Android with NFC: read a classmate's card so they can type its code.
-        friend() {
-            content.innerHTML = `
-                <p class="reg-instruction"><strong>Scan a friend's card.</strong> Hold their card flat against the back of your phone. A code appears here for them to type on their phone.</p>
-                ${cardTapAnimationHtml()}
-                ${statusHtml}
-                <p class="reg-hint">Nothing is sent or saved to your account.</p>`;
-            actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
-                <button type="button" id="reg-close-btn" class="btn-secondary" data-action="cancel">Close</button>`;
-            readCard(card => { friendCard = card; show('friendResult'); });
-        },
-        // The card travels as a code: the server keeps the Card ID it stands for,
-        // and the code works once, for 48 hours.
-        friendResult() {
-            friendCode = '';
-            content.innerHTML = `
-                <div class="reg-result is-friend">
-                    <span class="reg-result-label">Your friend's code</span>
-                    <span class="reg-result-id"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i></span>
-                    <button type="button" class="reg-copy" data-action="copy-code" disabled><i class="fa-regular fa-copy" aria-hidden="true"></i> Copy</button>
-                </div>
-                <p class="reg-instruction">Send it to your friend, or let them type it in <strong>Register Card ID</strong> on their own phone.</p>
-                <p class="reg-hint">It works once, for the next 48 hours.</p>
-                <div class="reg-center"><button type="button" class="btn-blue" data-action="friend">Scan another card</button></div>`;
-            actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
-                <button type="button" id="reg-done-btn" class="btn-blue" data-action="cancel">Done</button>`;
-            const shown = content.querySelector('.reg-result-id');
-            const card = friendCard;
-            callWebApp('createCardCode', { cardId: card.cardId, hardwareUid: card.hardwareUid })
-                .then(code => {
-                    if (friendCard !== card || currentStep !== 'friendResult') return;
-                    friendCode = code;
-                    shown.textContent = formatCardCode(code);
-                    content.querySelector('.reg-copy').disabled = false;
-                })
-                .catch(err => {
-                    if (friendCard !== card || currentStep !== 'friendResult') return;
-                    if (err.cardCodesUnavailable) {
-                        // Until the database issues codes, the Card ID itself is shown.
-                        content.querySelector('.reg-result-label').textContent = "Your friend's Card ID";
-                        shown.textContent = card.cardId;
-                        content.querySelector('.reg-hint').hidden = true;
-                        content.querySelector('.reg-copy').disabled = false;
-                    } else {
-                        shown.textContent = '—';
-                        showNotification('error', 'No Code', err.message || 'Could not create a code. Check the connection and scan again.');
-                    }
-                });
-        },
-        // No NFC here (iPhone, computer, another browser): a friend scans the card.
-        manualHelp() {
+        // No NFC here (iPhone, computer, another browser), or the card would not read.
+        help() {
             const reason = manualReason || (isIos
-                ? "iPhones can't scan cards in Stando, so ask a friend with an Android phone to scan it for you."
+                ? "iPhones can't scan cards in Stando."
                 : isAndroid
-                    ? 'To scan with this phone, open Stando in Google Chrome. Or ask a friend with an Android phone to scan it for you.'
-                    : "This device can't scan cards. Ask a friend with an Android phone to scan it for you.");
+                    ? 'This browser cannot scan cards. Open Stando in Google Chrome to scan it yourself.'
+                    : "This device can't scan cards.");
             content.innerHTML = `
-                ${progressHtml(1)}
-                ${notice('Your card must be scanned.', 'Your Student ID No. printed on the card is not the number to type.')}
-                <p class="reg-instruction">${reason}</p>
+                ${notice('Ask a friend with an Android phone.', reason)}
                 ${cardTapAnimationHtml()}
                 <ol class="reg-list">
-                    <li>Your friend opens Stando in Chrome, taps <strong>Register Card ID</strong> (or <strong>Update Card ID</strong>), then <strong>Scan a friend's card</strong>.</li>
+                    <li>Your friend opens Stando in Chrome, taps <strong>Register Card ID</strong>, then <strong>Scan for a friend</strong>.</li>
                     <li>Hold your card flat against the back of their phone until it beeps.</li>
-                    <li>Their screen shows a <strong>code</strong>. They can copy it and send it to you. Type or paste it in the next step.</li>
-                </ol>`;
-            actions.innerHTML = `
-                ${nfcSupported
-                    ? '<button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>'
-                    : '<button type="button" id="cancel-register-btn" class="btn-secondary" data-action="cancel">Cancel</button>'}
-                <button type="button" id="reg-next-btn" class="btn-blue" data-action="next">Next</button>`;
-        },
-        manualEntry() {
-            content.innerHTML = `
-                ${progressHtml(2)}
-                <div class="form-group">
-                    <label class="dialog-label-fixed" for="register-card-id">Code</label>
-                    <div class="reg-code-field">
-                        <input type="text" id="register-card-id" class="form-control reg-id-input" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="30" placeholder="e.g. K7MP-Q4XD" value="${escapeHtml(typedCardId)}" aria-describedby="register-card-id-hint">
-                        ${navigator.clipboard?.readText ? '<button type="button" class="btn-blue btn-sm" data-action="paste-code"><i class="fa-regular fa-paste" aria-hidden="true"></i> Paste</button>' : ''}
-                    </div>
-                </div>
-                <p class="form-hint" id="register-card-id-hint">Type the code from your friend's screen. Your Student ID No. is not the code.</p>
-                ${programmeHtml()}
-                ${accountHtml()}`;
-            actions.innerHTML = `
-                <button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>
-                <button type="button" id="submit-register-btn" class="btn-green" data-action="submit" ${typedCardId.trim() ? '' : 'disabled'}>Submit</button>`;
-            const input = content.querySelector('#register-card-id');
-            input.addEventListener('input', () => {
-                // Codes read as two groups of four; digits (before codes existed) are left alone.
-                if (/[a-z]/i.test(input.value)) {
-                    const formatted = formatCardCode(input.value);
-                    if (formatted !== input.value) input.value = formatted;
-                }
-                typedCardId = input.value;
-                clearInputError(input);
-                actions.querySelector('#submit-register-btn').disabled = !input.value.trim();
-            });
-            input.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter') actions.querySelector('#submit-register-btn').click();
-            });
-            if (!isTouchDevice()) input.focus({ preventScroll: true });
-        }
-    };
-
-    const BACK = { friend: 'scan', friendResult: 'scan', manualHelp: 'scan', manualEntry: 'manualHelp' };
-
-    const copyFriendCode = async (button) => {
-        const text = content.querySelector('.reg-result-id')?.textContent.trim();
-        if (!text) return;
-        try {
-            await navigator.clipboard.writeText(text);
-            button.innerHTML = '<i class="fa-solid fa-check" aria-hidden="true"></i> Copied';
-            setTimeout(() => {
-                if (button.isConnected) button.innerHTML = '<i class="fa-regular fa-copy" aria-hidden="true"></i> Copy';
-            }, 2000);
-        } catch {
-            showNotification('warning', 'Not Copied', `Copy the code by hand: ${text}`);
-        }
-    };
-
-    // The code is found anywhere in the copied text, such as a forwarded message.
-    const pasteFriendCode = async () => {
-        const input = content.querySelector('#register-card-id');
-        try {
-            const text = await navigator.clipboard.readText();
-            const found = String(text).toUpperCase().match(/[2-9A-HJ-NP-Z]{4}-?[2-9A-HJ-NP-Z]{4}/);
-            if (!found) {
-                showInputError(input, "The copied text doesn't contain a code.");
-                return;
-            }
-            input.value = formatCardCode(found[0]);
-            input.dispatchEvent(new Event('input'));
-        } catch {
-            input.focus(); // Pasting by hand still works.
+                    <li>They type your name and email, choose your programme and tap <strong>Send</strong>.</li>
+                </ol>
+                <p class="reg-hint">An administrator approves your card, as when you scan it yourself.</p>`;
+            actions.innerHTML = nfcSupported
+                ? '<button type="button" id="reg-back-btn" class="btn-secondary" data-action="back">Back</button>'
+                : '';
         }
     };
 
     function show(step) {
         stopReader();
         currentStep = step;
+        dialog.querySelector('.reg-dialog-name').textContent = forFriend
+            ? "Register a friend's card"
+            : (updating ? 'Update your card' : 'Register your card');
         content.classList.remove('reg-step-in');
         void content.offsetWidth;
         content.classList.add('reg-step-in');
@@ -5754,41 +5514,36 @@ function showRegisterUIDDialog() {
         if (!button || button.disabled) return;
         switch (button.dataset.action) {
             case 'cancel': closeDialog(); break;
-            case 'back': show(BACK[currentStep] || 'scan'); break;
+            case 'back': show('scan'); break;
             case 'retry': show(currentStep); break;
             case 'rescan': show('scan'); break;
-            case 'friend': show('friend'); break;
-            case 'next': show('manualEntry'); break;
-            case 'copy-code': copyFriendCode(button); break;
-            case 'paste-code': pasteFriendCode(); break;
-            case 'manual':
-                manualReason = "This phone couldn't scan the card. Ask a friend with an Android phone to scan it for you.";
-                show('manualHelp');
+            case 'mode':
+                // Someone else's card starts empty: no card, name, email or programme of one's own.
+                forFriend = !forFriend;
+                card = null;
+                friend = { name: '', email: '' };
+                programmeId = forFriend ? null : ownProgrammeId;
+                show('scan');
                 break;
-            case 'submit': {
-                const programmeSelect = content.querySelector('#reg-programme');
-                if (!readProgrammeField(programmeSelect).ok) {
-                    programmeSelect.focus();
-                    break;
-                }
-                if (currentStep === 'review') {
-                    submit(ownCard, button);
-                    break;
-                }
-                const input = content.querySelector('#register-card-id');
-                const code = normalizeCardCode(input.value);
-                if (code.length !== 8 && !parseTypedCardId(input.value)) {
-                    showInputError(input, "That isn't a code. Check the code on your friend's screen.");
-                    input.focus();
-                    break;
-                }
-                submit(null, button, input.value.trim());
+            case 'help':
+                manualReason = "This phone couldn't scan the card.";
+                show('help');
                 break;
-            }
+            case 'submit': submit(button); break;
         }
     });
 
-    // The programme chosen stays when moving between steps.
+    // The friend's name and email, and the programme chosen, stay when scanning again.
+    dialog.addEventListener('input', (event) => {
+        if (event.target.id === 'reg-friend-name') {
+            friend.name = event.target.value;
+            const who = content.querySelector('.reg-friend-who');
+            if (who) who.textContent = friend.name.trim() || 'your friend';
+        } else if (event.target.id === 'reg-friend-email') {
+            friend.email = event.target.value;
+        }
+        if (event.target.matches?.('input')) clearInputError(event.target);
+    });
     dialog.addEventListener('change', (event) => {
         if (event.target.id !== 'reg-programme') return;
         programmeId = Number(event.target.value) || null;
@@ -5797,81 +5552,70 @@ function showRegisterUIDDialog() {
 
     // One reader at a time: this dialog's scan replaces the attendance scan.
     if (nfcSupported && (isScanning || nfcReader)) stopScanning();
-    show(nfcSupported ? 'scan' : 'manualHelp');
+    show(nfcSupported ? 'scan' : 'help');
 }
 
-/**
-* Show registration dialog with pre-filled UID (for Admin scanning unknown card)
-*/
+// An unknown card from the attendance list, laid out as Register your card is:
+// the card, then whose it is. An administrator adds the student at once; a
+// lecturer or teaching assistant sends a request for an administrator to approve.
 function showRegisterUIDDialogWithPrefill(prefillUid) {
+    const scanned = String(prefillUid || '').trim();
+    const hardwareUid = /:/.test(scanned) ? normalizeUid(scanned) : '';
+    const cardId = convertUidToExternalId(scanned) || scanned;
+
     openDialogMode();
 
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
     const dialog = document.createElement('div');
-    dialog.setAttribute('class', 'dialog');
+    dialog.setAttribute('class', 'dialog reg-dialog');
     dialog.setAttribute('role', 'dialog');
     dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'register-student-title');
 
-    const actionText = isGlobalAdmin ? 'Add to Database' : 'Submit Request';
-    const infoText = isGlobalAdmin
-        ? 'Add this student directly to the database.'
-        : 'Submit a registration request for approval.';
-
+    const actionText = isGlobalAdmin ? 'Add Student' : 'Send Request';
     dialog.innerHTML = `
-        <h3 class="dialog-title"><i class="fa-solid fa-address-card"></i> Register Student</h3>
-        <div class="dialog-content">
-            
-            <div class="dialog-disclaimer" style="margin-bottom:15px;">
-                <i class="fa-solid fa-circle-info"></i> <strong>New Card:</strong> ${infoText}
-            </div>
-
+        <h3 class="dialog-title" id="register-student-title"><i class="fa-solid fa-address-card"></i> Register Student</h3>
+        <div class="dialog-content reg-content">
+            <div class="reg-result is-unknown"><i class="fa-solid fa-id-card" aria-hidden="true"></i><span class="reg-result-label">Unknown card</span><span class="reg-result-id selectable">${escapeHtml(cardId)}</span></div>
+            <p class="reg-instruction">${isGlobalAdmin
+                ? 'Whose card is it? They are added to the Student List.'
+                : 'Whose card is it? An administrator approves the request.'}</p>
             <div class="form-group">
                 <label class="dialog-label-fixed" for="register-name">Name <span class="required">*</span></label>
-                <input type="text" id="register-name" class="form-control" placeholder="Full Name" autocomplete="off">
+                <input type="text" id="register-name" class="form-control" placeholder="Name Surname" maxlength="120" autocomplete="off">
             </div>
-
             <div class="form-group">
                 <label class="dialog-label-fixed" for="register-email">Email <span class="required">*</span></label>
-                <input type="email" id="register-email" class="form-control" placeholder="student@epoka.edu.al" autocomplete="off">
+                <input type="email" id="register-email" class="form-control" placeholder="nsurname@epoka.edu.al" autocomplete="off">
             </div>
-
-            ${programmeFieldHtml('register-programme', '', { required: isGlobalAdmin })}
-
-            ${cardFieldsHtml('register-card', splitCardValue(prefillUid))}
-            <div id="register-nfc-status" style="margin-top:10px;"></div>
+            ${programmeFieldHtml('register-programme', '', { required: isGlobalAdmin, placeholder: 'Choose their programme' })}
+            ${isGlobalAdmin ? '' : `<p class="reg-account">Sending as <strong>${escapeHtml(currentUserDisplayName())}</strong><br>${escapeHtml(currentUser?.email || '')}</p>`}
         </div>
         <div class="dialog-actions">
-            <button id="cancel-register-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
-            <button id="submit-register-btn" class="btn-green"><i class="fa-solid fa-check"></i> ${actionText}</button>
-        </div>
-    `;
+            <button type="button" id="cancel-register-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
+            <button type="button" id="submit-register-btn" class="btn-green"><i class="fa-solid fa-check"></i> ${actionText}</button>
+        </div>`;
 
     dialogBackdrop.appendChild(dialog);
     document.body.appendChild(dialogBackdrop);
+    if (!isTouchDevice()) dialog.querySelector('#register-name').focus({ preventScroll: true });
 
     const closeDialog = () => {
-        document.body.removeChild(dialogBackdrop);
+        dialogBackdrop.remove();
         closeDialogMode();
     };
+    dialog.querySelector('#cancel-register-btn').addEventListener('click', closeDialog);
 
-    const card = bindCardFields(dialog.querySelector('[data-card-fields]'), { statusContainer: dialog.querySelector('#register-nfc-status') });
-
-    document.getElementById('cancel-register-btn').addEventListener('click', closeDialog);
-
-    const submitBtn = document.getElementById('submit-register-btn');
+    const submitBtn = dialog.querySelector('#submit-register-btn');
     submitBtn.addEventListener('click', async () => {
-        const nameInput = document.getElementById('register-name');
-        const emailInput = document.getElementById('register-email');
-
-        // Clear previous errors
+        const nameInput = dialog.querySelector('#register-name');
+        const emailInput = dialog.querySelector('#register-email');
         clearInputError(nameInput);
         clearInputError(emailInput);
-
-        const name = nameInput.value.trim();
+        const name = nameInput.value.replace(/\s+/g, ' ').trim();
         const email = emailInput.value.trim();
 
-        // Validation
         let isValid = true;
         if (name === '') {
             showInputError(nameInput, 'Name is required.');
@@ -5881,22 +5625,19 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
             showInputError(emailInput, 'A valid email is required.');
             isValid = false;
         }
-        // Administrators add the student at once; a lecturer's request can leave it to them.
+        // Administrators add the student at once; a request can leave the programme to them.
         const programme = readProgrammeField(dialog.querySelector('#register-programme'), isGlobalAdmin);
         if (!programme.ok) isValid = false;
-        if (!card.validate()) isValid = false;
         if (!isValid) return;
 
         submitBtn.disabled = true;
         submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
 
         try {
-            // The card's Card ID, and its UID when Use UID is on.
             const submissionData = {
-                name: name,
-                email: email,
-                uid: card.cardId(),
-                hardwareUid: card.uid(),
+                name, email,
+                uid: cardId,
+                hardwareUid,
                 programmeId: programme.id,
                 source: 'staff',
                 sentBy: {
@@ -5906,7 +5647,6 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
             };
 
             if (isGlobalAdmin) {
-                // Global admins add directly
                 const result = await callWebApp('addEntryToDatabase_Admin', submissionData, 'POST');
                 if (result && result.result === 'success') {
                     showNotification('success', 'Added', `${name} added to database.`);
@@ -5919,7 +5659,6 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
                     throw new Error(result?.message || 'Failed to add entry');
                 }
             } else {
-                // Non-global admins submit request
                 const result = await callWebApp('submitRegistration', submissionData, 'POST');
                 if (result && result.result === 'success') {
                     showNotification('success', 'Sent', `Registration request sent for ${name}.`);
@@ -6301,7 +6040,7 @@ function showFinalApprovalDialog(registration) {
     dialog.innerHTML = `
     <h3 class="dialog-title">Approve Application</h3>
     <div class="dialog-content">
-        <p style="margin-bottom:15px;">${registration.source === 'friend' ? `A friend, ${escapeHtml(personNameByEmail(registration.sentBy))}, scanned this card. ` : ''}Please review and confirm the details below.</p>
+        <p style="margin-bottom:15px;">${registration.source === 'friend' ? `Scanned by ${escapeHtml(personNameByEmail(registration.sentBy))} for ${escapeHtml(registration.name || 'the student')}. ` : ''}Please review and confirm the details below.</p>
         
         <div class="form-group">
             <label class="dialog-label-fixed" for="approve-name"><i class="fa-solid fa-quote-left"></i> Name</label>
@@ -6419,7 +6158,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
     dialog.innerHTML = `
     <h3 class="dialog-title" style="color: var(--warning-color);"><i class="fa-solid fa-triangle-exclamation"></i> Similar Entry Found</h3>
     <div class="dialog-content">
-        <p style="margin-bottom: 15px;">An entry with similar data already exists.${newData.source === 'friend' ? ` A friend, ${escapeHtml(personNameByEmail(newData.sentBy))}, scanned this card.` : ''}</p>
+        <p style="margin-bottom: 15px;">An entry with similar data already exists.${newData.source === 'friend' ? ` Scanned by ${escapeHtml(personNameByEmail(newData.sentBy))} for ${escapeHtml(newData.name || 'the student')}.` : ''}</p>
         
         <div style="background: rgba(0,0,0,0.03); padding: 10px; border-radius: 8px; margin-bottom: 15px;">
             <div style="font-weight: 700; margin-bottom: 10px; color: var(--text-color); font-size: 0.9em; text-transform: uppercase;">Existing Data</div>
@@ -6688,7 +6427,7 @@ function renderRegistrationsTable(registrations) {
         // was not the student (a lecturer registering a card).
         const sentByOther = reg.sentBy && reg.sentBy.trim().toLowerCase() !== String(reg.email || '').trim().toLowerCase();
         const sentNote = reg.source === 'friend'
-            ? `<small class="cell-note" title="A friend scanned the card (${escapeHtml(reg.sentBy)}), and ${escapeHtml(reg.name)} typed the code"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Scanned by ${escapeHtml(personNameByEmail(reg.sentBy))}</small>`
+            ? `<small class="cell-note" title="${escapeHtml(reg.name)}, scanned by a friend (${escapeHtml(reg.sentBy)})"><i class="fa-solid fa-user-group" aria-hidden="true"></i> Scanned by ${escapeHtml(personNameByEmail(reg.sentBy))} for ${escapeHtml(reg.name)}</small>`
             : sentByOther ? `<small class="cell-note">by ${escapeHtml(reg.sentBy)}</small>` : '';
         const sentAt = reg.timestamp ? new Date(reg.timestamp) : null;
         const formattedTimestamp = sentAt && !isNaN(sentAt)
@@ -7894,16 +7633,21 @@ function sbMapCourseInfo(rows) {
             availableSections: row.available_sections || '',
             archived: row.archived || false,
             programmeIds: Array.isArray(row.programme_ids) ? row.programme_ids.map(Number)
-                : row.programme_id != null ? [Number(row.programme_id)] : []
+                : row.programme_id != null ? [Number(row.programme_id)] : [],
+            assistantEmails: row.assistant_emails || '',
+            icon: row.icon || '',
+            theme: row.theme && typeof row.theme === 'object' ? row.theme : {}
         };
     });
     return courseInfoMap;
 }
 
 // Courses can name a programme once supabase/migrations/course_programmes.sql has run,
-// and several once course_programmes_multiple.sql has.
+// and several once course_programmes_multiple.sql has; they have teaching assistants,
+// an icon and colours once assistants_and_course_appearance.sql has.
 let courseProgrammesSupported = false;
 let courseProgrammesMultiple = false;
+let courseExtrasSupported = false;
 
 function sbMapDatabase(rows) {
     const database = {};
@@ -7955,6 +7699,17 @@ function staffDisplayName(staff) {
     return String(staff?.name || '').trim() || staff?.googleName || staff?.email || '';
 }
 
+// A staff role as stored: Global, Lecturer or Assistant. "Student", the
+// assistant's role before supabase/migrations/assistants_and_course_appearance.sql,
+// and anything unknown are assistants, who manage nothing.
+function staffRole(role) {
+    return role === 'Global' || role === 'Lecturer' ? role : 'Assistant';
+}
+
+function staffRoleLabel(role) {
+    return { Global: 'Administrator', Lecturer: 'Lecturer', Assistant: 'Teaching Assistant' }[staffRole(role)];
+}
+
 function sbMapDevices(rows) {
     return (rows || []).map(row => ({
         rowIndex: row.id, name: row.name, id: row.device_id,
@@ -7965,11 +7720,12 @@ function sbMapDevices(rows) {
 // Newer columns are asked for first and dropped while a migration has not run yet.
 async function sbGetCourseInfo() {
     const columns = 'name,start_date,end_date,holiday_weeks,holiday_start_date,default_hours,eis_id,admin_emails,available_sections,archived';
-    for (const extra of [',title,programme_ids', ',title,programme_id', ',title', '']) {
+    for (const extra of [',title,programme_ids,assistant_emails,icon,theme', ',title,programme_ids', ',title,programme_id', ',title', '']) {
         const result = await supabaseClient.from('courses').select(columns + extra);
         if (SB_MISSING_COLUMN.includes(result.error?.code) && extra) continue;
         courseProgrammesSupported = extra.includes('programme_id');
         courseProgrammesMultiple = extra.includes('programme_ids');
+        courseExtrasSupported = extra.includes('assistant_emails');
         return sbMapCourseInfo(sbUnwrap(result));
     }
 }
@@ -8091,7 +7847,9 @@ async function sbGetAvailableCourses(adminStatus) {
     }
     if (status.isAdmin) return result;
 
-    // Student path: courses where they have attendance logs
+    // Student path: courses where they have attendance logs, and a teaching
+    // assistant's courses besides.
+    (status.assistantCourses || []).forEach(name => { result[name] = true; });
     const uids = await sbGetMyUids();
     if (uids.length === 0) return result;
     const rows = await sbSelectAll(() => supabaseClient.from('attendance_logs')
@@ -8277,13 +8035,27 @@ async function callSupabase(action, payload = {}) {
                     const profile = profiles.get(String(row.email || '').trim().toLowerCase()) || {};
                     return {
                         rowIndex: row.id, name: row.name || '', uid: row.uid,
-                        email: row.email, role: row.role || 'Student',
+                        email: row.email, role: staffRole(row.role),
                         googleName: profile.googleName || '', photo: profile.photo || '',
                         photoUrl: profile.customPhoto || '', googlePhoto: profile.googlePhoto || ''
                     };
                 }),
                 devices: sbMapDevices(deviceRows)
             };
+        }
+
+        // Lecturers' Settings → Staff: names, photos and roles, no cards. null until
+        // supabase/migrations/assistants_and_course_appearance.sql has run.
+        case 'getStaffDirectory': {
+            const { data, error } = await supabaseClient.rpc('staff_directory');
+            if (error?.code === 'PGRST202') return null;
+            return (sbUnwrap({ data, error }) || []).map(row => {
+                const googlePhoto = normalizeGooglePhotoUrl(row.photo_url || '');
+                return {
+                    name: row.name || '', email: row.email, role: staffRole(row.role),
+                    googleName: row.google_name || '', photo: row.custom_photo || googlePhoto
+                };
+            });
         }
 
         case 'getTrustedDevices':
@@ -8316,36 +8088,6 @@ async function callSupabase(action, payload = {}) {
             if (payload.programmeId && SB_MISSING_COLUMN.includes(result.error?.code)) result = await insert(older);
             sbUnwrap(result);
             return { result: 'success', message: 'Registration submitted successfully' };
-        }
-
-        // A friend's card becomes a code; the Card ID stays on the server.
-        case 'createCardCode': {
-            const { data, error } = await supabaseClient.rpc('create_card_code', {
-                p_card_id: payload.cardId || '', p_hardware_uid: payload.hardwareUid || ''
-            });
-            if (error) {
-                const codeError = new Error(error.message);
-                codeError.cardCodesUnavailable = error.code === 'PGRST202';
-                throw codeError;
-            }
-            return data;
-        }
-
-        // The server turns the code into its card and files the registration.
-        case 'submitCardCode': {
-            const args = { p_code: normalizeCardCode(payload.code), p_name: payload.name || '' };
-            let { data, error } = await supabaseClient.rpc('submit_card_code_registration',
-                payload.programmeId ? { ...args, p_programme_id: payload.programmeId } : args);
-            // Before programmes exist, the function takes the code and name only.
-            if (error?.code === 'PGRST202' && payload.programmeId) {
-                ({ data, error } = await supabaseClient.rpc('submit_card_code_registration', args));
-            }
-            if (!error) return data;
-            if (error.code !== 'PGRST202') throw new Error(error.message);
-            // Before the database issues codes, a typed Card ID is sent as it is.
-            const card = parseTypedCardId(payload.code);
-            if (!card) throw new Error("That isn't a Card ID. Check the number on your friend's screen.");
-            return callSupabase('submitRegistration', { name: payload.name, uid: card.cardId, hardwareUid: card.hardwareUid, programmeId: payload.programmeId, source: 'friend' });
         }
 
         case 'deleteAbsenceRequest': {
@@ -8397,9 +8139,7 @@ async function callSupabase(action, payload = {}) {
         }
 
         case 'manageStaff_Admin': {
-            let role = 'Student';
-            if (payload.role === 'Global') role = 'Global';
-            if (payload.role === 'Lecturer') role = 'Lecturer';
+            const role = staffRole(payload.role);
 
             // An empty name or photo means "use the one from their Google account".
             // The photo is only sent when set or changed, so saving works the same
@@ -8481,6 +8221,15 @@ async function callSupabase(action, payload = {}) {
 
         case 'syncCourseLogs_Admin': {
             return sbUnwrap(await supabaseClient.rpc('sync_course_logs', {
+                p_course: courseName,
+                p_logs: payload.logs || [],
+                p_tombstones: payload.tombstones || []
+            }));
+        }
+
+        // A teaching assistant's records (supabase/migrations/assistants_and_course_appearance.sql).
+        case 'syncCourseLogs_Assistant': {
+            return sbUnwrap(await supabaseClient.rpc('sync_assistant_logs', {
                 p_course: courseName,
                 p_logs: payload.logs || [],
                 p_tombstones: payload.tombstones || []
@@ -8818,6 +8567,7 @@ async function handleManualRefresh(buttonId) {
             const fetchedCourseDict = bootData.courses;
 
             if (fetchedCourseDict && typeof fetchedCourseDict === 'object') {
+                assistantCourses = bootData.adminStatus?.assistantCourses || [];
                 // Update the global availableCourses list (exclude archived)
                 availableCourses = Object.keys(fetchedCourseDict).filter(c => !courseInfoMap[c]?.archived);
 
@@ -8845,11 +8595,11 @@ async function handleManualRefresh(buttonId) {
                 // 2. Repopulate the Course Buttons
                 populateCourseButtons(); // Redraw buttons with the new list
 
-                // 3. Refresh Logs for the (potentially new) Current Course
+                // 3. Refresh Logs for the (potentially new) Current Course. An
+                // assistant's course keeps the records waiting to upload, and sends them.
                 if (currentCourse) {
-                    const serverLogs = await callWebApp('getStudentLogs', { courseName: currentCourse }, 'POST');
-                    studentLogCache[currentCourse] = serverLogs;
-                    courseData[currentCourse] = { logs: serverLogs, tombstones: new Set() };
+                    await loadAndMergeCourseData(currentCourse, { strict: true });
+                    if (canRecordAnywhere()) await syncLogsWithSheet();
                 } else {
                     // Handle case where student has NO courses after refresh
                     courseData = {}; // Clear all local course data
@@ -9257,10 +9007,11 @@ function updateAuthUI() {
     if (courseButtonsContainer) courseButtonsContainer.style.display = 'none';
 
     document.body.classList.toggle('is-admin', isAdmin);
+    updateRecordingMode();
 
     // The groups and their label go together (signing out in another tab included).
     const sessionControls = document.getElementById('session-controls');
-    if (!isAdmin && sessionControls) {
+    if (!isAdmin && !canRecordInCourse(currentCourse) && sessionControls) {
         sessionControls.style.setProperty('display', 'none', 'important');
         document.getElementById('session-label')?.setAttribute('hidden', '');
     }
@@ -9414,6 +9165,8 @@ async function handleCourseChange(courseName) {
     updateBulkUI();
     cooldownUIDs.clear();
     localStorage.setItem('last_active_course', courseName);
+    updateRecordingMode();
+    applyCourseAppearance(courseName);
     renderSessionControls(courseName);
     updatePageTitle();
     beginLogsSwap();
@@ -9468,7 +9221,7 @@ async function loadCourseFromLocalStorage(courseName) {
         if (!rawData) return empty();
         const parsed = JSON.parse(rawData);
         if (!parsed || !Array.isArray(parsed.logs)) throw new Error('Invalid cached log structure.');
-        const writable = isAdmin && isAdminForCourse(courseName);
+        const writable = canRecordInCourse(courseName);
         const data = {
             logs: normalizeImportedLogs(parsed.logs),
             tombstones: new Set(writable && Array.isArray(parsed.tombstones) ? parsed.tombstones.map(String) : []),
@@ -9502,6 +9255,7 @@ function setupAuthStateTracking() {
             isAdmin = false;
             isGlobalAdmin = false;
             adminCourses = [];
+            assistantCourses = [];
             currentUser = null;
             currentCourse = '';
             courseData = {};
@@ -9561,10 +9315,8 @@ async function syncData() {
         window.buildUIDToPrimaryUidMap();
         await fetchCourseInfo();
         if (courseName) await loadAndMergeCourseData(courseName, { strict: true });
-        if (isAdmin) {
-            await syncLogsWithSheet();
-            await refreshAdminViews();
-        }
+        if (canRecordAnywhere()) await syncLogsWithSheet();
+        if (isAdmin) await refreshAdminViews();
         lastSyncTime = Date.now();
         isSyncing = false;
         showSyncState();
@@ -9655,7 +9407,7 @@ async function loadAndMergeCourseData(courseName, { strict = false } = {}) {
     refreshPendingChanges();
     if (!isOnline) return;
     try {
-        const writable = isAdmin && isAdminForCourse(courseName);
+        const writable = canRecordInCourse(courseName);
         const response = await callWebApp(writable ? 'getCourseLogs_Admin' : 'getStudentLogs', { courseName });
         if (!isSignedIn || currentUser?.email !== account || activeRequests.get(courseName) !== requestId) return;
         const data = courseData[courseName];
@@ -9765,7 +9517,7 @@ let syncSoonTimer = null;
 function syncSoon(delay = 2000) {
     clearTimeout(syncSoonTimer);
     syncSoonTimer = setTimeout(() => {
-        if (isOnline && isSignedIn && isAdmin) syncLogsWithSheet().catch(error => console.warn('Upload failed; auto-sync retries it:', error));
+        if (isOnline && isSignedIn && canRecordAnywhere()) syncLogsWithSheet().catch(error => console.warn('Upload failed; auto-sync retries it:', error));
     }, delay);
 }
 
@@ -9791,7 +9543,7 @@ function showSyncState() {
 * Uploads every course with changes not yet saved online.
 */
 async function syncLogsWithSheet() {
-    if (!isOnline || !isSignedIn || !isAdmin) return;
+    if (!isOnline || !isSignedIn || !canRecordAnywhere()) return;
     // Restore dirty markers for every authorized course, including after a reload.
     const courses = new Set([...availableCourses, ...Object.keys(courseData), currentCourse].filter(Boolean));
     const prefix = LOGS_STORAGE_KEY + '_account_' + encodeURIComponent((currentUser?.email || '').trim().toLowerCase()) + '_admin_';
@@ -9803,7 +9555,7 @@ async function syncLogsWithSheet() {
         } catch { /* Leave unrecognised caches intact. */ }
     }
     for (const courseName of courses) {
-        if (!isAdminForCourse(courseName)) continue;
+        if (!canRecordInCourse(courseName)) continue;
         if (!courseData[courseName]) courseData[courseName] = await loadCourseFromLocalStorage(courseName);
         if (courseData[courseName].pending) await syncViaBackendAPI(courseName);
     }
@@ -9811,16 +9563,18 @@ async function syncLogsWithSheet() {
 }
 
 async function syncViaBackendAPI(courseName = currentCourse) {
-    if (!courseName || !isOnline || !isSignedIn || !isAdmin || !isAdminForCourse(courseName)) return;
+    if (!courseName || !isOnline || !isSignedIn || !canRecordInCourse(courseName)) return;
     if (courseSyncRequests.has(courseName)) return courseSyncRequests.get(courseName);
     const data = courseData[courseName];
     if (!data) return;
     const revision = data.revision || 0;
-    const logs = data.logs.map(log => ({ ...log }));
+    // An assistant uploads only their own records; the server keeps the rest as they are.
+    const assistant = isAssistantForCourse(courseName);
+    const logs = data.logs.filter(log => !assistant || isOwnLog(log)).map(log => ({ ...log }));
     const tombstones = Array.from(data.tombstones || []);
     const account = currentUser?.email;
     const request = (async () => {
-        const result = await callWebApp('syncCourseLogs_Admin', { courseName, logs, tombstones });
+        const result = await callWebApp(assistant ? 'syncCourseLogs_Assistant' : 'syncCourseLogs_Admin', { courseName, logs, tombstones });
         if (result?.result !== 'success') throw new Error(result?.message || 'Sync failed');
         if (!isSignedIn || currentUser?.email !== account) return;
         const latest = courseData[courseName];
@@ -10444,6 +10198,8 @@ async function fetchCourseInfo() {
                     courseIDMap[courseName.trim()] = metadata.eisId;
                 }
             });
+            // Colours changed meanwhile, by an administrator elsewhere, show now.
+            if (currentCourse) applyCourseAppearance(currentCourse);
         }
     } catch (e) {
         console.error('Error fetching course info:', e);
@@ -10595,7 +10351,7 @@ function clearDatabase() {
  * Shows a dialog to add a manual log entry with a searchable student list.
  */
 function showAddLogEntryDialog() {
-    if (!isAdmin) return;
+    if (!canRecordInCourse(currentCourse)) return;
     if (!currentCourse) {
         showNotification('warning', 'No Course', 'Select a course first.');
         return;
@@ -11143,7 +10899,13 @@ function showEditLogDialog(group) {
  * Confirms deletion of the latest log or the entire group.
  */
 function confirmDeleteLog(group) {
-    if (!isAdmin) return;
+    if (!canRecordInCourse(currentCourse)) return;
+    // An assistant deletes their own latest time, never someone else's.
+    const ownOnly = isAssistantForCourse(currentCourse);
+    if (ownOnly) {
+        group = { ...group, originalLogs: group.originalLogs.filter(isOwnLog) };
+        if (!group.originalLogs.length) return;
+    }
 
     const logsForCurrentCourse = courseData[currentCourse]?.logs || [];
 
@@ -11173,8 +10935,10 @@ function confirmDeleteLog(group) {
     } else if (group.originalLogs.length === 1) {
         // Case 2: Deleting the last timestamp (show confirmation)
         showConfirmationDialog({
-            title: 'Delete all logs for this date?',
-            message: `This will remove all logs for ${escapeHtml(group.name)} on this date. This is the last timestamp.`,
+            title: ownOnly ? 'Delete your time?' : 'Delete all logs for this date?',
+            message: ownOnly
+                ? `This removes the time you recorded for ${escapeHtml(group.name)} on this date.`
+                : `This will remove all logs for ${escapeHtml(group.name)} on this date. This is the last timestamp.`,
             confirmText: 'Delete',
             isDestructive: true,
             onConfirm: () => {
@@ -12208,7 +11972,8 @@ function updateLogsList() {
 
     // --- DETECT LECTURER MODE ---
     const isLecturerMode = !isSignedIn && currentCourse && courseData[currentCourse];
-    const showAdminFeatures = isAdmin || isLecturerMode; // Combine for Logic
+    // Days get their own heading for staff, and for an assistant in their course.
+    const showAdminFeatures = isAdmin || isLecturerMode || canRecordInCourse(currentCourse);
 
     // Only apply additional filtering for admins
     // Students' logs are already filtered on the server by getStudentLogs
@@ -12308,7 +12073,7 @@ function updateLogsList() {
     if (result.length === 0) {
         let emptyMessageHTML = `<i class="fa-solid fa-ghost" style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
                                <p style="font-size: 1.1em; margin-bottom: 5px;">No attendance records found.</p>`;
-        if (isAdminForCourse(currentCourse)) {
+        if (canRecordInCourse(currentCourse)) {
             emptyMessageHTML += `<p style="font-size: 0.9em; color: #999;">Start scanning or try changing the filter.</p>`;
         } else {
             emptyMessageHTML += `<p style="font-size: 0.9em; color: #999;">There are no attendance records for you in this course.</p>`;
@@ -12354,17 +12119,20 @@ function updateLogsList() {
                 dateText.setAttribute('class', 'day-separator-date');
                 dateText.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(group.date)}`;
                 flexWrapper.appendChild(dateText);
-                const buttonContainer = document.createElement('div');
-                buttonContainer.setAttribute('class', 'day-separator-actions');
-                const dateForButton = thisDay;
-                const eisBtn = document.createElement('button');
-                eisBtn.setAttribute('class', 'btn-sm eis-day-btn');
-                eisBtn.innerHTML = '<i class="fa-solid fa-list-check"></i> Add to EIS';
-                eisBtn.title = 'Add to EIS for this day';
-                eisBtn.setAttribute('aria-label', `Add attendance for ${group.date} to EIS`);
-                eisBtn.onclick = (e) => { e.stopPropagation(); showDirectEisExportDialog(dateForButton); };
-                buttonContainer.appendChild(eisBtn);
-                flexWrapper.appendChild(buttonContainer);
+                // Add to EIS is the course administrators', not an assistant's.
+                if (isAdminForCourse(currentCourse)) {
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.setAttribute('class', 'day-separator-actions');
+                    const dateForButton = thisDay;
+                    const eisBtn = document.createElement('button');
+                    eisBtn.setAttribute('class', 'btn-sm eis-day-btn');
+                    eisBtn.innerHTML = '<i class="fa-solid fa-list-check"></i> Add to EIS';
+                    eisBtn.title = 'Add to EIS for this day';
+                    eisBtn.setAttribute('aria-label', `Add attendance for ${group.date} to EIS`);
+                    eisBtn.onclick = (e) => { e.stopPropagation(); showDirectEisExportDialog(dateForButton); };
+                    buttonContainer.appendChild(eisBtn);
+                    flexWrapper.appendChild(buttonContainer);
+                }
                 separatorCell.appendChild(flexWrapper);
                 separatorRow.appendChild(separatorCell);
                 logsTbody.appendChild(separatorRow);
@@ -12471,7 +12239,7 @@ function updateLogsList() {
 
         row.appendChild(timesCell);
 
-        if (isAdminForCourse(currentCourse)) {
+        if (canRecordInCourse(currentCourse)) {
             const actionsCell = document.createElement('td');
             actionsCell.setAttribute('class', 'actions-cell admin-only');
             const actionsWrapper = document.createElement('div');
@@ -12479,20 +12247,24 @@ function updateLogsList() {
 
             // Edit stays visible; everything else is in the ⋯ menu, with the
             // destructive action last. Classes keep the tbody's click handler working.
+            // An assistant gets the menu only, with +1 and −1 on the rows they recorded.
+            const assistant = isAssistantForCourse(currentCourse);
             const menuItems = [];
             if (group.name === 'Unknown') {
                 menuItems.push({ label: 'Register student', icon: 'fa-solid fa-user-plus', className: 'register-unknown-btn' });
             }
-            menuItems.push(
-                { label: 'Add 1 hour', icon: 'fa-solid fa-plus', className: 'add-time-btn' },
-                { label: 'Delete latest time', icon: 'fa-solid fa-minus', className: 'delete-log-btn', danger: true }
-            );
+            if (!assistant || group.originalLogs.some(isOwnLog)) {
+                menuItems.push(
+                    { label: 'Add 1 hour', icon: 'fa-solid fa-plus', className: 'add-time-btn' },
+                    { label: assistant ? 'Delete my latest time' : 'Delete latest time', icon: 'fa-solid fa-minus', className: 'delete-log-btn', danger: true }
+                );
+            }
             // With one time, "Delete latest time" already deletes them all.
-            if (group.originalLogs.length > 1) {
+            if (!assistant && group.originalLogs.length > 1) {
                 menuItems.push({ label: 'Delete all times', icon: 'fa-solid fa-trash', className: 'delete-all-log-btn', danger: true });
             }
-            actionsWrapper.innerHTML = rowEditButtonHtml(`Edit entry for ${group.name}`, 'edit-log-btn') +
-                rowMenuHtml(menuItems, `More actions for ${group.name}`);
+            actionsWrapper.innerHTML = (assistant ? '' : rowEditButtonHtml(`Edit entry for ${group.name}`, 'edit-log-btn')) +
+                (menuItems.length ? rowMenuHtml(menuItems, `More actions for ${group.name}`) : '');
 
             if (group.name === 'Unknown') {
                 // Open registration dialog instead of direct database add
@@ -12599,6 +12371,8 @@ function setupStickyDateBar() {
 function updateStickyDateBar(fresh = false) {
     const bar = document.getElementById('floating-sticky-bar');
     if (!bar) return;
+    // Like the headings, an assistant's bar has the date only.
+    bar.querySelector('.day-separator-actions').hidden = !isAdminForCourse(currentCourse);
     // Only the attendance list has day headings; other tabs never show the bar.
     const scannerActive = document.getElementById('scanner-tab')?.classList.contains('active');
     let activeDate = null;
@@ -13119,7 +12893,7 @@ let settingsStaffNames = new Map();
 
 // The sort, as the lists' toolbars show it: an icon, with the choice beside it on wide screens.
 function settingsSortSelectHtml(id) {
-    return `<label class="icon-select" title="Sort courses"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><select id="${id}" class="settings-sort-select sort-dropdown" aria-label="Sort courses">${SETTINGS_COURSE_SORTS.map(([value, label]) =>
+    return `<label class="icon-select" title="Sort courses"><i class="fa-solid fa-arrow-down-wide-short" aria-hidden="true"></i><select id="${id}" class="settings-sort-select sort-dropdown" aria-label="Sort courses" data-no-dirty>${SETTINGS_COURSE_SORTS.map(([value, label]) =>
         `<option value="${value}"${value === settingsCourseSort ? ' selected' : ''}>${label}</option>`).join('')}</select></label>`;
 }
 
@@ -13371,7 +13145,7 @@ function renderStaffInSettings(staffList, filterText = '') {
         return (s.name && s.name.toLowerCase().includes(lowerFilter)) ||
             (s.googleName && s.googleName.toLowerCase().includes(lowerFilter)) ||
             (s.email && s.email.toLowerCase().includes(lowerFilter)) ||
-            (s.role && s.role.toLowerCase().includes(lowerFilter));
+            staffRoleLabel(s.role).toLowerCase().includes(lowerFilter);
     });
 
     if (filtered.length === 0) {
@@ -13381,9 +13155,9 @@ function renderStaffInSettings(staffList, filterText = '') {
 
     // Group staff by position
     const roleGroups = [
-        { name: 'Administrators', byTitle: true, items: filtered.filter(s => s.role === 'Global') },
-        { name: 'Lecturers', byTitle: true, items: filtered.filter(s => s.role !== 'Global' && s.role !== 'Student') },
-        { name: 'Students', byTitle: false, items: filtered.filter(s => s.role === 'Student') }
+        { name: 'Administrators', byTitle: true, items: filtered.filter(s => staffRole(s.role) === 'Global') },
+        { name: 'Lecturers', byTitle: true, items: filtered.filter(s => staffRole(s.role) === 'Lecturer') },
+        { name: 'Teaching assistants', byTitle: false, items: filtered.filter(s => staffRole(s.role) === 'Assistant') }
     ];
 
     let html = '';
@@ -13396,8 +13170,9 @@ function renderStaffInSettings(staffList, filterText = '') {
             : staffDisplayName(a).localeCompare(staffDisplayName(b), undefined, { sensitivity: 'base' }));
 
         // The custom name when set, otherwise the Google name; likewise the photo.
+        // Lecturers see the list; only administrators change it.
         const rows = group.items.map(s => {
-            const role = s.role === 'Global' ? 'Administrator' : (s.role || 'Lecturer');
+            const role = staffRoleLabel(s.role);
             const shown = staffDisplayName(s);
             const named = !!(s.name || s.googleName);
             const index = `data-row-index="${escapeHtml(String(s.rowIndex))}"`;
@@ -13409,12 +13184,12 @@ function renderStaffInSettings(staffList, filterText = '') {
                         <span class="settings-row-people${named ? '' : ' is-empty'}"><span class="settings-row-role role-chip">${escapeHtml(role)}</span>${named ? `<span class="selectable">${escapeHtml(s.email)}</span>` : 'Name appears after their first Google sign-in'}</span>
                     </div>
                     <div class="settings-row-meta"><span class="settings-row-term">${escapeHtml(role)}</span></div>
-                    <div class="card-actions">
+                    ${isGlobalAdmin ? `<div class="card-actions">
                         ${rowEditButtonHtml(`Edit ${shown}`, 'edit-staff-btn',
-                `${index} data-name="${escapeHtml(s.name)}" data-google-name="${escapeHtml(s.googleName)}" data-photo-url="${escapeHtml(s.photoUrl)}" data-google-photo="${escapeHtml(s.googlePhoto)}" data-uid="${escapeHtml(s.uid)}" data-email="${escapeHtml(s.email)}" data-role="${escapeHtml(s.role || 'Lecturer')}"`)}
+                `${index} data-name="${escapeHtml(s.name)}" data-google-name="${escapeHtml(s.googleName)}" data-photo-url="${escapeHtml(s.photoUrl)}" data-google-photo="${escapeHtml(s.googlePhoto)}" data-uid="${escapeHtml(s.uid)}" data-email="${escapeHtml(s.email)}" data-role="${escapeHtml(staffRole(s.role))}"`)}
                         ${rowMenuHtml([{ label: 'Revoke access', icon: 'fa-solid fa-trash', danger: true, className: 'delete-staff-btn', attrs: `${index} data-name="${escapeHtml(shown)}"` }],
                     `More actions for ${shown}`)}
-                    </div>
+                    </div>` : ''}
                 </div>
             `;
         }).join('');
@@ -13500,8 +13275,17 @@ function studentListSummary() {
 /**
  Update the entire UI.
  */
+// body.can-record: the course on screen is one the account records in, so an
+// assistant gets its groups, Add and row menus too. body.is-assistant shows them
+// the sync status.
+function updateRecordingMode() {
+    document.body.classList.toggle('can-record', isSignedIn && canRecordInCourse(currentCourse));
+    document.body.classList.toggle('is-assistant', isSignedIn && !isAdmin && assistantCourses.length > 0);
+}
+
 async function updateUI() {
     await databaseLoadPromise;
+    updateRecordingMode();
     updateLogsList();
     updateDatabaseList();
     updatePageTitle();
@@ -13590,10 +13374,13 @@ function updateScanButtons() {
 
     if (!scanBtn || !scanButtonsContainer) return;
 
-    // Lecturers take attendance and staff sign in by card; students never scan here.
-    const shown = nfcSupported && (!isSignedIn || isAdmin);
+    // Lecturers take attendance, teaching assistants in their courses, and staff
+    // sign in by card; students never scan here.
+    const shown = nfcSupported && (!isSignedIn || isAdmin || canRecordInCourse(currentCourse));
     scanBtn.style.display = shown ? 'flex' : 'none';
     scanButtonsContainer.style.display = shown ? 'flex' : 'none';
+    // An assistant who opens another course stops scanning there.
+    if (!shown && isSignedIn && isScanning) stopScanning();
     renderScanButton();
 }
 
@@ -13700,11 +13487,10 @@ async function handleNfcReading({ serialNumber }) {
         }
     }
 
-    // Security Check: Only block if we are signed in but NOT an admin
-    // (If isLecturerMode is true, we bypass this because auth is offline)
-    if (!isAdmin || (currentCourse && !isAdminForCourse(currentCourse))) {
+    // Course administrators record attendance, and teaching assistants in their courses.
+    if (currentCourse ? !canRecordInCourse(currentCourse) : !canRecordAnywhere()) {
         playSound(false);
-        showNotification('error', 'Action Not Allowed', 'Only administrators can record attendance.');
+        showNotification('error', 'Action Not Allowed', 'You can record attendance only in your own courses.');
         return;
     }
 
@@ -13724,7 +13510,7 @@ async function handleNfcReading({ serialNumber }) {
     playSound(!isUnknown);
 
     // The name shows at once; saving and redrawing the list wait for that frame.
-    // An unknown card shows its Card ID in place of a name.
+    // An unknown card carries its Card ID in place of a name, shown hidden (showScannedName).
     const scan = isUnknown
         ? { unknown: true, name: convertedUid || serialNumber, at: timestamp.getTime() }
         : { unknown: false, name: databaseMap[primaryUid]?.name || convertedUid, at: timestamp.getTime() };
@@ -13785,8 +13571,18 @@ function scheduleScanRender() {
     }, 600);
 }
 
-// Full-screen result of a scan: white with the name, or orange with the Card ID
-// when the card is not in the student list.
+// A scan's name. An unknown card's Card ID stays hidden, like a password, on the
+// lock screen and in the full-screen result, which anyone near the phone sees;
+// the attendance list shows it once unlocked.
+function showScannedName(el, { unknown, name }) {
+    el.classList.toggle('is-masked', !!unknown);
+    el.textContent = unknown ? '••••••••' : name;
+    if (unknown) el.setAttribute('aria-label', 'Card ID hidden');
+    else el.removeAttribute('aria-label');
+}
+
+// Full-screen result of a scan: white with the name, or orange (the Card ID
+// hidden) when the card is not in the student list.
 function showScanAnnouncement({ unknown, name }) {
     const overlay = document.getElementById('scan-announcement-overlay');
     const nameEl = document.getElementById('scan-announcement-name');
@@ -13801,7 +13597,7 @@ function showScanAnnouncement({ unknown, name }) {
     overlay.querySelector('.scan-announcement-subtitle').textContent = unknown
         ? 'Attendance recorded, but not in the student list'
         : 'Attendance Recorded';
-    nameEl.textContent = name;
+    showScannedName(nameEl, { unknown, name });
 
     // Don't use openDialogMode/closeDialogMode - the overlay should NOT block scrolling
     overlay.style.display = 'flex';
@@ -14307,7 +14103,7 @@ function showScanLockResult(scan) {
     item.className = `scan-lock-result-item${scan.unknown ? ' is-unknown' : ''}`;
     item.innerHTML = `<span class="scan-lock-result-name"></span>
         <span class="scan-lock-result-note"><i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-circle-check'}" aria-hidden="true"></i>${scan.unknown ? 'Not in the student list' : 'Recorded'}</span>`;
-    item.querySelector('.scan-lock-result-name').textContent = scan.name;
+    showScannedName(item.querySelector('.scan-lock-result-name'), scan);
     box.appendChild(item);
     stage?.classList.add('has-result');
     clearTimeout(box._timer);
@@ -14346,7 +14142,7 @@ function scanLockListItem(scan, index) {
         <span class="scan-lock-list-icon"><i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-check'}" aria-hidden="true"></i></span>
         <span class="scan-lock-list-name"></span>
         <time class="scan-lock-list-time"></time>`;
-    li.querySelector('.scan-lock-list-name').textContent = scan.name;
+    showScannedName(li.querySelector('.scan-lock-list-name'), scan);
     li.querySelector('.scan-lock-list-time').textContent = formatScanLockTime(scan.at);
     li.querySelector('.scan-lock-list-time').dateTime = new Date(scan.at).toISOString();
     return li;
@@ -14988,7 +14784,7 @@ function populateCourseButtons() {
         const code = getCleanCourseCode(course, courseInfoMap[course]?.eisId);
         const repeated = coursesToDisplay.some(other => other !== course && getCleanCourseCode(other) === code);
         const offering = repeated ? String(courseInfoMap[course]?.eisId || courseInfoMap[course]?.startDate || course) : '';
-        return { course, code, title: getCourseTitle(course), offering, guest: course === guestCourse };
+        return { course, code, title: getCourseTitle(course), offering, guest: course === guestCourse, icon: faIconClass(courseInfoMap[course]?.icon) };
     });
     // Courses in two or more programmes sit under a heading for each.
     const groups = groupCoursesByProgramme(coursesToDisplay);
@@ -15000,7 +14796,7 @@ function populateCourseButtons() {
         courseButtonsContainer.dataset.signature = signature;
         courseButtonsContainer.innerHTML = '';
         courseButtonsContainer.classList.toggle('is-grouped', !!groups);
-        const makeButton = ({ course, code, title, offering, guest }, copy = '') => {
+        const makeButton = ({ course, code, title, offering, guest, icon }, copy = '') => {
             const button = document.createElement('div');
             button.setAttribute('class', 'course-button');
             button.setAttribute('role', 'button');
@@ -15013,7 +14809,8 @@ function populateCourseButtons() {
 
             const full = title && title.toLowerCase() !== code.toLowerCase() ? title : '';
             button.classList.toggle('has-full-name', !!full);
-            button.innerHTML = `<i class="fa-solid fa-table-list fa-fw course-button-icon" aria-hidden="true"></i><span class="course-button-label">` +
+            // The course's own icon (Settings → its course → Appearance), else the list icon.
+            button.innerHTML = faIconHtml(icon, 'fa-fw course-button-icon') + '<span class="course-button-label">' +
                 `<span class="course-button-swap course-button-code"><span>${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span></span>` +
                 (full ? `<span class="course-button-swap course-button-full"><span>${escapeHtml(full)}</span></span>` : '') + '</span>';
             button.title = title ? `${code} ${title}` : course.replace(/_/g, ' ');

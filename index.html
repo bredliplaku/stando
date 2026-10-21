@@ -43,8 +43,8 @@
             document.documentElement.classList.toggle('dark-mode', dark);
             document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
         })();
-        // The account's colours as this browser last saw them (Settings → Theme), until
-        // the account answers. Keep in step with applyColourTheme() in scripts.js.
+        // The colours of the course open last in this browser (its settings → Appearance),
+        // until the courses load. Keep in step with applyColourTheme() in scripts.js.
         (function () {
             try {
                 const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');

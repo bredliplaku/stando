@@ -188,7 +188,7 @@
         }
         .website-download-copy .website-download-error { color: var(--danger-color); opacity: 1; }
         .dark-mode .website-download { border-bottom-color: rgba(255, 255, 255, 0.1); }
-        #lecturer-courses-container, #settings-courses-container { min-height: 0; }
+        #settings-courses-container { min-height: 0; }
 
         /* Phones: the text takes the full width and the button sits on its own line. */
         @media (max-width: 560px) {
@@ -531,8 +531,7 @@
             display: none;
         }
 
-        #non-admin-profile-pic-container,
-        #admin-profile-pic-container {
+        #settings-profile-pic {
             cursor: default !important;
             /* Forces default cursor */
         }
@@ -609,7 +608,8 @@
         }
 
         body.is-admin th.admin-only,
-        body.is-admin td.admin-only {
+        body.is-admin td.admin-only,
+        body.can-record .logs-table .admin-only {
             display: table-cell !important;
         }
 
@@ -1852,7 +1852,7 @@
             display: inline-flex !important;
         }
 
-        body:not(.is-admin) #session-controls {
+        body:not(.is-admin):not(.can-record) #session-controls {
             display: none !important;
         }
 
@@ -1954,7 +1954,8 @@
         }
 
         body.is-admin .logs-actions .btn-icon,
-        body.is-admin .database-actions .btn-icon {
+        body.is-admin .database-actions .btn-icon,
+        body.can-record #add-log-btn {
             display: inline-flex !important;
         }
 
@@ -2155,7 +2156,8 @@
         }
 
         /* Add this rule to hide the date column when sorting by date */
-        body.is-admin .logs-table.sorting-by-date .date-column {
+        body.is-admin .logs-table.sorting-by-date .date-column,
+        body.can-record .logs-table.sorting-by-date .date-column {
             display: none !important;
         }
 
@@ -3709,7 +3711,7 @@
         }
 
         /* Hide sync status when signed out */
-        body:not(.is-admin) .sync-container {
+        body:not(.is-admin):not(.is-assistant) .sync-container {
             display: none;
         }
 
@@ -5244,28 +5246,6 @@ body.signed-out #main-container {
 .sp-masked {
     letter-spacing: 0.18em;
     user-select: none;
-}
-
-/* Theme: the colours in use, a dot each, and Change (showThemeDialog). */
-.sp-card-icon.sp-theme-icon {
-    background: var(--primary-color);
-}
-
-.sp-swatches {
-    display: flex;
-    gap: 4px;
-    margin-top: 4px;
-}
-
-.sp-swatches > span {
-    width: 14px;
-    height: 14px;
-    border-radius: 50%;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
-}
-
-.theme-dialog {
-    max-width: 600px;
 }
 
 .sp-pill {
@@ -8492,24 +8472,6 @@ body.is-admin .toolbar-menu.admin-only {
     color: var(--primary-light);
 }
 
-.reg-friend {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    align-items: center;
-    gap: 0 8px;
-    margin-top: 16px;
-    padding-top: 12px;
-    border-top: 1px solid rgba(0, 0, 0, 0.08);
-    color: #607d8b;
-    font-size: 0.875rem;
-}
-
-.dark-mode .reg-friend {
-    border-top-color: rgba(255, 255, 255, 0.1);
-    color: #9eaab3;
-}
-
 .reg-result {
     display: flex;
     flex-direction: column;
@@ -8527,16 +8489,6 @@ body.is-admin .toolbar-menu.admin-only {
     margin-bottom: 4px;
     color: var(--success-color);
     font-size: 1.8rem;
-}
-
-.reg-result.is-friend {
-    border-color: color-mix(in srgb, var(--primary-600) 25%, transparent);
-    background: color-mix(in srgb, var(--primary-600) 6%, transparent);
-}
-
-.dark-mode .reg-result.is-friend {
-    border-color: color-mix(in srgb, var(--primary-300) 35%, transparent);
-    background: color-mix(in srgb, var(--primary-300) 10%, transparent);
 }
 
 .reg-result-label {
@@ -8560,47 +8512,7 @@ body.is-admin .toolbar-menu.admin-only {
     user-select: all;
 }
 
-/* The friend's code can be copied and sent in a message. */
-.dialog .reg-result .reg-copy,
-.dialog .reg-result .reg-copy:hover:not(:disabled) {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-    padding: 7px 16px;
-    border: 1px solid color-mix(in srgb, var(--primary-600) 30%, transparent);
-    border-radius: 999px;
-    background: var(--card-background);
-    color: var(--primary-color);
-    font-size: 0.875rem;
-    font-weight: 600;
-    box-shadow: none;
-    transform: none;
-}
-
-.dialog .reg-result .reg-copy:disabled {
-    opacity: 0.45;
-}
-
-.dark-mode .dialog .reg-result .reg-copy {
-    border-color: color-mix(in srgb, var(--primary-200) 35%, transparent);
-    color: var(--primary-100);
-}
-
-/* The code field, with Paste beside it. */
-.reg-code-field {
-    display: flex;
-    flex: 1 1 auto;
-    align-items: center;
-    gap: 8px;
-    min-width: 0;
-}
-
-.reg-code-field > button {
-    flex-shrink: 0;
-}
-
-/* Your own card is read but never shown, like a password. */
+/* A scanned student card is read but never shown, like a password. */
 .reg-result-id.is-masked {
     letter-spacing: 0.2em;
     -webkit-user-select: none;
@@ -8610,38 +8522,6 @@ body.is-admin .toolbar-menu.admin-only {
 .reg-center {
     display: flex;
     justify-content: center;
-}
-
-.reg-progress {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    margin-bottom: 12px;
-}
-
-.reg-progress > span {
-    width: 22px;
-    height: 4px;
-    border-radius: 2px;
-    background: rgba(0, 0, 0, 0.12);
-}
-
-.dark-mode .reg-progress > span {
-    background: rgba(255, 255, 255, 0.16);
-}
-
-.reg-progress > span.is-active {
-    background: var(--primary-color);
-}
-
-.reg-progress > em {
-    margin-left: 4px;
-    color: #78909c;
-    font-size: 0.75rem;
-    font-style: normal;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
 }
 
 .reg-list {
@@ -8659,12 +8539,6 @@ body.is-admin .toolbar-menu.admin-only {
 .reg-list li::marker {
     color: var(--primary-color);
     font-weight: 700;
-}
-
-.dialog input.reg-id-input {
-    font-family: 'Google Sans Code', monospace;
-    font-size: 1.25rem;
-    letter-spacing: 0.08em;
 }
 
 @media (max-width: 560px) {
@@ -10640,7 +10514,8 @@ body:not(.has-programmes) .programme-filter-field {
     display: none;
 }
 
-body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
+body:not(.is-admin):not(.can-record) .list-toolbar .logs-actions,
+body:not(.is-admin) .list-toolbar .database-actions {
     display: none;
 }
 
@@ -11123,7 +10998,7 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     }
 
     /* Under a day's heading the date is not repeated: the name is centred. */
-    body.is-admin #scanner-tab .logs-table.sorting-by-date tbody .name-cell {
+    body:is(.is-admin, .can-record) #scanner-tab .logs-table.sorting-by-date tbody .name-cell {
         grid-row: 1 / span 2;
         align-self: center;
     }
@@ -12393,9 +12268,9 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 }
 
 /* =========================================================================
-   Settings → Theme
-   One row per colour (swatch, what it colours, its code), a small Stando
-   repainted as the colours change, then Reset and Save.
+   A course's appearance (its settings → Appearance)
+   The icon with its preview and a link to Font Awesome's icons, one swatch per
+   colour (swatch, code, name), and a small Stando repainted as they change.
    ========================================================================= */
 /* Side by side, as in Syllabase: each colour a swatch, its code and its name,
    fewer per row on narrow screens. */
@@ -12406,16 +12281,16 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     letter-spacing: 0.02em;
 }
 
+/* The five side by side at every width, as in Syllabase. */
 .theme-colours {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 10px;
     margin: 0 0 14px;
 }
 
 .theme-colour {
     display: flex;
-    flex: 1 1 96px;
     flex-direction: column;
     align-items: center;
     gap: 4px;
@@ -12476,20 +12351,8 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
     border-color: rgba(255, 255, 255, 0.16);
 }
 
-.theme-note {
-    flex: 1 1 auto;
-    margin-right: auto;
-    color: #9e9e9e;
-    font-size: 0.8125rem;
-}
-
-.theme-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 12px;
+.dialog p.theme-note {
+    margin: 8px 0 0 2px;
 }
 
 /* The preview, drawn with the same recipes as the real parts. */
@@ -12696,16 +12559,13 @@ body:not(.is-admin) .list-toolbar :is(.logs-actions, .database-actions) {
 }
 
 @media (max-width: 768px) {
-    .theme-colour {
-        flex-basis: 56px;
+    .theme-colours {
+        gap: 6px;
     }
 
-    .theme-note {
-        flex-basis: 100%;
-    }
-
-    .theme-actions > button {
-        flex: 1 1 0;
+    .dialog .theme-colour .theme-hex {
+        padding: 5px 2px !important;
+        font-size: 0.6875rem;
     }
 }
 
@@ -14406,4 +14266,333 @@ body.on-student-list:not(.signed-out) #session-label {
     .request-hours {
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
+}
+
+/* =========================================================================
+   One way to close a dialog
+   The × in the title bar closes it, as a tap outside it and Escape do. The
+   footer's grey Cancel or Close stays in the page only for its closing steps
+   (scripts.js, markDialogDismiss); a footer left with nothing shows nothing.
+   On phones the title bar is slim, so the dialog keeps its height for content.
+   ========================================================================= */
+.dialog-actions .is-dismiss {
+    display: none !important;
+}
+
+.dialog > .dialog-actions:not(:has(> :not(.is-dismiss, [hidden]))) {
+    display: none;
+}
+
+/* A long dialog scrolls its content; its title bar never gives way. */
+.dialog > :is(.dialog-title, .settings-modal-header, .sp-header) {
+    flex-shrink: 0;
+}
+
+@media (max-width: 768px) {
+    .dialog-title {
+        min-height: 30px;
+        padding: 8px 10px 8px 16px;
+        font-size: 0.9375rem;
+    }
+
+    .settings-modal-header {
+        padding: 8px 10px 8px 14px;
+    }
+
+    .settings-avatar {
+        width: 34px;
+        height: 34px;
+    }
+
+    .settings-avatar .user-avatar.user-avatar-lg {
+        width: 34px;
+        height: 34px;
+        font-size: 0.85rem;
+    }
+
+    .settings-dialog .settings-modal-heading h3 {
+        font-size: 1.05rem;
+    }
+
+    .sp-header {
+        gap: 10px;
+        padding: 8px 10px 8px 14px;
+    }
+
+    .sp-header .user-avatar.sp-avatar {
+        width: 38px;
+        height: 38px;
+        font-size: 0.9rem;
+    }
+
+    .dialog-close-x,
+    .settings-modal-header .icon-only-btn,
+    .sp-header .icon-only-btn {
+        width: 30px;
+        height: 30px;
+        font-size: 0.8125rem;
+    }
+}
+
+/* =========================================================================
+   The top bar: one slim row, the sync status (and requests) at the start and
+   the account at the end.
+   ========================================================================= */
+.sync-auth-container {
+    gap: 8px;
+    padding: 4px 0;
+    margin-bottom: 6px;
+}
+
+.sync-auth-container :is(.sync-container, .auth-container) {
+    margin-bottom: 0;
+}
+
+/* A teaching assistant sees their sync status, at the start like staff. */
+body.is-assistant .sync-auth-container {
+    justify-content: space-between;
+}
+
+@media (max-width: 768px) {
+    .sync-auth-container {
+        padding: 2px 0;
+        margin-bottom: 4px;
+    }
+
+    .top-bar-user .user-avatar {
+        width: 32px;
+        height: 32px;
+    }
+
+    #logout-btn,
+    #register-uid-btn,
+    #request-permission-btn {
+        width: 32px;
+        height: 32px;
+    }
+}
+
+/* =========================================================================
+   Dropdowns: a little room between options, so two highlighted one after the
+   other never touch.
+   ========================================================================= */
+.row-menu-list {
+    gap: 4px;
+}
+
+.combo-option + .combo-option {
+    margin-top: 3px;
+}
+
+/* An assistant's day headings carry the date only. */
+.day-separator-actions[hidden] {
+    display: none !important;
+}
+
+/* =========================================================================
+   A course's settings: its sections (People, Dates, Appearance), the staff
+   lists to tick, and a course icon with its preview and Font Awesome's search.
+   ========================================================================= */
+.dialog .editor-section-title {
+    margin: 18px 0 10px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(0, 0, 0, 0.08);
+    color: var(--primary-color);
+    font-size: 0.875rem;
+    font-weight: 700;
+}
+
+.dark-mode .dialog .editor-section-title {
+    border-top-color: rgba(255, 255, 255, 0.1);
+    color: var(--primary-light);
+}
+
+.dialog p.editor-note {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin: 0 0 14px 2px;
+}
+
+.dialog .staff-picker-list {
+    height: 200px;
+    margin-top: 6px;
+    border-radius: 12px;
+}
+
+.staff-picker .student-info {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.staff-picker-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    padding: 20px;
+    color: #78909c;
+    font-size: 0.875rem;
+    text-align: center;
+}
+
+.staff-picker-note .loading-spinner {
+    width: 30px;
+    height: 30px;
+    margin: 0;
+    border-width: 3px;
+}
+
+.admin-pills-list.people-pills {
+    margin-top: 0;
+    padding: 0;
+    border: 0;
+    background: none !important;
+}
+
+.people-pills-empty {
+    color: #78909c;
+    font-size: 0.875rem;
+}
+
+.icon-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.icon-input-wrap > input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+/* The preview is redrawn with a new <i> as the field changes (bindAppearanceFields). */
+.fa-preview {
+    display: inline-flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    color: var(--primary-color);
+    font-size: 1.6rem;
+}
+
+.icon-find-link {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    color: #9e9e9e;
+    font-size: 0.85rem;
+    text-decoration: none;
+    transition: color 0.15s, border-color 0.15s;
+}
+
+.icon-find-link:hover {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.dark-mode .icon-find-link {
+    border-color: rgba(255, 255, 255, 0.16);
+    color: #90a4ae;
+}
+
+.dark-mode .fa-preview {
+    color: var(--primary-light);
+}
+
+.tp-course-icon {
+    display: inline-flex;
+}
+
+.dialog .link-btn,
+.dialog .link-btn:hover,
+.dialog .link-btn:active {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--primary-color);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    filter: none;
+    transform: none;
+    cursor: pointer;
+}
+
+.dark-mode .dialog .link-btn {
+    color: var(--primary-light);
+}
+
+/* =========================================================================
+   Registering cards: "Scan for a friend" in the corner (and back to "My own
+   card"), and an unknown card from the attendance list, in orange.
+   ========================================================================= */
+.reg-mode-row {
+    display: flex;
+    justify-content: flex-end;
+    margin: -4px 0 10px;
+}
+
+.dialog .reg-mode,
+.dialog .reg-mode:hover,
+.dialog .reg-mode:active {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    padding: 5px 12px;
+    border: 1px solid color-mix(in srgb, var(--primary-600) 30%, transparent);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--primary-600) 6%, var(--card-background));
+    box-shadow: none;
+    color: var(--primary-color);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: normal;
+    text-transform: none;
+    filter: none;
+    transform: none;
+    cursor: pointer;
+}
+
+.dialog .reg-mode:hover {
+    border-color: var(--primary-color);
+}
+
+.dark-mode .dialog .reg-mode {
+    border-color: color-mix(in srgb, var(--primary-300) 35%, transparent);
+    background: color-mix(in srgb, var(--primary-300) 10%, transparent);
+    color: var(--primary-100);
+}
+
+.reg-result.is-unknown {
+    border-color: color-mix(in srgb, var(--secondary-600) 35%, transparent);
+    background: color-mix(in srgb, var(--secondary-600) 8%, transparent);
+}
+
+.reg-result.is-unknown > i,
+.reg-result.is-unknown > svg {
+    color: var(--secondary-700);
+}
+
+.reg-result.is-unknown .reg-result-id {
+    font-size: clamp(1.5rem, 7vw, 2rem);
+}
+
+/* An unknown card's Card ID, hidden on the lock screen and the full-screen result. */
+:is(.scan-lock-result-name, .scan-lock-list-name, .scan-announcement-name).is-masked,
+#scan-announcement-overlay.is-unknown .scan-announcement-name.is-masked {
+    letter-spacing: 0.2em;
+    -webkit-user-select: none;
+    user-select: none;
 }

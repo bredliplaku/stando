@@ -21,9 +21,14 @@ while scanning or while attendance on the device waits to sync.
 
 | User | What you can do |
 |---|---|
-| Students | View your attendance, register your card (choosing your programme) and request an excused absence with a supporting document. |
-| Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, and trust devices (renaming or removing only their own). |
-| Administrators | Everything above, plus the student list, card approvals, staff, courses, programmes and every trusted device. |
+| Students | View your attendance, register your card or a friend's (choosing the programme) and request an excused absence with a supporting document. |
+| Teaching assistants | Everything a student does. In the courses assigned to them: scan, add records, add or delete times on the records they made, and send an unknown card for approval. |
+| Lecturers | Take attendance, correct records, review absence requests, send a student's card for approval, change their courses' programmes, sections and archiving, and trust devices (renaming or removing only their own). |
+| Administrators | Everything above, plus the student list, card approvals, staff, courses (with their teaching assistants, icon and colours), programmes and every trusted device. |
+
+Every dialog closes with the **×** in its title bar, a tap outside it or Escape.
+If something in it was changed, Stando asks first: **Save**, **Discard** or
+**Keep editing**.
 
 The banner at the top shows the course on screen: its code above its name, such
 as **CE 121 / Civil Engineering Drawing**, and the browser tab reads
@@ -48,8 +53,9 @@ on a day you choose or their own days, adds or removes an hour, moves them to
 another group or day, or deletes them. **×** or Escape stops selecting.
 
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
-records attendance, showing each student's name in large type under the clock
-(or the Card ID of an unknown card). Swipe down to see the cards scanned so far. Any lecturer of
+records attendance, showing each student's name in large type under the clock.
+An unknown card shows ••••••••, there and in the scan result on an unlocked
+phone; its Card ID shows in the attendance list. Swipe down to see the cards scanned so far. Any lecturer of
 the course on screen taps their staff card to unlock it; a tap again (or 30
 seconds untouched) locks it again. This needs your own card in
 **Settings → Staff**; without it, scanning works but does not lock. A phone that
@@ -74,17 +80,14 @@ Students register their Student ID by scanning it in **Register Card ID**
 (**Update Card ID** once a card is registered, for a new card). The card is read
 from its chip; the Student ID No. printed on it is not used, and the Card ID that
 is read stays hidden. iPhones cannot scan, so a classmate with an Android phone
-chooses **Scan a friend's card**: their phone shows an eight-character code,
-valid once for 48 hours, with a **Copy** button to send it in a message. The
-student types or pastes it. The server turns the code back into the card, so the
-Card ID never appears on either screen. This needs
-[supabase/migrations/card_codes.sql](supabase/migrations/card_codes.sql).
-Before submitting, students choose their programme; an administrator can change
-it when approving the card.
+taps **Scan for a friend** in the corner of the same dialog: they scan the card,
+type its owner's name and email, choose the programme and tap **Send**. The
+request is the friend's, scanned by them. Before submitting, students choose
+their programme; an administrator can change it when approving the card.
 
 **New cards** shows each card's Card ID with the UID it was read from; the Card
-ID is always worked out from the UID. A card scanned by a friend says who
-scanned it. Approving opens with **Use UID** on; turn it off to save the Card ID
+ID is always worked out from the UID. A card scanned by a friend says so, for
+example "Scanned by Ana Hoxha for Arben Krasniqi". Approving opens with **Use UID** on; turn it off to save the Card ID
 only. This needs
 [supabase/migrations/registration_card_uid.sql](supabase/migrations/registration_card_uid.sql);
 requests sent before this change show the Card ID alone.
@@ -202,16 +205,43 @@ for more than one programme per course.
 Programmes are listed A–Z by code everywhere. In a programme or course list,
 typing a code (`BA CE`) shows just that programme, or its courses.
 
-### Colours
+### Settings
 
-Administrators and lecturers choose Stando's colours in **Settings → Theme**:
-primary (header and buttons), secondary (requests and warnings), tertiary
-(information), success (adding and approving) and danger (deleting and
-rejecting). The preview shows them before **Save**; **Reset** puts Stando's own
-colours back, for Save to keep. The colours belong to the account, so they
-follow the person to every device and website; students always see Stando's.
-This needs [supabase/migrations/user_theme.sql](supabase/migrations/user_theme.sql);
-until then the tab is hidden.
+Administrators and lecturers open **Settings** from their photo or name. Both
+see the same tabs: Courses (a lecturer's own, as **My Courses**), Programmes,
+Staff and Trusted Devices. In a course, lecturers change only its programmes,
+sections and archiving; everything else, and the Programmes and Staff tabs, is
+theirs to read. Lecturers still register and manage their own trusted devices.
+An editor opened from Settings opens above it, and saving refreshes the list
+under it.
+
+### Teaching assistants
+
+A teaching assistant is a student with a staff entry whose role is
+**Teaching Assistant** (**Settings → Staff**), formerly "Student". Administrators
+assign them to courses under **People** in a course's settings. In those courses
+they see the whole attendance list, scan on their own phone (no trusted device,
+no lock screen), choose the group, **Add** records, use **Add 1 hour** and
+**Delete my latest time** on the rows they recorded, and send an unknown card's
+**Register student** request. They have no Edit, no ⋯ menu and no Add to EIS.
+Everywhere else they are a student. A lecturer's change to a record makes it
+the lecturer's. Their staff card signs them in on any device.
+
+### Course icon and colours
+
+Administrators set each course's look under **Appearance** in its settings, with
+a live preview. The **Icon** shows on the course's button: type a Font Awesome
+class (`fa-solid fa-cube`) or paste the `<i>` tag Font Awesome copies; the
+magnifier opens Font Awesome's free icons. Empty keeps the list icon. The five
+**Colours** are primary (header and buttons), secondary (requests and
+warnings), tertiary (information), success (adding and approving) and danger
+(deleting and rejecting). While a course is open, the page takes its colours,
+for everyone; **Reset to Stando's colours** puts the defaults back. Lecturers
+see their courses' appearance without changing it.
+
+Teaching assistants, the icon and the colours need
+[supabase/migrations/assistants_and_course_appearance.sql](supabase/migrations/assistants_and_course_appearance.sql);
+until it runs, those fields stay hidden.
 
 ### Staff names and email signatures
 

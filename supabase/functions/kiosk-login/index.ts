@@ -157,8 +157,9 @@ Deno.serve(async (req) => {
 
     const { name, email, role } = staffRows[0];
 
-    // 2. Non-students may only log in from a trusted device
-    if (role !== "Student") {
+    // 2. Lecturers and administrators may only log in from a trusted device;
+    // teaching assistants ("Student" before the assistants migration) anywhere.
+    if (role !== "Assistant" && role !== "Student") {
       const devIdTrimmed = String(deviceId ?? "").trim();
       const { data: devices, error: devErr } = await admin
         .from("trusted_devices")

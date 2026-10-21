@@ -94,7 +94,7 @@
             }
         } catch { /* Storage blocked: the sign-in skeleton. */ }
         root.dataset.standoView = view;
-        // The account's colours as this browser last saw them, as index.html does.
+        // The colours of the course open last in this browser, as index.html does.
         try {
             const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');
             for (const family of ['primary', 'secondary', 'tertiary', 'success', 'danger']) {
@@ -102,7 +102,7 @@
                 root.style.setProperty('--' + family + '-main', colours[family]);
                 root.classList.add('theme-' + family);
             }
-        } catch { /* Stando's colours until the account answers. */ }
+        } catch { /* Stando's colours until a course opens. */ }
         // The same test as scripts.js: the browser offers Web NFC on an HTTPS page.
         if ('NDEFReader' in window && window.isSecureContext) root.dataset.standoNfc = '';
     }
