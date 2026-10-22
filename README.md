@@ -42,7 +42,9 @@ one you registered, or a class device an administrator registered. On any other
 device, **Start scanning** opens **Settings → Trusted Devices** instead, where
 you register it. Each card tap records the student's
 attendance. A card that is not in the student list still records attendance,
-but plays the failure sound and turns the scan result orange. You can search
+but plays the failure sound and turns the scan result orange. The same card
+tapped again within a minute is not recorded twice: Stando says **Already
+scanned**, with the failure sound. You can search
 records by name, card, date or group to find an entry or make a correction.
 In a record's **Edit**, **Select** ticks several of its times to change their
 group or delete them together.
@@ -56,25 +58,28 @@ another group or day, or deletes them. **×** or Escape stops selecting.
 Scanning locks Stando so the phone can be left on a desk: the lock screen only
 records attendance, showing each student's name in large type under the clock.
 An unknown card shows ••••••••, there and in the scan result on an unlocked
-phone; its Card ID shows in the attendance list. Swipe down to see the cards scanned so far. Any lecturer of
+phone; its Card ID shows in the attendance list. Tap the count of recorded cards to see the cards scanned so far. Any lecturer of
 the course on screen taps their staff card to unlock it; a tap again (or 30
 seconds untouched) locks it again. This needs your own card in
 **Settings → Staff**; without it, scanning works but does not lock. A phone that
 has confirmed a card once also unlocks with it offline. The lock covers every
-Stando tab in the browser and stays after a reload. Without a card, **Sign
-out** ends the session instead.
+Stando tab in the browser and stays after a reload. The ways out sit on one
+**Exit** track at the foot of the lock screen, on **Staff ID** unless another is
+being tried: **Biometric** (below) and, without a card, **Sign out**, which ends
+the session instead.
 
-On your own phone, the **Fingerprint or PIN** switch on its row in **Settings →
+On your own phone, the **Biometric** switch on its row in **Settings →
 Trusted Devices** lets the lock screen open with the phone's fingerprint, face
-or PIN (Windows Hello on a computer): tap **Fingerprint or PIN** on it. It is
+or PIN (Windows Hello on a computer): tap **Biometric** on it. It is
 kept on that device for your account, works offline, and also lets scanning
 lock without a staff card. Anyone who can unlock the phone can then unlock
 Stando, so turn it on only on a phone that is yours.
 
-While scanning behind the lock, Stando fills the screen: the browser's address
-bar and tabs and the phone's status and navigation bars go, and cards are still
-read. The phone's Back, or a swipe from an edge, shows them again; the next tap
-on the lock screen fills it again. A website cannot lock the phone itself. For
+While locked, Stando fills the screen: the browser's address bar and tabs and
+the phone's status and navigation bars go, and cards are still read. The
+phone's Back, or a swipe from an edge, shows them again; the next tap on the
+lock screen fills it again. Unlocked, scanning goes on in the browser as usual,
+and the lock button fills the screen again. A website cannot lock the phone itself. For
 that, turn on Android's app pinning once in the phone's security settings
 (**App pinning**, or **Pin windows** on Samsung, asking for the PIN before
 unpinning), then pin Chrome from the recent apps screen. The phone then stays on Stando, keeps scanning, and leaves it only with
@@ -83,8 +88,7 @@ locked or dark screen reads no cards.
 
 The phone reads cards only while Stando is on screen, so the screen stays on
 whenever Stando is open. To spare an OLED screen, the lock screen moves by a
-couple of pixels every two minutes, and dims after a minute without a scan; the
-next card (or a tap, which does nothing else) brightens it again. If Stando goes off screen anyway (the power button, another app
+couple of pixels every two minutes. If Stando goes off screen anyway (the power button, another app
 or tab, or the phone's own NFC screen), cards tapped meanwhile are not recorded,
 and the lock screen says when and for how long, for example "Stando was off
 screen at 12:34 for 11 s".
@@ -123,7 +127,7 @@ as a check that it works, and a staff card is refused. This needs the current
 
 Each person's trusted devices are their own. Several people may register the
 same phone: each gets a row of their own, which only they rename, remove or set
-**Fingerprint or PIN** on. People see only their own devices; global
+**Biometric** on. People see only their own devices; global
 administrators see everyone's. A device a global administrator registers (a
 class tablet) is trusted for everyone, for scanning and for staff card sign-in,
 but not for students' cards.
@@ -136,7 +140,7 @@ back.
 
 ### Student list and exports
 
-Global administrators manage the student list in the **Student List** tab, where
+Global administrators manage the student list in the **Students** tab, where
 each student has a programme and the list can be filtered by programme. Opening
 it stops scanning. Upload an Excel or CSV file instead of entering everyone by
 hand: use **⋯ → Import → Download template** for a starting file, then review the
@@ -255,7 +259,7 @@ staff, each with their role, to search or narrow to lecturers, assistants or
 those chosen. Ticking someone adds them as their role says. In those courses
 they see the whole attendance list, scan on their own phone (no trusted device
 needed; scanning locks as it does for lecturers, unlocked with their staff card
-on a phone they trusted or with **Fingerprint or PIN**), choose the group, **Add** records, use **Add 1 hour** and
+on a phone they trusted or with **Biometric**), choose the group, **Add** records, use **Add 1 hour** and
 **Delete my latest time** on the rows they recorded, and send an unknown card's
 **Register student** request. They have no Edit, no ⋯ menu and no Add to EIS.
 Everywhere else they are a student. A lecturer's change to a record makes it
@@ -263,8 +267,8 @@ the lecturer's.
 
 Their staff card signs them in only on a trusted device, so a card someone else
 picks up opens nothing. They trust their own phone in their profile (**Card
-sign-in**), where they also rename or remove it and turn on **Fingerprint or
-PIN**; they see only their own devices.
+sign-in**), where they also rename or remove it and turn on **Biometric**; they
+see only their own devices.
 
 ### Course icon and colours
 

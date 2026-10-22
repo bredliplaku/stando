@@ -52,7 +52,7 @@ let programmeList = null;
 let dbProgrammeFilter = ''; // Student List: '' for all, 'none', or a programme id
 let courseDictionary = {};
 let loadingTasks = new Set(['session', 'auth', 'courses', 'database']);
-let cooldownUIDs = new Set();
+let recentScans = new Map(); // Card → when it was last recorded in this course (handleNfcReading)
 let nfcAbortController = null;
 let guestCourse = null; // Track the course global admin is "visiting" but not officially admin of
 let globalNotificationCount = 0;
@@ -732,7 +732,7 @@ function updateSegmentThumb(track, animate = true) {
         track.prepend(thumb);
         animate = false;
     }
-    const active = track.querySelector(':scope > :is(.course-button, .tab).active');
+    const active = track.querySelector(':scope > :is(.course-button, .tab, .scan-lock-exit-option).active');
     if (!active || track.offsetParent === null) {
         thumb.style.opacity = '0';
         return;
@@ -2683,7 +2683,7 @@ function trustedDevicesSectionHtml() {
                 ${trustedDevicesHtml((isGlobalAdmin
         ? 'Attendance is scanned only on trusted devices. You see everyone’s; a device you register is trusted for everyone, as a class tablet is.'
         : 'Attendance is scanned only on trusted devices: the ones you register, and the class devices an administrator registered. Only you see and change yours.') +
-        ' On the row of this device, <strong>Fingerprint or PIN</strong> lets the scan lock open with the lock of the device itself.')}
+        ' On the row of this device, <strong>Biometric</strong> lets the scan lock open with the device’s own fingerprint, face or PIN.')}
             </div>
         </div>`;
 }
@@ -2717,8 +2717,8 @@ function renderTrustedDevices(devices) {
     // (the key stays on the device, for their account).
     const lockSwitch = canRecordAnywhere() && deviceUnlockAvailable ? `
                     <label class="device-lock-switch" title="Unlock the scan lock with this device's fingerprint, face or PIN">
-                        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>Fingerprint or PIN</span>
-                        <input type="checkbox" role="switch" class="switch-input" aria-label="Unlock the scan lock with fingerprint or PIN" data-no-dirty${deviceUnlockId() ? ' checked' : ''}>
+                        <i class="fa-solid fa-fingerprint" aria-hidden="true"></i><span>Biometric</span>
+                        <input type="checkbox" role="switch" class="switch-input" aria-label="Biometric: unlock the scan lock with this device's fingerprint, face or PIN" data-no-dirty${deviceUnlockId() ? ' checked' : ''}>
                     </label>` : '';
     deviceBody.innerHTML = devices.length ? devices.map(d => {
         const mine = String(d.owner || '').toLowerCase() === me;
@@ -9359,7 +9359,7 @@ async function handleCourseChange(courseName) {
     selectedLogIds.clear();
     lastCheckedLogId = null;
     updateBulkUI();
-    cooldownUIDs.clear();
+    recentScans.clear();
     localStorage.setItem('last_active_course', courseName);
     updateRecordingMode();
     applyCourseAppearance(courseName);
@@ -13536,6 +13536,9 @@ function updateScanButtons() {
     renderScanButton();
 }
 
+const SCAN_REPEAT_MS = 60000; // The same card again within this is "Already scanned"
+const SCAN_ECHO_MS = 1500; // One tap read twice, ignored without a word
+
 /**
 * Handle NFC reading.
 * SCENARIO A: If logged out, checks if the card belongs to an Admin to log them in.
@@ -13646,30 +13649,40 @@ async function handleNfcReading({ serialNumber }) {
         return;
     }
 
-    // Cooldown
-    if (cooldownUIDs.has(finalUid)) return;
-    cooldownUIDs.add(finalUid);
-    setTimeout(() => { cooldownUIDs.delete(finalUid) }, 2000);
-
     if (!currentCourse) {
         showNotification('warning', 'No Course Selected', 'Please select a course before scanning');
         return;
     }
 
     const timestamp = new Date();
-    // A card missing from the student list sounds the failure tone to get attention.
     const isUnknown = !primaryUid;
-    playSound(!isUnknown);
-
-    // The name shows at once; saving and redrawing the list wait for that frame.
     // An unknown card carries its Card ID in place of a name, shown hidden (showScannedName).
     const scan = isUnknown
         ? { unknown: true, name: convertedUid || serialNumber, at: timestamp.getTime() }
         : { unknown: false, name: databaseMap[primaryUid]?.name || convertedUid, at: timestamp.getTime() };
+
+    // The same card again within a minute is not recorded twice: it says "Already
+    // scanned", with the failure tone. One tap read twice (a second and a half
+    // apart at most) is ignored without a word.
+    const lastAt = recentScans.get(finalUid);
+    const repeated = !!lastAt && scan.at - lastAt < SCAN_REPEAT_MS;
+    if (repeated && scan.at - lastAt < SCAN_ECHO_MS) return;
+    if (repeated) scan.repeatOf = lastAt;
+    else recentScans.set(finalUid, scan.at);
+
+    // A card missing from the student list sounds the failure tone to get attention.
+    playSound(!isUnknown && !repeated);
+
+    // The name shows at once; saving and redrawing the list wait for that frame.
     const lockedNow = isScanLockScreenShown();
     // Locked, the name appears under the clock; unlocked on a phone, as a full-screen result.
     if (lockedNow) showScanLockResult(scan);
     else if (window.innerWidth <= 700) showScanAnnouncement(scan);
+    else if (repeated) {
+        showNotification('warning', 'Already Scanned',
+            `${isUnknown ? 'This card' : scan.name} was scanned at ${formatScanLockTime(lastAt)}.`);
+    }
+    if (repeated) return;
 
     const course = currentCourse;
     let newLog = {
@@ -13733,22 +13746,24 @@ function showScannedName(el, { unknown, name }) {
     else el.removeAttribute('aria-label');
 }
 
-// Full-screen result of a scan: white with the name, or orange (the Card ID
-// hidden) when the card is not in the student list.
-function showScanAnnouncement({ unknown, name }) {
+// Full-screen result of a scan: white with the name, or orange when the card is
+// not in the student list (the Card ID hidden) or was scanned within the minute.
+function showScanAnnouncement({ unknown, name, repeatOf }) {
     const overlay = document.getElementById('scan-announcement-overlay');
     const nameEl = document.getElementById('scan-announcement-name');
     if (!overlay || !nameEl) return;
 
     overlay.classList.toggle('is-unknown', unknown);
+    overlay.classList.toggle('is-repeat', !!repeatOf);
     // A fresh icon element lets the icon kit render the new glyph.
-    overlay.querySelector('.scan-announcement-icon').innerHTML = unknown
-        ? '<i class="fa-solid fa-triangle-exclamation"></i>'
-        : '<i class="fa-solid fa-circle-check"></i>';
-    overlay.querySelector('.scan-announcement-title').textContent = unknown ? 'Unknown card' : 'Welcome';
-    overlay.querySelector('.scan-announcement-subtitle').textContent = unknown
-        ? 'Attendance recorded, but not in the student list'
-        : 'Attendance Recorded';
+    overlay.querySelector('.scan-announcement-icon').innerHTML = repeatOf
+        ? '<i class="fa-solid fa-clock-rotate-left"></i>'
+        : unknown ? '<i class="fa-solid fa-triangle-exclamation"></i>' : '<i class="fa-solid fa-circle-check"></i>';
+    overlay.querySelector('.scan-announcement-title').textContent = repeatOf
+        ? 'Already scanned' : unknown ? 'Unknown card' : 'Welcome';
+    overlay.querySelector('.scan-announcement-subtitle').textContent = repeatOf
+        ? `Recorded at ${formatScanLockTime(repeatOf)}`
+        : unknown ? 'Attendance recorded, but not in the student list' : 'Attendance Recorded';
     showScannedName(nameEl, { unknown, name });
 
     // Don't use openDialogMode/closeDialogMode - the overlay should NOT block scrolling
@@ -13764,8 +13779,8 @@ function showScanAnnouncement({ unknown, name }) {
             overlay.style.display = 'none';
         }, 150);
     };
-    // An unknown card stays up longer so it is noticed.
-    window.overlayTimeout = setTimeout(hideOverlay, unknown ? 4000 : 2500);
+    // An unknown or repeated card stays up longer so it is noticed.
+    window.overlayTimeout = setTimeout(hideOverlay, unknown || repeatOf ? 4000 : 2500);
     overlay.onclick = hideOverlay;
 }
 
@@ -14088,8 +14103,8 @@ async function startScanningLocked() {
             scanLockUnavailableShown = true;
             const devices = isAdmin ? 'Settings → Trusted Devices' : 'your profile';
             showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
-                ? `To lock Stando while scanning, add your card in Settings → Staff, or turn on Fingerprint or PIN for this device in ${devices}.`
-                : `To lock Stando while scanning, ask an administrator to add your staff card, or turn on Fingerprint or PIN for this device in ${devices}.`, 10000);
+                ? `To lock Stando while scanning, add your card in Settings → Staff, or turn on Biometric for this device in ${devices}.`
+                : `To lock Stando while scanning, ask an administrator to add your staff card, or turn on Biometric for this device in ${devices}.`, 10000);
         }
         return;
     }
@@ -14100,12 +14115,13 @@ async function startScanningLocked() {
     updateScanLockButton();
 }
 
-// While scanning behind the lock, Stando fills the screen: the browser's address
-// bar and tabs go, and so do the phone's status and navigation bars. Cards are
-// still read. The phone's Back, or a swipe from an edge, shows them again; the
-// next tap on the lock screen fills it again (a browser allows that only on a
-// tap). It ends with the scanning. A website cannot lock the phone itself:
-// Android's app pinning does that (README).
+// While locked, Stando fills the screen: the browser's address bar and tabs go,
+// and so do the phone's status and navigation bars. Cards are still read. The
+// phone's Back, or a swipe from an edge, shows them again; the next tap on the
+// lock screen fills it again (a browser allows that only on a tap). Unlocked,
+// the screen is the browser's again while scanning goes on; the lock button
+// fills it again (a lock by card or after a while waits for the next tap).
+// A website cannot lock the phone itself: Android's app pinning does that (README).
 function fillScreenForScanning() {
     if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
     document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Tried again on the next tap. */ });
@@ -14230,9 +14246,12 @@ function showScanLockScreen() {
                     <p class="scan-lock-alert" hidden></p>
                 </div>
                 <div class="scan-lock-footer">
-                    <p class="scan-lock-hint"><i class="fa-solid fa-id-badge" aria-hidden="true"></i><span>Tap your Staff ID to unlock</span></p>
-                    <button type="button" class="scan-lock-device" data-key="device" hidden><i class="fa-solid fa-fingerprint" aria-hidden="true"></i> Fingerprint or PIN</button>
-                    <button type="button" class="scan-lock-link" data-key="signout"><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i> Sign out</button>
+                    <div class="scan-lock-exit-label" id="scan-lock-exit-label">Exit</div>
+                    <div class="scan-lock-exit" role="group" aria-labelledby="scan-lock-exit-label">
+                        <button type="button" class="scan-lock-exit-option active" data-key="card" aria-pressed="true"><i class="fa-solid fa-id-badge tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Staff ID">Staff ID</span></button>
+                        <button type="button" class="scan-lock-exit-option" data-key="device" aria-pressed="false" aria-label="Biometric: this device's fingerprint, face or PIN"${deviceUnlockId() ? '' : ' hidden'}><i class="fa-solid fa-fingerprint tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Biometric">Biometric</span></button>
+                        <button type="button" class="scan-lock-exit-option" data-key="signout" aria-pressed="false"><i class="fa-solid fa-right-from-bracket tab-icon" aria-hidden="true"></i><span class="tab-label" data-label="Sign out">Sign out</span></button>
+                    </div>
                 </div>
             </div>
             <div class="scan-lock-sheet" hidden>
@@ -14250,55 +14269,25 @@ function showScanLockScreen() {
             if (event.key === 'Escape') closeScanLockList();
         });
         bindScanLockSwipe(screen);
-        bindScanLockDimming(screen);
         document.body.appendChild(screen);
+        const exit = screen.querySelector('.scan-lock-exit');
+        updateSegmentThumb(exit, false);
+        watchButtonRows(exit, followSegmentThumb);
         document.documentElement.classList.add('scan-locked');
+        setViewportCover(true);
         setScanLockInert(true);
         window.addEventListener('beforeunload', scanLockBeforeUnload);
         scanLockClockInterval = setInterval(updateScanLockScreen, 1000);
     }
     updateScanLockScreen();
-    wakeScanLock();
     // Without the attendance scanner (another tab, or after a reload), listen for the unlock card.
     if (!nfcReader) startScanLockReader();
     screen.focus({ preventScroll: true });
 }
 
-// --- Dimming: a minute without a scan or a touch dims the lock screen (less
-// light, and less wear on an AMOLED screen, which the clock's small drift every
-// two minutes also spares). A card or a touch wakes it; the first touch on a
-// dimmed screen only wakes it, so it never presses what lies under the finger.
-const SCAN_LOCK_DIM_MS = 60000;
-let scanLockDimTimer = null;
-
-function wakeScanLock() {
-    const screen = document.getElementById('scan-lock');
-    if (!screen) return;
-    screen.classList.remove('is-dimmed');
-    clearTimeout(scanLockDimTimer);
-    scanLockDimTimer = setTimeout(() => screen.classList.add('is-dimmed'), SCAN_LOCK_DIM_MS);
-}
-
-function bindScanLockDimming(screen) {
-    let wakingTap = false;
-    screen.addEventListener('pointerdown', () => {
-        wakingTap = screen.classList.contains('is-dimmed');
-        wakeScanLock();
-    }, true);
-    screen.addEventListener('click', (event) => {
-        if (!wakingTap) return;
-        wakingTap = false;
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        if (scanLockSession) fillScreenForScanning();
-    }, true);
-    screen.addEventListener('keydown', wakeScanLock, true);
-}
-
 function hideScanLockScreen() {
     const screen = document.getElementById('scan-lock');
     if (!screen) return;
-    clearTimeout(scanLockDimTimer);
     stopScanLockReader();
     clearInterval(scanLockClockInterval);
     scanLockClockInterval = null;
@@ -14307,7 +14296,20 @@ function hideScanLockScreen() {
     setScanLockInert(false);
     document.documentElement.classList.remove('scan-locked');
     screen.remove();
+    // The screen was filled for the lock: open, Stando scans on in the browser as usual.
+    leaveFullScreen();
+    setViewportCover(false);
     if (logsListStale) scheduleScanRender();
+}
+
+// Filled, a phone draws a black bar along its camera cut-out (where the status
+// bar was) unless the page may draw there. The lock may: its padding keeps clear
+// of the cut-out (env(safe-area-inset-top)), and its background fills the bar.
+function setViewportCover(cover) {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return;
+    const content = meta.content.replace(/,\s*viewport-fit=cover/, '');
+    meta.content = cover ? `${content}, viewport-fit=cover` : content;
 }
 
 // Runs every second; text is only written when it changes, so live regions stay quiet.
@@ -14327,7 +14329,12 @@ function updateScanLockScreen() {
     setText('.scan-lock-course-group', session !== 'Default' ? session : '');
     group.hidden = session === 'Default';
     setText('.scan-lock-clock', formatScanLockTime(Date.now()));
-    screen.querySelector('.scan-lock-device').hidden = !deviceUnlockId();
+    // Biometric where it is on for this device; the thumb follows the options.
+    const device = screen.querySelector('.scan-lock-exit-option[data-key="device"]');
+    if (device.hidden !== !deviceUnlockId()) {
+        device.hidden = !deviceUnlockId();
+        followSegmentThumb(device.parentElement);
+    }
     screen.classList.toggle('is-paused', !isScanning);
     setText('.scan-lock-title', isScanning ? 'Tap your Student ID' : 'Scanning is paused');
 
@@ -14354,7 +14361,6 @@ function updateScanLockScreen() {
 function flashScanLockStatus(message) {
     const status = document.querySelector('#scan-lock .scan-lock-status');
     if (!status) return;
-    wakeScanLock();
     status.dataset.message = '1';
     status.querySelector('.scan-lock-status-text').textContent = message;
     clearTimeout(status._timer);
@@ -14375,9 +14381,11 @@ function showScanLockResult(scan) {
     const stage = box.closest('.scan-lock-stage');
     box.querySelectorAll('.scan-lock-result-item:not(.is-leaving)').forEach(leaveScanLockResult);
     const item = document.createElement('span');
-    item.className = `scan-lock-result-item${scan.unknown ? ' is-unknown' : ''}`;
+    item.className = `scan-lock-result-item${scan.unknown ? ' is-unknown' : ''}${scan.repeatOf ? ' is-repeat' : ''}`;
+    const [icon, note] = scan.repeatOf ? ['fa-clock-rotate-left', 'Already scanned']
+        : scan.unknown ? ['fa-triangle-exclamation', 'Not in the student list'] : ['fa-circle-check', 'Recorded'];
     item.innerHTML = `<span class="scan-lock-result-name"></span>
-        <span class="scan-lock-result-note"><i class="fa-solid ${scan.unknown ? 'fa-triangle-exclamation' : 'fa-circle-check'}" aria-hidden="true"></i>${scan.unknown ? 'Not in the student list' : 'Recorded'}</span>`;
+        <span class="scan-lock-result-note"><i class="fa-solid ${icon}" aria-hidden="true"></i>${note}</span>`;
     showScannedName(item.querySelector('.scan-lock-result-name'), scan);
     box.appendChild(item);
     stage?.classList.add('has-result');
@@ -14395,12 +14403,11 @@ function leaveScanLockResult(item) {
     setTimeout(() => item.remove(), 400); // Without animations there is no animationend.
 }
 
-// --- Scanned cards: swipe down for a floating list, newest first ---
+// --- Scanned cards: the count opens a floating list, newest first ---
 let scanLockListTimer = null;
 const SCAN_LOCK_LIST_IDLE_MS = 20000; // An open list folds away after this long untouched
 
 function noteScanLockScan(scan) {
-    wakeScanLock();
     scanLockScans.unshift(scan);
     updateScanLockScreen();
     const items = document.querySelector('#scan-lock .scan-lock-sheet:not([hidden]) .scan-lock-list-items');
@@ -14465,8 +14472,9 @@ function armScanLockListIdle() {
     scanLockListTimer = setTimeout(closeScanLockList, SCAN_LOCK_LIST_IDLE_MS);
 }
 
-// Swiping down opens the list. Open, the list follows a downward drag from its
-// top and folds away past a short distance; anything less springs back.
+// Open, the list follows a downward drag from its top and folds away past a
+// short distance; anything less springs back. A swipe down on the lock itself
+// does nothing: filled, that is how the phone's bars come back.
 function bindScanLockSwipe(screen) {
     let start = null;
     screen.addEventListener('touchstart', (event) => {
@@ -14497,15 +14505,10 @@ function bindScanLockSwipe(screen) {
 
     const end = (event) => {
         if (!start) return;
-        const touch = event.changedTouches[0];
-        const dx = touch.clientX - start.x;
-        const dy = touch.clientY - start.y;
-        const downward = dy > 60 && Math.abs(dx) < dy;
+        const dy = event.changedTouches[0].clientY - start.y;
         const list = screen.querySelector('.scan-lock-list');
         list.classList.remove('is-dragging');
-        if (!isScanLockListOpen()) {
-            if (downward && !start.inSheet) openScanLockList();
-        } else if (start.dragging) {
+        if (start.dragging && isScanLockListOpen()) {
             if (dy > 90) closeScanLockList();
             else list.style.transform = '';
         }
@@ -14520,9 +14523,11 @@ function bindScanLockSwipe(screen) {
     });
 }
 
+// The ways out, on one Exit track. Staff ID (tapping the staff card on the
+// phone) is chosen, and is again whenever another way does not open the lock.
 // Sign out is the way out without a staff card (forgotten, or the phone is
 // offline and has never confirmed it); it gives nobody else access. Where the
-// lecturer turned it on, the device's own fingerprint or PIN unlocks it too.
+// lecturer turned it on, Biometric asks the device's own fingerprint, face or PIN.
 function handleScanLockClick(event) {
     const key = event.target.closest('[data-key]')?.dataset.key;
     // A tap fills the screen again, unless it asks the device or signs out.
@@ -14531,14 +14536,30 @@ function handleScanLockClick(event) {
         openScanLockList();
     } else if (key === 'close-list') {
         closeScanLockList();
+    } else if (key === 'card') {
+        selectScanLockExit('card');
+        flashScanLockStatus('Tap your Staff ID to unlock.');
     } else if (key === 'signout') {
         // The lock stays until the session is gone, which offline takes a moment.
+        selectScanLockExit('signout');
         handleSignoutClick();
-    } else if (key === 'device') {
+    } else if (key === 'device' && !scanLockVerifying) {
+        selectScanLockExit('device');
         verifyWithDevice().then(verified => {
             if (verified && isScanLockScreenShown()) unlockScanner();
+            else selectScanLockExit('card');
         });
     }
+}
+
+function selectScanLockExit(key) {
+    const exit = document.querySelector('#scan-lock .scan-lock-exit');
+    if (!exit) return;
+    exit.querySelectorAll('.scan-lock-exit-option').forEach(option => {
+        option.classList.toggle('active', option.dataset.key === key);
+        option.setAttribute('aria-pressed', String(option.dataset.key === key));
+    });
+    updateSegmentThumb(exit);
 }
 
 function startScanLockReader() {
@@ -14628,7 +14649,10 @@ function syncScanLockFromStorage() {
 }
 
 function setupScanLock() {
-    document.getElementById('scan-lock-btn')?.addEventListener('click', lockScanner);
+    document.getElementById('scan-lock-btn')?.addEventListener('click', () => {
+        lockScanner();
+        if (isScanLockScreenShown()) fillScreenForScanning();
+    });
     deviceUnlockSupported().then(available => { deviceUnlockAvailable = available; });
 
     // Any touch or key while unlocked and scanning restarts the relock countdown.
@@ -14646,7 +14670,6 @@ function setupScanLock() {
             noteScanLockHidden();
         } else {
             noteScanLockReturn();
-            wakeScanLock();
         }
     });
     window.addEventListener('pagehide', noteScanLockHidden);

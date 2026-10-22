@@ -5217,13 +5217,15 @@ body.signed-out #main-container {
 /* The kit's <svg> draws outside its box by default; the closing icon must not. */
 .tab .tab-icon,
 .settings-tab-btn .tab-icon,
-.course-button .tab-icon {
+.course-button .tab-icon,
+.scan-lock-exit-option .tab-icon {
     overflow: hidden;
 }
 
 .tab.active .tab-icon,
 .settings-tab-btn.active .tab-icon,
-.course-button.active > .tab-icon {
+.course-button.active > .tab-icon,
+.scan-lock-exit-option.active > .tab-icon {
     width: 0;
     margin-right: 0;
     opacity: 0;
@@ -5247,7 +5249,8 @@ body.signed-out #main-container {
 
 .tab.active .tab-label,
 .settings-tab-btn.active .tab-label,
-.course-button.active > .tab-label {
+.course-button.active > .tab-label,
+.scan-lock-exit-option.active > .tab-label {
     font-weight: 700;
 }
 
@@ -8345,23 +8348,24 @@ body.is-admin .toolbar-menu.admin-only {
 }
 
 /* =========================================================================
-   Scan results: an unknown card turns the overlay orange
+   Scan results: an unknown card, or one scanned within the minute, turns the
+   overlay orange
    ========================================================================= */
 #scan-announcement-overlay {
     z-index: 10046; /* Above the scan lock screen */
 }
 
-#scan-announcement-overlay.is-unknown {
+#scan-announcement-overlay:is(.is-unknown, .is-repeat) {
     background-color: color-mix(in srgb, var(--secondary-800) 97%, transparent);
     color: #fff;
 }
 
-.dark-mode #scan-announcement-overlay.is-unknown {
+.dark-mode #scan-announcement-overlay:is(.is-unknown, .is-repeat) {
     background-color: color-mix(in srgb, var(--secondary-900) 97%, transparent);
     color: #fff;
 }
 
-#scan-announcement-overlay.is-unknown .scan-announcement-icon {
+#scan-announcement-overlay:is(.is-unknown, .is-repeat) .scan-announcement-icon {
     color: #fff;
 }
 
@@ -8370,12 +8374,12 @@ body.is-admin .toolbar-menu.admin-only {
     letter-spacing: 0.04em;
 }
 
-#scan-announcement-overlay.is-unknown .scan-announcement-subtitle {
+#scan-announcement-overlay:is(.is-unknown, .is-repeat) .scan-announcement-subtitle {
     padding: 0 24px;
     opacity: 1;
 }
 
-#scan-announcement-overlay.is-unknown::before {
+#scan-announcement-overlay:is(.is-unknown, .is-repeat)::before {
     background: radial-gradient(circle, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.25) 30%, rgba(255, 255, 255, 0) 60%);
 }
 
@@ -8418,7 +8422,7 @@ body.is-admin .toolbar-menu.admin-only {
     background: #546e7a;
 }
 
-/* No pull-to-refresh or bounce while locked: a swipe down opens the scanned cards. */
+/* No pull-to-refresh or bounce while locked. */
 html.scan-locked,
 html.scan-locked body {
     overflow: hidden;
@@ -8705,59 +8709,82 @@ html.scan-locked body {
     -webkit-tap-highlight-color: transparent;
 }
 
-/* One row at the foot: how to unlock on the left, cut short with "…" when the
-   row is too narrow, and Sign out on the right. */
+/* At the foot, the ways out on one track under a quiet "Exit" label (as the
+   Group label on phones): Staff ID, Biometric where it is on, and Sign out.
+   The thumb rests on Staff ID and slides to the way being tried
+   (handleScanLockClick); the chosen one drops its icon, as tabs do. */
 .scan-lock-footer {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    gap: 8px;
     padding-top: 12px;
 }
 
-.scan-lock-hint {
-    flex: 1 1 auto;
+.scan-lock-exit-label {
     display: flex;
     align-items: center;
-    gap: 8px;
-    min-width: 0;
-    margin: 0;
-    font-size: 0.9375rem;
-    font-weight: 600;
-    opacity: 0.75;
-    text-align: left;
+    gap: 10px;
+    color: var(--lock-muted);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    line-height: 1.2;
+    text-transform: uppercase;
 }
 
-.scan-lock-hint > i,
-.scan-lock-hint > svg {
-    flex-shrink: 0;
+.scan-lock-exit-label::before,
+.scan-lock-exit-label::after {
+    content: '';
+    flex: 1 1 auto;
+    height: 1px;
+    background: var(--lock-card-border);
 }
 
-.scan-lock-hint > span {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.scan-lock-exit {
+    position: relative;
+    display: flex;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 16px;
+    background: var(--lock-chip);
 }
 
-.scan-lock .scan-lock-link,
-.scan-lock .scan-lock-link:hover,
-.scan-lock .scan-lock-link:active {
-    flex-shrink: 0;
-    display: inline-flex;
+.scan-lock .scan-lock-exit > .scan-lock-exit-option {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: 1 1 0;
     align-items: center;
-    gap: 6px;
-    padding: 8px 4px;
+    justify-content: center;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 6px;
     border: 0;
-    background: none;
+    border-radius: 12px;
+    background: transparent;
     color: var(--lock-muted);
     font-size: 0.875rem;
     font-weight: 600;
-    text-decoration: none;
+    white-space: nowrap;
     transform: none;
+    cursor: pointer;
+}
+
+.scan-lock .scan-lock-exit > .scan-lock-exit-option.active {
+    color: var(--lock-text);
+}
+
+.scan-lock .scan-lock-exit > .scan-lock-exit-option[hidden] {
+    display: none;
+}
+
+.scan-lock .scan-lock-exit > .scan-lock-exit-option:focus-visible {
+    outline: 2px solid var(--lock-accent);
+    outline-offset: 1px;
 }
 
 /* --- Scanned cards: floating cards rising from the bottom, newest first.
-   A swipe down opens them; dragging the list down folds it away. --- */
+   The count opens them; dragging the list down folds it away. --- */
 .scan-lock-sheet {
     position: fixed;
     inset: 0;
@@ -11201,7 +11228,7 @@ body:not(.is-admin) .list-toolbar .database-actions {
     font-weight: 700;
 }
 
-.scan-lock-result-item.is-unknown .scan-lock-result-note {
+.scan-lock-result-item:is(.is-unknown, .is-repeat) .scan-lock-result-note {
     background: var(--lock-unknown-bg);
     color: var(--lock-unknown);
 }
@@ -14713,56 +14740,8 @@ body.is-assistant .sync-auth-container {
     }
 }
 
-.scan-lock-footer {
-    flex-wrap: wrap;
-}
-
-.scan-lock .scan-lock-device,
-.scan-lock .scan-lock-device:hover,
-.scan-lock .scan-lock-device:active {
-    display: inline-flex;
-    flex-shrink: 0;
-    align-items: center;
-    gap: 8px;
-    margin: 0;
-    padding: 9px 16px;
-    border: 1px solid var(--lock-card-border);
-    border-radius: 999px;
-    background: var(--lock-chip);
-    box-shadow: none;
-    color: var(--lock-text);
-    font: inherit;
-    font-size: 0.875rem;
-    font-weight: 600;
-    filter: none;
-    transform: none;
-    cursor: pointer;
-}
-
-.scan-lock .scan-lock-device[hidden] {
-    display: none;
-}
-
-/* A minute without a scan or a touch dims the lock screen (wakeScanLock in
-   scripts.js); a card or a touch brings it back at once. */
-.scan-lock::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: 20;
-    background: #000;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-}
-
-.scan-lock.is-dimmed::after {
-    opacity: 0.72;
-    transition-duration: 1.5s;
-}
-
 /* =========================================================================
-   Header tabs (Courses, Student List): the selected tab's pressed look rides on
+   Header tabs (Courses, Students): the selected tab's pressed look rides on
    a thumb that slides between them, as the group tracks' does
    (updateSegmentThumb). Hovering lays a very faint wash, the thumb's own size
    and shape; in dark mode the pressed look is deeper.
