@@ -1,7 +1,8 @@
 {
   "name": "Smart Tap Attendance Network & Data Organiser",
   "short_name": "Stando",
-  "id": "../",
+  "description": "Course attendance in one place: tap student cards to record it, check it and request absences.",
+  "id": "/stando/",
   "start_url": "../",
   "scope": "../",
   "icons": [
@@ -30,7 +31,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#f4f4f4",
+  "background_color": "#f4f4f4",
   "display": "standalone"
 }

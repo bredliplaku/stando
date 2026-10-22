@@ -5447,6 +5447,18 @@ body.signed-out #main-container {
     pointer-events: none;
 }
 
+/* Each course's icon takes a hint of its own primary colour (populateCourseButtons):
+   the button's text colour, tinted, so courses can be told apart at a glance
+   without the row turning loud. Mixed from the text colour, it suits light and
+   dark alike. A guest course's orange button keeps its plain icon. */
+#course-buttons-container .course-button .course-button-icon {
+    color: color-mix(in oklch, var(--course-colour, currentColor) 50%, currentColor);
+}
+
+#course-buttons-container .course-button.btn-orange .course-button-icon {
+    color: inherit;
+}
+
 .course-button:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
@@ -14318,17 +14330,20 @@ body.is-assistant .sync-auth-container {
     max-width: 1000px;
 }
 
-/* Over Settings it takes Settings' size, so the one beneath never shows round its
-   edges: the course editor on a computer, and every sheet over it on a phone. */
-.dialog-backdrop:has(> .settings-dialog) ~ .dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop) > .dialog.course-editor {
-    height: 85vh;
-    height: 85dvh;
+/* On a computer, over Settings it takes Settings' size, so the one beneath never
+   shows round its edges. (On a phone stacked sheets step down instead: below.) */
+@media (min-width: 769px) {
+    .dialog-backdrop:has(> .settings-dialog) ~ .dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop) > .dialog.course-editor {
+        height: 85vh;
+        height: 85dvh;
+    }
 }
 
+/* Phones: a sheet opened over another reaches up to just under that one's title
+   bar (placeStackedSheets), so the bars of what is open read down like a tree. */
 @media (max-width: 768px) {
-    .dialog-backdrop:has(> .settings-dialog) ~ .dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop) > .dialog {
-        height: calc(100vh - 12px);
-        height: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+    .dialog-backdrop.is-stacked > .dialog {
+        max-height: calc(100% - var(--sheet-top, 0px));
     }
 }
 
@@ -14749,16 +14764,19 @@ body.is-assistant .sync-auth-container {
 /* =========================================================================
    Header tabs (Courses, Student List): the selected tab's pressed look rides on
    a thumb that slides between them, as the group tracks' does
-   (updateSegmentThumb). Hovering draws a light ring with a faint wash, seen on
-   the banner in light and dark alike; in dark mode the pressed look is deeper.
+   (updateSegmentThumb). Hovering lays a very faint wash, the thumb's own size
+   and shape; in dark mode the pressed look is deeper.
    ========================================================================= */
 .tabs {
     position: relative;
 }
 
+/* Equal halves, so the thumb and the hover are the same size on either tab. */
 .tabs > .tab {
     position: relative;
     z-index: 1;
+    flex: 1 1 0;
+    min-width: 0;
 }
 
 .tabs > .tab.active,
@@ -14775,18 +14793,28 @@ body.is-assistant .sync-auth-container {
 }
 
 .tabs > .tab:hover {
-    border-color: rgba(255, 255, 255, 0.45);
+    border-color: transparent;
 }
 
-.tab:hover:not(.active, :active) {
-    background-color: rgba(255, 255, 255, 0.08);
+/* The wash sits on the tab's border box, scaled as the thumb is, under its label. */
+.tabs > .tab::before {
+    content: '';
+    position: absolute;
+    inset: -2px;
+    z-index: -1;
+    border-radius: var(--border-radius-lg);
+    background: rgba(255, 255, 255, 0.05);
+    opacity: 0;
+    scale: 0.96;
+    pointer-events: none;
+    transition: opacity 0.15s ease;
+}
+
+.tabs > .tab:hover:not(.active, :active)::before {
+    opacity: 1;
 }
 
 .dark-mode .tabs > .segment-thumb {
     background: rgba(0, 0, 0, 0.34);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
-
-.dark-mode .tabs > .tab:hover {
-    border-color: rgba(255, 255, 255, 0.35);
 }

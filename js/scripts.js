@@ -1781,17 +1781,13 @@ function setupEventListeners() {
         if (e.key === 'Escape' || e.key === 'Esc') {
             // An open programme list closes first; its field handles the key.
             if (e.target?.closest?.('.combo.is-open')) return;
-            const openBackdrops = document.querySelectorAll('.dialog-backdrop');
-            if (openBackdrops.length > 0) {
-                const topBackdrop = openBackdrops[openBackdrops.length - 1];
-                if (topBackdrop.classList.contains('confirmation-backdrop')) {
-                    topBackdrop.remove();
-                    if (document.querySelectorAll('.dialog-backdrop').length === 0) closeDialogMode();
-                    return;
+            const topBackdrop = [...document.querySelectorAll('.dialog-backdrop')].pop();
+            if (topBackdrop) {
+                if (!topBackdrop.classList.contains('confirmation-backdrop')) {
+                    e.preventDefault();
+                    e.stopPropagation();
                 }
-                e.preventDefault();
-                e.stopPropagation();
-                dismissDialog(topBackdrop);
+                closeTopDialog();
                 return;
             }
         }
@@ -1827,6 +1823,7 @@ function setupEventListeners() {
     // Auto-snapshot input values and sync dialog scroll mode on dialog creation/removal
     const dialogObserver = new MutationObserver((mutations) => {
         syncDialogMode();
+        let dialogsChanged = false;
         mutations.forEach(mutation => {
             mutation.addedNodes.forEach(node => {
                 if (node.nodeType === 1) {
@@ -1837,6 +1834,7 @@ function setupEventListeners() {
                     if (host && host !== node) markDialogDismiss(host);
                     const backdrops = node.classList?.contains('dialog-backdrop') ? [node] : node.querySelectorAll?.('.dialog-backdrop');
                     if (backdrops && backdrops.length > 0) {
+                        dialogsChanged = true;
                         backdrops.forEach(addDialogCloseButton);
                         backdrops.forEach(bd => window.snapshotDialogInputs(bd));
                         setTimeout(() => {
@@ -1850,14 +1848,22 @@ function setupEventListeners() {
                 mutation.removedNodes.forEach(node => {
                     if (node.nodeType !== 1) return;
                     const backdrops = node.matches('.dialog-backdrop') ? [node] : node.querySelectorAll('.dialog-backdrop');
+                    if (backdrops.length) dialogsChanged = true;
                     backdrops.forEach(backdrop => backdrop.dispatchEvent(new Event('dialogclose')));
                 });
                 syncDialogMode();
                 setTimeout(syncDialogMode, 50);
             }
         });
+        // Before the first paint of a new dialog: its place in the stack and its history entry.
+        if (dialogsChanged) {
+            placeStackedSheets();
+            syncDialogHistory();
+        }
     });
     dialogObserver.observe(document.body, { childList: true, subtree: true });
+    window.addEventListener('resize', placeStackedSheets);
+    window.addEventListener('popstate', closeDialogOnBack);
 }
 
 // --- Universal Dialog Dirty Checking & Unsaved Changes Protection ---
@@ -2023,6 +2029,84 @@ function dismissDialog(backdrop) {
     else confirmCloseDialog(backdrop);
 }
 
+// Escape, or Back while a dialog is open: the top dialog closes. A confirmation
+// takes it as its "no"; any other closes as its × does (asking first when it
+// has changes).
+function closeTopDialog() {
+    const top = [...document.querySelectorAll('.dialog-backdrop')].pop();
+    if (!top) return;
+    if (top.classList.contains('confirmation-backdrop')) {
+        top.remove();
+        if (document.querySelectorAll('.dialog-backdrop').length === 0) closeDialogMode();
+    } else {
+        dismissDialog(top);
+    }
+}
+
+// Phones: a sheet opened over another reaches up to just under that one's title
+// bar, so the bars of what is open read down like a tree. Each sheet's limit is
+// set in turn, as it moves the bar the next one stops under. (Confirmations stay
+// as they are.)
+function placeStackedSheets() {
+    let barBottom = 0;
+    document.querySelectorAll('.dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop)').forEach(backdrop => {
+        backdrop.classList.toggle('is-stacked', barBottom > 0);
+        if (barBottom) backdrop.style.setProperty('--sheet-top', `${barBottom}px`);
+        else backdrop.style.removeProperty('--sheet-top');
+        const bar = backdrop.querySelector(':scope > .dialog > :is(.dialog-title, .settings-modal-header, .sp-header)');
+        if (!bar) return;
+        // Its bottom from the top of the screen (offsets ignore a sheet still sliding in).
+        barBottom = bar.offsetHeight;
+        for (let el = bar; el && el !== backdrop; el = el.offsetParent) barBottom += el.offsetTop;
+    });
+}
+
+// --- Back closes dialogs ---
+// Each open dialog has a history entry of its own at the same address, so Back
+// (the browser's button, a mouse's back button, Android's back gesture, iOS's
+// swipe) closes the top dialog instead of leaving the page. Closing one any other
+// way steps back over its entry. Entries carry this page's id, so ones left by an
+// earlier load of the page (a reload with a dialog open) are not counted.
+const DIALOG_HISTORY_PAGE = Math.random().toString(36).slice(2);
+let dialogHistoryPending = false;
+let dialogHistoryTimer = 0;
+let suppressDialogExit = false;
+
+function dialogHistoryDepth() {
+    const state = history.state;
+    return state?.standoPage === DIALOG_HISTORY_PAGE ? Number(state.standoDialog) || 0 : 0;
+}
+
+function syncDialogHistory() {
+    if (dialogHistoryPending) return;
+    const open = document.querySelectorAll('.dialog-backdrop').length;
+    let depth = dialogHistoryDepth();
+    try {
+        while (depth < open) history.pushState({ standoPage: DIALOG_HISTORY_PAGE, standoDialog: ++depth }, '');
+        if (depth > open) {
+            // Steps back over the closed dialogs' entries; nothing else moves until it lands.
+            dialogHistoryPending = true;
+            clearTimeout(dialogHistoryTimer);
+            dialogHistoryTimer = setTimeout(() => { dialogHistoryPending = false; syncDialogHistory(); }, 1000);
+            history.go(open - depth);
+        }
+    } catch { /* A browser limiting history changes: Back works as usual meanwhile. */ }
+}
+
+// Where the browser animates Back itself (Android's predictive back), the dialog
+// goes without its own way out. One that stays (it asks about its changes) gets
+// its entry back.
+function closeDialogOnBack(event) {
+    if (dialogHistoryPending) {
+        dialogHistoryPending = false;
+        clearTimeout(dialogHistoryTimer);
+    } else if (dialogHistoryDepth() < document.querySelectorAll('.dialog-backdrop').length) {
+        suppressDialogExit = event.hasUAVisualTransition === true;
+        try { closeTopDialog(); } finally { suppressDialogExit = false; }
+    }
+    syncDialogHistory();
+}
+
 function addDialogCloseButton(backdrop) {
     if (backdrop.matches('.confirmation-backdrop, .idle-backdrop')) return;
     const title = backdrop.querySelector(':scope > .dialog > .dialog-title');
@@ -2048,7 +2132,7 @@ function addDialogCloseButton(backdrop) {
 // sits after <body>, so the count of open dialogs and lookups by id never meet it.
 function playDialogExit(backdrop) {
     const dialog = backdrop.querySelector(':scope > .dialog');
-    if (!dialog?.offsetWidth || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    if (!dialog?.offsetWidth || suppressDialogExit || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const ghost = backdrop.cloneNode(true);
     const copy = ghost.querySelector(':scope > .dialog');
     const place = getComputedStyle(backdrop);
@@ -3820,9 +3904,10 @@ function showMainContent() {
 }
 
 // Leaves the address on a course without adding a history entry, so Back never
-// returns to a link that only redirects again.
+// returns to a link that only redirects again. The entry keeps its state, which
+// marks an open dialog's entry (syncDialogHistory).
 function replaceRouteCourse(course) {
-    history.replaceState(null, '', window.location.pathname + window.location.search + (course ? '#' + encodeURIComponent(course) : ''));
+    history.replaceState(history.state, '', window.location.pathname + window.location.search + (course ? '#' + encodeURIComponent(course) : ''));
 }
 
 // event is the hashchange (Back, Forward, an edited address); without one, this
@@ -3854,7 +3939,7 @@ function handleRouting(event) {
         const defaultCourse = (currentCourse && availableCourses.includes(currentCourse)) ? currentCourse : (availableCourses.length > 0 ? availableCourses[0] : '');
         if (defaultCourse) {
             // Use replaceState to avoid firing hashchange again
-            history.replaceState(null, null, '#' + defaultCourse);
+            history.replaceState(history.state, null, '#' + defaultCourse);
             if (currentCourse !== defaultCourse) {
                 handleCourseChange(defaultCourse);
             }
@@ -5047,7 +5132,7 @@ async function initGoogleApi() {
         if (originalHash !== null) {
             sessionStorage.removeItem('redirect_hash');
             if (history.replaceState) {
-                history.replaceState(null, null, window.location.pathname + window.location.search + originalHash);
+                history.replaceState(history.state, null, window.location.pathname + window.location.search + originalHash);
             }
         }
 
@@ -5102,7 +5187,7 @@ async function onSuccessfulAuth(isRestore = false) {
     // Deep link from an email: open the RLS-protected attachment after sign-in
     const attachmentParam = new URLSearchParams(window.location.search).get('attachment');
     if (attachmentParam) {
-        history.replaceState(null, null, window.location.pathname + window.location.hash);
+        history.replaceState(history.state, null, window.location.pathname + window.location.hash);
         resolveEmailAttachmentLink(attachmentParam);
     }
 
@@ -14989,7 +15074,8 @@ function populateCourseButtons() {
         const code = getCleanCourseCode(course, courseInfoMap[course]?.eisId);
         const repeated = coursesToDisplay.some(other => other !== course && getCleanCourseCode(other) === code);
         const offering = repeated ? String(courseInfoMap[course]?.eisId || courseInfoMap[course]?.startDate || course) : '';
-        return { course, code, title: getCourseTitle(course), offering, guest: course === guestCourse, icon: faIconClass(courseInfoMap[course]?.icon) };
+        return { course, code, title: getCourseTitle(course), offering, guest: course === guestCourse, icon: faIconClass(courseInfoMap[course]?.icon),
+            colour: cleanColourTheme(courseInfoMap[course]?.theme).primary || THEME_FAMILIES[0].fallback };
     });
     // Courses in two or more programmes sit under a heading for each.
     const groups = groupCoursesByProgramme(coursesToDisplay);
@@ -15001,12 +15087,14 @@ function populateCourseButtons() {
         courseButtonsContainer.dataset.signature = signature;
         courseButtonsContainer.innerHTML = '';
         courseButtonsContainer.classList.toggle('is-grouped', !!groups);
-        const makeButton = ({ course, code, title, offering, guest, icon }, copy = '') => {
+        const makeButton = ({ course, code, title, offering, guest, icon, colour }, copy = '') => {
             const button = document.createElement('div');
             button.setAttribute('class', 'course-button');
             button.setAttribute('role', 'button');
             button.tabIndex = 0;
             button.dataset.course = course;
+            // Its icon is in the course's own primary colour.
+            button.style.setProperty('--course-colour', colour);
             if (copy) button.dataset.copy = copy; // Which programme's copy of the course
 
             // Mark guest courses visually
