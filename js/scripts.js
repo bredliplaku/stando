@@ -732,7 +732,7 @@ function updateSegmentThumb(track, animate = true) {
         track.prepend(thumb);
         animate = false;
     }
-    const active = track.querySelector(':scope > .course-button.active');
+    const active = track.querySelector(':scope > :is(.course-button, .tab).active');
     if (!active || track.offsetParent === null) {
         thumb.style.opacity = '0';
         return;
@@ -1474,6 +1474,7 @@ function setupEventListeners() {
             });
             tab.classList.add('active');
             tab.setAttribute('aria-selected', 'true');
+            updateSegmentThumb(tab.parentElement);
             closeRowMenus();
             updateAppHeader();
 
@@ -1487,6 +1488,15 @@ function setupEventListeners() {
             // Show or hide the floating date bar for the tab now in view.
             updateStickyDateBar(true);
         });
+    });
+
+    // The selected tab's look slides between the tabs on a thumb. It finds its
+    // place when the tabs first show or resize, and again once the chosen tab's
+    // icon has closed (which changes the tabs' widths).
+    const tabStrip = document.querySelector('.tabs');
+    watchButtonRows(tabStrip, followSegmentThumb);
+    tabStrip?.addEventListener('transitionend', (event) => {
+        if (event.propertyName === 'width' && event.target.classList?.contains('tab-icon')) followSegmentThumb(tabStrip);
     });
 
     // Add this inside setupEventListeners()
@@ -2031,6 +2041,61 @@ function addDialogCloseButton(backdrop) {
     }
     markDialogDismiss(backdrop);
 }
+
+// A dialog leaves as it came: fading on a computer, sliding down on a phone.
+// Code closes one by removing its backdrop, and that still happens at once; just
+// before, a still copy takes its place to play the way out. The copy is inert and
+// sits after <body>, so the count of open dialogs and lookups by id never meet it.
+function playDialogExit(backdrop) {
+    const dialog = backdrop.querySelector(':scope > .dialog');
+    if (!dialog?.offsetWidth || document.hidden || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const ghost = backdrop.cloneNode(true);
+    const copy = ghost.querySelector(':scope > .dialog');
+    const place = getComputedStyle(backdrop);
+    const veil = getComputedStyle(backdrop, '::before');
+    ghost.removeAttribute('id');
+    ghost.className = 'dialog-ghost';
+    ghost.inert = true;
+    Object.assign(ghost.style, {
+        width: `${backdrop.offsetWidth}px`, height: `${backdrop.offsetHeight}px`, zIndex: place.zIndex,
+        alignItems: place.alignItems, justifyContent: place.justifyContent, padding: place.padding
+    });
+    ghost.style.setProperty('--ghost-veil', veil.backgroundColor);
+    ghost.style.setProperty('--ghost-blur', veil.backdropFilter || veil.webkitBackdropFilter || 'none');
+    // The dialog keeps its size and where each part was scrolled to.
+    Object.assign(copy.style, {
+        width: `${dialog.offsetWidth}px`, height: `${dialog.offsetHeight}px`,
+        minHeight: '0', maxWidth: 'none', maxHeight: 'none'
+    });
+    const copies = ghost.querySelectorAll('*');
+    const scrolled = [];
+    backdrop.querySelectorAll('*').forEach((el, i) => {
+        if (el.scrollTop || el.scrollLeft) scrolled.push([copies[i], el.scrollTop, el.scrollLeft]);
+    });
+    // A copied radio would untick its namesake still on the page.
+    ghost.querySelectorAll('input[type="radio"][name]').forEach(input => input.removeAttribute('name'));
+    document.documentElement.appendChild(ghost);
+    scrolled.forEach(([el, top, left]) => { el.scrollTop = top; el.scrollLeft = left; });
+    const done = () => ghost.remove();
+    copy.addEventListener('animationend', (event) => { if (event.target === copy) done(); });
+    setTimeout(done, 500);
+}
+
+// Every way of closing a dialog removes its backdrop with one of these two.
+const removeElement = Element.prototype.remove;
+Element.prototype.remove = function () {
+    if (this.parentNode === document.body && this.classList.contains('dialog-backdrop')) {
+        try { playDialogExit(this); } catch { /* It closes without its way out. */ }
+    }
+    return removeElement.call(this);
+};
+const removeChildNode = Node.prototype.removeChild;
+Node.prototype.removeChild = function (child) {
+    if (this === document.body && child?.parentNode === this && child.classList?.contains('dialog-backdrop')) {
+        try { playDialogExit(child); } catch { /* It closes without its way out. */ }
+    }
+    return removeChildNode.call(this, child);
+};
 
 // Searchable selects (programmes, courses): a search box over the list. Typing
 // narrows it to the best matches (see matchTier); arrows, Enter and the pointer
@@ -4091,6 +4156,7 @@ function appearanceFieldsHtml(data, { code, title, editable }) {
                         <input type="color" id="theme-${family.id}" value="${value(family)}" aria-label="${family.label} colour (${family.hint.toLowerCase()})"${off}>
                         <input type="text" class="form-control theme-hex" id="theme-${family.id}-code" value="${value(family)}" maxlength="7" spellcheck="false" autocomplete="off" aria-label="${family.label} colour code"${off}>
                         <span class="theme-colour-name">${family.label}</span>
+                        <span class="theme-colour-hint">${family.hint}</span>
                     </div>`).join('')}
                 </div>
                 ${themePreviewHtml({ code, title, icon })}

@@ -764,7 +764,9 @@
             transition: background-color 0.4s ease;
         }
 
-        body {
+        /* A closing dialog's copy sits after <body> (playDialogExit), so it takes body's type itself. */
+        body,
+        .dialog-ghost {
             margin: 0;
             padding: 0;
             font-family: 'Google Sans Flex', sans-serif;
@@ -952,16 +954,18 @@
             background-color: color-mix(in srgb, var(--primary-900) 23%, transparent);
         }
 
-        /* Segmented: round outer ends, tight inner corners; hovered and selected tabs round fully. */
-        .tab:first-child {
+        /* Segmented: round outer ends, tight inner corners; hovered and selected tabs round fully.
+           Counted among the tabs only, as their sliding thumb comes first; :where keeps the
+           counting from outweighing hover. */
+        .tab:where(:nth-child(1 of .tab)) {
             border-radius: 20px 8px 8px 20px;
         }
 
-        .tab:last-child {
+        .tab:where(:nth-last-child(1 of .tab)) {
             border-radius: 8px 20px 20px 8px;
         }
 
-        .tab:only-child,
+        .tab:where(:nth-child(1 of .tab):nth-last-child(1 of .tab)),
         .tab:hover,
         .tab.active {
             border-radius: var(--border-radius-lg);
@@ -6714,6 +6718,7 @@ button.settings-group-label:active:not(:disabled) {
 .programme-chip,
 .combo-list,
 .settings-facet,
+.theme-colour-hint,
 .session-label {
     user-select: none;
     -webkit-user-select: none;
@@ -11032,6 +11037,59 @@ body:not(.is-admin) .list-toolbar .database-actions {
     from { transform: translateY(100%); }
 }
 
+/* Closing: a still copy of the dialog where it stood (playDialogExit in
+   scripts.js). Its veil fades while the dialog goes the way it came, and
+   nothing inside it moves meanwhile. */
+.dialog-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    display: flex;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+
+.dialog-ghost::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background-color: var(--ghost-veil);
+    -webkit-backdrop-filter: var(--ghost-blur);
+    backdrop-filter: var(--ghost-blur);
+    animation: veil-out 0.2s ease-in forwards;
+}
+
+.dialog-ghost * {
+    animation: none !important;
+    transition: none !important;
+}
+
+.dialog-ghost > .dialog {
+    animation: dialog-exit 0.16s ease-in forwards !important;
+}
+
+@media (max-width: 768px) {
+    .dialog-ghost > .dialog {
+        animation: sheet-down 0.24s cubic-bezier(0.4, 0, 1, 1) forwards !important;
+    }
+}
+
+@keyframes veil-out {
+    to { opacity: 0; }
+}
+
+@keyframes dialog-exit {
+    to {
+        transform: translateY(4px) scale(0.985);
+        opacity: 0;
+    }
+}
+
+@keyframes sheet-down {
+    to { transform: translateY(100%); }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .dialog-backdrop::before {
         animation: none !important;
@@ -12045,11 +12103,13 @@ body:not(.is-admin) .list-toolbar .database-actions {
    The icon with its preview and a link to Font Awesome's icons, one swatch per
    colour (swatch, code, name), and the course repainted as they change.
    ========================================================================= */
+/* In sentence case, so an icon's class reads as it is typed (fa-solid fa-cube). */
 .theme-label-note {
     margin-left: 6px;
     color: #bdbdbd;
     font-weight: 600;
-    letter-spacing: 0.02em;
+    letter-spacing: normal;
+    text-transform: none;
 }
 
 .dark-mode .theme-label-note {
@@ -12128,8 +12188,20 @@ body:not(.is-admin) .list-toolbar .database-actions {
     user-select: none;
 }
 
+/* What a colour paints: shown on phones, where there is no hovering for the title. */
+.theme-colour-hint {
+    display: none;
+    color: #78909c;
+    font-size: 0.75rem;
+    line-height: 1.3;
+}
+
 .dark-mode .theme-colour input[type="color"] {
     border-color: rgba(255, 255, 255, 0.16);
+}
+
+.dark-mode .theme-colour-hint {
+    color: #90a4ae;
 }
 
 .dialog p.theme-note {
@@ -12288,16 +12360,48 @@ body:not(.is-admin) .list-toolbar .database-actions {
     color: var(--secondary-text);
 }
 
-/* Phones: as Syllabase, fewer per row, so each name fits. */
+/* Phones: one colour a line, its swatch, name and use, and its code at the end,
+   so the five line up instead of four and one stretched under them. A label's
+   note goes under it rather than wrapping beside it. */
 @media (max-width: 560px) {
     .theme-colours {
-        display: flex;
-        flex-wrap: wrap;
+        grid-template-columns: minmax(0, 1fr);
         gap: 8px;
     }
 
     .theme-colour {
-        flex: 1 1 88px;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) 88px;
+        grid-template-areas:
+            "swatch name code"
+            "swatch hint code";
+        align-items: center;
+        gap: 0 12px;
+    }
+
+    .theme-colour input[type="color"] {
+        grid-area: swatch;
+        height: 36px;
+    }
+
+    .dialog .theme-colour .theme-hex {
+        grid-area: code;
+    }
+
+    .theme-colour-name {
+        grid-area: name;
+        align-self: end;
+    }
+
+    .theme-colour-hint {
+        display: block;
+        grid-area: hint;
+        align-self: start;
+    }
+
+    .theme-label-note {
+        display: block;
+        margin: 2px 0 0;
     }
 }
 
@@ -14209,8 +14313,23 @@ body.is-assistant .sync-auth-container {
    but with Dates after People. Then the staff list to tick, and a course icon
    with its preview and Font Awesome's search.
    ========================================================================= */
+/* As wide as Settings, which it opens over. */
 .dialog.course-editor {
-    max-width: 980px;
+    max-width: 1000px;
+}
+
+/* Over Settings it takes Settings' size, so the one beneath never shows round its
+   edges: the course editor on a computer, and every sheet over it on a phone. */
+.dialog-backdrop:has(> .settings-dialog) ~ .dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop) > .dialog.course-editor {
+    height: 85vh;
+    height: 85dvh;
+}
+
+@media (max-width: 768px) {
+    .dialog-backdrop:has(> .settings-dialog) ~ .dialog-backdrop:not(.confirmation-backdrop, .idle-backdrop) > .dialog {
+        height: calc(100vh - 12px);
+        height: calc(100dvh - 12px - env(safe-area-inset-top, 0px));
+    }
 }
 
 .editor-columns {
@@ -14335,8 +14454,9 @@ body.is-assistant .sync-auth-container {
     padding-bottom: 7px;
 }
 
+/* About three and a half rows, so it shows enough to choose from and that it scrolls. */
 .dialog .staff-picker-list {
-    height: 240px;
+    height: 190px;
     overflow-y: auto;
     overscroll-behavior: contain;
 }
@@ -14624,4 +14744,49 @@ body.is-assistant .sync-auth-container {
 .scan-lock.is-dimmed::after {
     opacity: 0.72;
     transition-duration: 1.5s;
+}
+
+/* =========================================================================
+   Header tabs (Courses, Student List): the selected tab's pressed look rides on
+   a thumb that slides between them, as the group tracks' does
+   (updateSegmentThumb). Hovering draws a light ring with a faint wash, seen on
+   the banner in light and dark alike; in dark mode the pressed look is deeper.
+   ========================================================================= */
+.tabs {
+    position: relative;
+}
+
+.tabs > .tab {
+    position: relative;
+    z-index: 1;
+}
+
+.tabs > .tab.active,
+.tabs > .tab.active:hover {
+    background-color: transparent;
+    box-shadow: none;
+}
+
+.tabs > .segment-thumb {
+    border-radius: var(--border-radius-lg);
+    background: color-mix(in srgb, var(--primary-900) 23%, transparent);
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
+    scale: 0.96;
+}
+
+.tabs > .tab:hover {
+    border-color: rgba(255, 255, 255, 0.45);
+}
+
+.tab:hover:not(.active, :active) {
+    background-color: rgba(255, 255, 255, 0.08);
+}
+
+.dark-mode .tabs > .segment-thumb {
+    background: rgba(0, 0, 0, 0.34);
+    box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+
+.dark-mode .tabs > .tab:hover {
+    border-color: rgba(255, 255, 255, 0.35);
 }
