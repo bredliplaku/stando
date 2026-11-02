@@ -13394,6 +13394,32 @@ body.on-student-list:not(.signed-out) #session-label {
         padding: 0 14px;
         font-size: 0.875rem;
     }
+
+    /* The chosen tab keeps its code, only closing its icon, so it never grows into
+       another row; the header above already names the course in full. */
+    #course-buttons-container .course-button-full {
+        display: none;
+    }
+
+    #course-buttons-container .course-button.active.has-full-name .course-button-code {
+        grid-template-columns: 1fr;
+        opacity: 1;
+    }
+}
+
+/* The code keeps room for its bold, so choosing a tab doesn't widen it. */
+#course-buttons-container .course-code-text {
+    display: inline-grid;
+}
+
+#course-buttons-container .course-code-text::after {
+    content: attr(data-label);
+    height: 0;
+    overflow: hidden;
+    visibility: hidden;
+    font-weight: 700;
+    pointer-events: none;
+    user-select: none;
 }
 
 /* The note by a course button. */

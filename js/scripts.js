@@ -15193,7 +15193,7 @@ function populateCourseButtons() {
             button.classList.toggle('has-full-name', !!full);
             // The course's own icon (Settings → its course → Appearance), else the list icon.
             button.innerHTML = faIconHtml(icon, 'fa-fw course-button-icon') + '<span class="course-button-label">' +
-                `<span class="course-button-swap course-button-code"><span>${escapeHtml(code)}${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span></span>` +
+                `<span class="course-button-swap course-button-code"><span><span class="course-code-text" data-label="${escapeHtml(code)}">${escapeHtml(code)}</span>${offering ? `<small class="course-offering-id">${escapeHtml(offering)}</small>` : ''}</span></span>` +
                 (full ? `<span class="course-button-swap course-button-full"><span>${escapeHtml(full)}</span></span>` : '') + '</span>';
             button.title = title ? `${code} ${title}` : course.replace(/_/g, ' ');
             button.addEventListener('click', () => {
