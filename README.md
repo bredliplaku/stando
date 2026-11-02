@@ -90,8 +90,11 @@ The phone reads cards only while Stando is on screen, so the screen stays on
 whenever Stando is open. To spare an OLED screen, the lock screen moves by a
 couple of pixels every two minutes. If Stando goes off screen anyway (the power button, another app
 or tab, or the phone's own NFC screen), cards tapped meanwhile are not recorded,
-and the lock screen says when and for how long, for example "Stando was off
-screen at 12:34 for 11 s".
+and the lock screen says when and for how long, for example "Stando couldn't
+read cards at 12:34 for 11 s". The same goes for a tap outside Stando's window
+(an app beside it, or the phone's own panels): the browser stops reading cards
+until Stando has the focus again, so the lock screen and the scan button say
+**Tap the screen to resume** (or **Paused**) until the next tap inside it.
 
 Card scanning uses Web NFC: it needs an Android phone with NFC switched on, a
 browser that offers Web NFC, and an HTTPS website. Android stops reading cards

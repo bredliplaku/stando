@@ -1451,6 +1451,30 @@
             animation: scan-btn-wait 1.6s ease-out infinite;
         }
 
+        /* Starting: the checks take a moment; the icon breathes until scanning starts. */
+        .big-scan-button.is-starting {
+            cursor: progress;
+        }
+
+        .big-scan-button.is-starting .scan-btn-icon {
+            animation: scan-btn-starting 1s ease-in-out infinite;
+        }
+
+        @keyframes scan-btn-starting {
+            50% { opacity: 0.45; }
+        }
+
+        /* Paused: Stando lost the focus and reads no cards until a tap brings it back. */
+        .big-scan-button.is-scanning.is-paused,
+        .big-scan-button.is-scanning.is-paused:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--secondary-main) 62%, #000);
+            box-shadow: none;
+        }
+
+        .big-scan-button.is-scanning.is-paused .scan-btn-icon {
+            animation: none;
+        }
+
         .dark-mode .big-scan-button,
         .dark-mode .big-scan-button:hover:not(:disabled) {
             background: var(--primary-600);
@@ -1466,8 +1490,14 @@
             background: var(--success-700);
         }
 
+        .dark-mode .big-scan-button.is-scanning.is-paused,
+        .dark-mode .big-scan-button.is-scanning.is-paused:hover:not(:disabled) {
+            background: color-mix(in srgb, var(--secondary-main) 62%, #000);
+        }
+
         @media (prefers-reduced-motion: reduce) {
-            .big-scan-button.is-scanning .scan-btn-icon {
+            .big-scan-button.is-scanning .scan-btn-icon,
+            .big-scan-button.is-starting .scan-btn-icon {
                 animation: none;
             }
         }
@@ -4869,6 +4899,24 @@ body.signed-out #main-container {
 
 .dark-mode .signin-card .big-scan-button.is-scanning .scan-btn-icon {
     background: color-mix(in srgb, var(--success-300) 16%, transparent);
+}
+
+/* Paused (no focus, so no card is read): amber, the icon still. */
+.signin-card .big-scan-button.is-scanning.is-paused,
+.signin-card .big-scan-button.is-scanning.is-paused:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--secondary-800) 45%, transparent);
+    background: color-mix(in srgb, var(--secondary-main) 8%, transparent);
+    color: color-mix(in srgb, var(--secondary-main) 62%, #000);
+}
+
+.signin-card .big-scan-button.is-scanning.is-paused .scan-btn-icon {
+    background: color-mix(in srgb, var(--secondary-main) 16%, transparent);
+    animation: none;
+}
+
+.dark-mode .signin-card .big-scan-button.is-scanning.is-paused,
+.dark-mode .signin-card .big-scan-button.is-scanning.is-paused:hover:not(:disabled) {
+    color: var(--secondary-main);
 }
 
 @media (prefers-reduced-motion: reduce) {

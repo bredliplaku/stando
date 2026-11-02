@@ -23,6 +23,9 @@ let oneTapRawNonce = null;
 // App state
 let courseData = {};
 let isScanning = false;
+let scanStarting = false; // Start Scanning was tapped and its checks are under way
+let nfcPermissionGranted = false; // Granted once, NFC no longer needs the tap that starts it
+let scanFocusBackAt = 0; // When Stando last got the focus back (canReadCards)
 let nfcSupported = false;
 let nfcReader = null;
 let filter = '';
@@ -1168,7 +1171,9 @@ function showSignedOutCard(card) {
 // card signs in; signed in, it takes attendance.
 function scanButtonHtml() {
     const icon = '<span class="scan-btn-icon" aria-hidden="true"><i class="fa-solid fa-wifi fa-rotate-90"></i></span>';
+    if (isScanning && !canReadCards()) return `${icon}<span class="scan-btn-label">Paused<small>Tap to resume</small></span>`;
     if (isScanning) return `${icon}<span class="scan-btn-label">Scanning…<small>Tap to stop</small></span>`;
+    if (scanStarting) return `${icon}<span class="scan-btn-label">Starting…</span>`;
     return `${icon}<span class="scan-btn-label">${isSignedIn ? 'Start Scanning' : 'Scan Card'}</span>`;
 }
 
@@ -1177,10 +1182,13 @@ function renderScanButton() {
     const scanBtn = document.getElementById('scan-button');
     if (!scanBtn) return;
     scanBtn.classList.toggle('is-scanning', isScanning);
+    scanBtn.classList.toggle('is-starting', scanStarting && !isScanning);
+    scanBtn.classList.toggle('is-paused', isScanning && !canReadCards());
+    scanBtn.setAttribute('aria-busy', String(scanStarting && !isScanning));
     // Waiting for a card on the sign-in page: show how to hold it.
     const art = document.querySelector('.scan-wait-art');
     if (art) {
-        const waiting = !isSignedIn && isScanning;
+        const waiting = !isSignedIn && isScanning && canReadCards();
         if (waiting && !art.firstElementChild) art.innerHTML = cardTapAnimationHtml();
         art.hidden = !waiting;
     }
@@ -1563,6 +1571,9 @@ function setupEventListeners() {
     const scanBtn = document.getElementById('scan-button');
     if (scanBtn) {
         scanBtn.addEventListener('click', () => {
+            // A second tap while it starts does nothing; the tap that brings the focus
+            // back (Paused) resumes reading and does not also stop it.
+            if (scanStarting || (isScanning && Date.now() - scanFocusBackAt < 800)) return;
             // Check if the button is in the 'is-scanning' (stop) state
             if (scanBtn.classList.contains('is-scanning')) {
                 stopScanning();
@@ -2636,15 +2647,28 @@ function rememberDeviceTrust(trusted) {
     try { localStorage.setItem(DEVICE_TRUSTED_KEY, trusted ? '1' : '0'); } catch { /* Asked again next time. */ }
 }
 
+// Rejects when the promise has not settled within ms, so a slow connection falls
+// back to what this phone already knows.
+function withinTime(promise, ms) {
+    return Promise.race([
+        promise,
+        new Promise((resolve, reject) => setTimeout(() => reject(new Error(`No answer within ${ms / 1000} s`)), ms))
+    ]);
+}
+
 // Whether this browser is a trusted device: the database's answer, else the last
-// one (so a phone that lost its connection still scans), else null.
-async function checkDeviceTrusted() {
+// one (so a phone that lost its connection still scans), else null. With a time
+// limit, a slow answer is not waited for when there is a last one; it still
+// updates the saved answer when it comes.
+async function checkDeviceTrusted(timeLimitMs = 0) {
     if (navigator.onLine && supabaseClient) {
         try {
-            const { data, error } = await supabaseClient.rpc('device_is_trusted', { p_device_id: getDeviceFingerprint() });
-            if (error) throw error;
-            rememberDeviceTrust(data === true);
-            return data === true;
+            const answer = supabaseClient.rpc('device_is_trusted', { p_device_id: getDeviceFingerprint() }).then(({ data, error }) => {
+                if (error) throw error;
+                rememberDeviceTrust(data === true);
+                return data === true;
+            });
+            return await (timeLimitMs && cachedDeviceTrust() !== null ? withinTime(answer, timeLimitMs) : answer);
         } catch (error) {
             console.warn('Trusted device check unavailable:', error?.message || error);
         }
@@ -4641,7 +4665,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
     if (prefilledDateStr) {
         const [day, month, year] = prefilledDateStr.split('-');
         dateInput.value = `${year}-${month}-${day}`;
-        setWeek(courseMetadata ? calculateWeekForDate(courseMetadata, new Date(dateInput.value)) : 1);
+        setWeek(courseMetadata ? calculateWeekForDate(courseMetadata, dateInput.value) : 1);
     } else {
         dateInput.value = courseMetadata ? getSuggestedDate(courseMetadata) : localDateString();
         setWeek(courseMetadata ? calculateCurrentWeek(courseMetadata) : 1);
@@ -4744,7 +4768,7 @@ async function showDirectEisExportDialog(prefilledDateStr = null) {
 
     // Picking another date moves the week with it, and the group to that day's.
     dateInput.addEventListener('change', () => {
-        if (courseMetadata && dateInput.value) setWeek(calculateWeekForDate(courseMetadata, new Date(dateInput.value)));
+        if (courseMetadata && dateInput.value) setWeek(calculateWeekForDate(courseMetadata, dateInput.value));
         const { category, subgroup } = defaultGroup();
         selectGroup(category, subgroup);
         fillTopic();
@@ -8852,35 +8876,38 @@ function setupRefreshButtons() {
     }
 }
 
+// A date as a count of calendar days: 'YYYY-MM-DD' (the database's, or a date
+// field's) is that day, and a Date the local day it falls on. Counted in days, a
+// week changes at midnight on its first day, whatever hour the dates were read at.
+function calendarDayNumber(value) {
+    const match = typeof value === 'string' && value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (match) return Date.UTC(+match[1], match[2] - 1, +match[3]) / 86400000;
+    const date = value instanceof Date ? value : new Date(value);
+    if (isNaN(date.getTime())) return NaN;
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000;
+}
+
+// The course week a day falls in: week 1 is the seven days from the start date,
+// and the holiday weeks are taken off once the holiday has begun. Null without a
+// start date.
+function courseWeekOn(metadata, day) {
+    const start = calendarDayNumber(metadata?.startDate || '');
+    const target = calendarDayNumber(day);
+    if (isNaN(start) || isNaN(target)) return null;
+    let week = Math.floor((target - start) / 7) + 1;
+    const holidayWeeks = parseInt(metadata.holidayWeeks || 0);
+    const holidayStart = calendarDayNumber(metadata.holidayStartDate || '');
+    if (holidayWeeks > 0 && !isNaN(holidayStart) && target >= holidayStart) week -= holidayWeeks;
+    return Math.max(week, 1);
+}
+
 /**
  * Calculate the current week of the course
  * @param {Object} metadata - Course metadata with start_date, end_date, and holiday_weeks
  * @returns {number|null} Current week number or null if metadata is invalid
  */
 function calculateCurrentWeek(metadata) {
-    if (!metadata || !metadata.startDate) return null;
-
-    const startDate = new Date(metadata.startDate);
-    const today = new Date();
-    const holidayWeeks = parseInt(metadata.holidayWeeks || 0);
-
-    // Get the holiday start date, if it exists
-    const holidayStartDate = metadata.holidayStartDate ? new Date(metadata.holidayStartDate) : null;
-
-    if (isNaN(startDate.getTime())) return null;
-
-    // Calculate the current calendar week of the semester
-    const currentWeek = Math.ceil((today - startDate) / (7 * 24 * 60 * 60 * 1000));
-
-    let adjustedWeek = currentWeek;
-
-    // Only subtract holiday weeks if today's date is ON or AFTER the holiday start date
-    if (holidayWeeks > 0 && holidayStartDate && !isNaN(holidayStartDate.getTime()) && today >= holidayStartDate) {
-        adjustedWeek = currentWeek - holidayWeeks;
-    }
-
-    // Ensure week is within a valid range (at least 1)
-    return Math.max(adjustedWeek, 1);
+    return courseWeekOn(metadata, new Date());
 }
 
 /**
@@ -12592,25 +12619,11 @@ function alignStickyDateBar(bar) {
 /**
 * Calculate the course week for a specific date.
 * @param {Object} metadata - Course metadata.
-* @param {Date} forDate - The specific date to calculate the week for.
+* @param {Date|string} forDate - The date, or a date field's 'YYYY-MM-DD'.
 * @returns {number} The calculated week number.
 */
 function calculateWeekForDate(metadata, forDate) {
-    if (!metadata || !metadata.startDate) return 1;
-
-    const startDate = new Date(metadata.startDate);
-    const holidayWeeks = parseInt(metadata.holidayWeeks || 0);
-    const holidayStartDate = metadata.holidayStartDate ? new Date(metadata.holidayStartDate) : null;
-
-    if (isNaN(startDate.getTime())) return 1;
-
-    const weekNumber = Math.ceil((forDate - startDate) / (7 * 24 * 60 * 60 * 1000));
-    let adjustedWeek = weekNumber;
-
-    if (holidayWeeks > 0 && holidayStartDate && !isNaN(holidayStartDate.getTime()) && forDate >= holidayStartDate) {
-        adjustedWeek = weekNumber - holidayWeeks;
-    }
-    return Math.max(adjustedWeek, 1);
+    return courseWeekOn(metadata, forDate) ?? 1;
 }
 
 /**
@@ -13483,6 +13496,13 @@ async function keepScreenAwake() {
     }
 }
 
+// The browser reads cards only while Stando is on screen and has the focus: a tap
+// outside its window (an app beside it, the phone's own panels) stops reading
+// until a tap inside brings the focus back. The lock and the scan button say so.
+function canReadCards() {
+    return document.visibilityState === 'visible' && document.hasFocus();
+}
+
 async function startScanning() {
     if (!nfcSupported || nfcReader) return;
     keepScreenAwake();
@@ -13494,6 +13514,7 @@ async function startScanning() {
         reader.addEventListener('reading', handleNfcReading);
         reader.addEventListener('readingerror', handleNfcError);
         await reader.scan({ signal: controller.signal });
+        nfcPermissionGranted = true;
         if (controller.signal.aborted || nfcReader !== reader) return;
         isScanning = true;
         renderScanButton();
@@ -13943,12 +13964,14 @@ async function rememberUnlockCard(serialNumber, course, owner) {
 }
 
 // Whether the signed-in lecturer has a staff card and this phone is trusted.
-async function canUnlockWithStaffCard() {
+async function canUnlockWithStaffCard(timeLimitMs = 0) {
     if (navigator.onLine) {
         try {
-            const { data, error } = await supabaseClient.rpc('staff_card_unlock_ready', { p_device_id: getDeviceFingerprint() });
-            if (error) throw error;
-            return data === true;
+            const answer = supabaseClient.rpc('staff_card_unlock_ready', { p_device_id: getDeviceFingerprint() }).then(({ data, error }) => {
+                if (error) throw error;
+                return data === true;
+            });
+            return await (timeLimitMs ? withinTime(answer, timeLimitMs) : answer);
         } catch (error) {
             console.warn('Staff card check unavailable:', error?.message || error);
         }
@@ -14051,10 +14074,7 @@ async function scanLockCardOwner(serialNumber) {
     if (!saved && entry && !entry.isStaff) return '';
     if (navigator.onLine) {
         try {
-            const owner = await Promise.race([
-                verifyScanUnlockCard(serialNumber, course),
-                new Promise((resolve, reject) => setTimeout(() => reject(new Error('No answer within 1.5 s')), 1500))
-            ]);
+            const owner = await withinTime(verifyScanUnlockCard(serialNumber, course), 1500);
             if (owner || saved) await rememberUnlockCard(serialNumber, course, owner);
             return owner;
         } catch (error) {
@@ -14081,38 +14101,62 @@ function formatScanLockTime(timestamp) {
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+const SCAN_START_CHECK_MS = 2500; // Start Scanning waits this long for the database, then uses what the phone knows
+
+// Whether the lock will most likely come on, as far as this phone knows without asking.
+function scanLockLikelyReady() {
+    return !!deviceUnlockId() || getSavedUnlockCards().some(card => card.course === '*');
+}
+
 // Lecturers scan only on a trusted device; otherwise Settings opens where they
 // can trust it. Scanning then starts behind the lock screen when the lecturer
 // can unlock it again.
 async function startScanningLocked() {
-    // Asked together, so scanning starts while the tap still counts for the NFC prompt.
+    if (scanStarting || isScanning) return;
+    scanStarting = true;
+    renderScanButton();
     const lockable = scanLockAvailable();
-    const [trusted, lockReady] = await Promise.all([
-        isSignedIn && isAdmin ? checkDeviceTrusted() : true,
-        lockable ? canUnlockWithStaffCard().then(ready => ready || !!deviceUnlockId()) : false
-    ]);
-    if (trusted === false) {
-        openTrustedDevicesSettings();
-        return;
-    }
-
-    await startScanning();
-    if (!isScanning || !lockable) return;
-    if (!lockReady) {
-        if (!scanLockUnavailableShown) {
-            scanLockUnavailableShown = true;
-            const devices = isAdmin ? 'Settings → Trusted Devices' : 'your profile';
-            showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
-                ? `To lock Stando while scanning, add your card in Settings → Staff, or turn on Biometric for this device in ${devices}.`
-                : `To lock Stando while scanning, ask an administrator to add your staff card, or turn on Biometric for this device in ${devices}.`, 10000);
+    // A browser fills the screen only during a tap, and the checks below can take
+    // a moment, so it fills now when the lock will most likely come on. That uses
+    // the tap up, and NFC needs it the first time (to ask for permission): until
+    // then the screen fills once scanning has started.
+    const filling = lockable && nfcPermissionGranted && scanLockLikelyReady() ? fillScreenForScanning() : null;
+    let locked = false;
+    try {
+        // Asked together, so scanning starts while the tap still counts for the NFC prompt.
+        const [trusted, lockReady] = await Promise.all([
+            isSignedIn && isAdmin ? checkDeviceTrusted(SCAN_START_CHECK_MS) : true,
+            lockable ? canUnlockWithStaffCard(SCAN_START_CHECK_MS).then(ready => ready || !!deviceUnlockId()) : false
+        ]);
+        if (trusted === false) {
+            openTrustedDevicesSettings();
+            return;
         }
-        return;
+
+        await startScanning();
+        if (!isScanning || !lockable) return;
+        if (!lockReady) {
+            if (!scanLockUnavailableShown) {
+                scanLockUnavailableShown = true;
+                const devices = isAdmin ? 'Settings → Trusted Devices' : 'your profile';
+                showNotification('info', 'Scanning Is Not Locked', isGlobalAdmin
+                    ? `To lock Stando while scanning, add your card in Settings → Staff, or turn on Biometric for this device in ${devices}.`
+                    : `To lock Stando while scanning, ask an administrator to add your staff card, or turn on Biometric for this device in ${devices}.`, 10000);
+            }
+            return;
+        }
+        scanLockSession = true;
+        scanLockScans = [];
+        locked = true;
+        fillScreenForScanning();
+        lockScanner();
+        updateScanLockButton();
+    } finally {
+        scanStarting = false;
+        renderScanButton();
+        // Not locked after all: the screen is the browser's again, once it has filled.
+        if (filling && !locked) filling.then(leaveFullScreen);
     }
-    scanLockSession = true;
-    scanLockScans = [];
-    fillScreenForScanning();
-    lockScanner();
-    updateScanLockButton();
 }
 
 // While locked, Stando fills the screen: the browser's address bar and tabs go,
@@ -14123,8 +14167,8 @@ async function startScanningLocked() {
 // fills it again (a lock by card or after a while waits for the next tap).
 // A website cannot lock the phone itself: Android's app pinning does that (README).
 function fillScreenForScanning() {
-    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return;
-    document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Tried again on the next tap. */ });
+    if (document.fullscreenElement || !document.documentElement.requestFullscreen) return Promise.resolve();
+    return document.documentElement.requestFullscreen({ navigationUI: 'hide' }).catch(() => { /* Tried again on the next tap. */ });
 }
 
 function leaveFullScreen() {
@@ -14335,8 +14379,10 @@ function updateScanLockScreen() {
         device.hidden = !deviceUnlockId();
         followSegmentThumb(device.parentElement);
     }
-    screen.classList.toggle('is-paused', !isScanning);
-    setText('.scan-lock-title', isScanning ? 'Tap your Student ID' : 'Scanning is paused');
+    // Without the focus, cards are not read until a tap on the screen brings it back.
+    const reading = canReadCards();
+    screen.classList.toggle('is-paused', !isScanning || !reading);
+    setText('.scan-lock-title', !isScanning ? 'Scanning is paused' : reading ? 'Tap your Student ID' : 'Tap the screen to resume');
 
     const status = screen.querySelector('.scan-lock-status');
     const count = scanLockScans.length;
@@ -14344,9 +14390,9 @@ function updateScanLockScreen() {
     status.classList.toggle('has-scans', count > 0);
     status.setAttribute('aria-label', count ? `${count} ${count === 1 ? 'card' : 'cards'} recorded. Show scanned cards` : '');
     if (!status.dataset.message) {
-        setText('.scan-lock-status-text', isScanning
-            ? `${count} ${count === 1 ? 'card' : 'cards'} recorded`
-            : 'Cards are not being recorded. Unlock to start scanning again.');
+        setText('.scan-lock-status-text', !isScanning
+            ? 'Cards are not being recorded. Unlock to start scanning again.'
+            : reading ? `${count} ${count === 1 ? 'card' : 'cards'} recorded` : 'Cards are not being read until then.');
     }
 
     const events = readScanLockState()?.events || [];
@@ -14588,8 +14634,9 @@ function stopScanLockReader() {
     scanLockReaderController = null;
 }
 
-// Record when the locked page is hidden or closed; report it when it is back.
-// The device's own fingerprint or PIN prompt hides it too, but cards are not lost then.
+// Record when the locked page is hidden, closed or loses the focus; report it when
+// it is back. The device's own fingerprint or PIN prompt hides it too, but cards
+// are not lost then.
 function noteScanLockHidden() {
     if (scanLockVerifying) return;
     const state = readScanLockState();
@@ -14611,17 +14658,18 @@ function noteScanLockReturn() {
 
 function reportScanLockAbsences(events) {
     if (!events?.length) return;
-    showNotification('warning', 'Stando Was Off Screen', scanLockAwayText(events), 10000);
+    showNotification('warning', 'Scanning Was Interrupted', scanLockAwayText(events), 10000);
 }
 
-// Stando cannot read cards while it is off screen: the screen went off, or another
-// app, tab or the phone's own NFC screen came up. Those taps were not recorded.
+// Stando cannot read cards while it is off screen (the screen went off, or another
+// app, tab or the phone's own NFC screen came up) or without the focus (a tap
+// outside its window). Those taps were not recorded.
 function scanLockAwayText(events) {
     const last = events[events.length - 1];
     const when = `${formatScanLockTime(last.at)} for ${formatScanLockDuration(last.ms)}`;
     return events.length === 1
-        ? `Stando was off screen at ${when}, so cards tapped then weren't recorded.`
-        : `Stando was off screen ${events.length} times, last at ${when}. Cards tapped then weren't recorded.`;
+        ? `Stando couldn't read cards at ${when}, so cards tapped then weren't recorded.`
+        : `Stando couldn't read cards ${events.length} times, last at ${when}. Cards tapped then weren't recorded.`;
 }
 
 // After sign-in (or in another tab), show the lock if this account left it locked.
@@ -14665,14 +14713,32 @@ function setupScanLock() {
     window.addEventListener('storage', (event) => {
         if (event.key === SCAN_LOCK_KEY || event.key === null) syncScanLockFromStorage();
     });
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            noteScanLockHidden();
-        } else {
-            noteScanLockReturn();
-        }
+    // Off screen or without the focus, no card is read (canReadCards): the lock and
+    // the scan button say so at once, and the time away is reported on unlocking.
+    const noteReading = () => {
+        if (canReadCards()) noteScanLockReturn();
+        else noteScanLockHidden();
+        renderScanButton();
+        updateScanLockScreen();
+    };
+    document.addEventListener('visibilitychange', noteReading);
+    window.addEventListener('focus', () => {
+        scanFocusBackAt = Date.now();
+        noteReading();
     });
+    // Asked after a moment: focus moving into a frame inside the page blurs the
+    // window too, and the page keeps the focus then.
+    window.addEventListener('blur', () => setTimeout(noteReading, 0));
     window.addEventListener('pagehide', noteScanLockHidden);
+
+    // Once NFC is allowed, Start Scanning can fill the screen during its tap.
+    if (nfcSupported && navigator.permissions?.query) {
+        navigator.permissions.query({ name: 'nfc' }).then(status => {
+            const note = () => { nfcPermissionGranted = status.state === 'granted'; };
+            note();
+            status.addEventListener('change', note);
+        }).catch(() => { /* Unknown until scanning starts once (startScanning). */ });
+    }
 }
 
 /**
