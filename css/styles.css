@@ -14812,7 +14812,17 @@ body.is-assistant .sync-auth-container {
     box-shadow: none;
 }
 
+/* The pressed look is drawn on ::before, as scaling the thumb itself would scale
+   its slide too and leave it short of the second tab. */
 .tabs > .segment-thumb {
+    background: none;
+    box-shadow: none;
+}
+
+.tabs > .segment-thumb::before {
+    content: '';
+    position: absolute;
+    inset: 0;
     border-radius: var(--border-radius-lg);
     background: color-mix(in srgb, var(--primary-900) 23%, transparent);
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.25);
@@ -14841,7 +14851,7 @@ body.is-assistant .sync-auth-container {
     opacity: 1;
 }
 
-.dark-mode .tabs > .segment-thumb {
+.dark-mode .tabs > .segment-thumb::before {
     background: rgba(0, 0, 0, 0.34);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
