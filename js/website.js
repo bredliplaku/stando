@@ -39,6 +39,7 @@
       document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
     })();
   <\/script>
+  <!-- To show the cat companion, add data-stando-cat to the script tag below. -->
   <script defer src="${loaderUrl}" onerror="document.getElementById('stando-load-error').hidden = false"><\/script>
 </head>
 <body>

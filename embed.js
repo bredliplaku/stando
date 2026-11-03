@@ -4,6 +4,8 @@
     'use strict';
     const entry = document.currentScript;
     if (!entry || window.STANDO_EMBEDDED) return;
+    // The cat companion only on websites that ask for it.
+    const showCat = entry.hasAttribute('data-stando-cat');
     window.STANDO_EMBEDDED = true;
     const appBase = new URL('./', entry.src);
     const iconSelector = 'link[rel~="icon"], link[rel="apple-touch-icon"], link[rel="manifest"]';
@@ -129,6 +131,8 @@
         // scripts below handle startup; do not replay inline bootstrap scripts.
         page.querySelectorAll('script, base, #stando-startup-theme').forEach(node => node.remove());
         page.querySelectorAll(iconSelector).forEach(node => node.remove());
+        // Remove before mounting, so the cat never flashes on websites that don't opt in.
+        if (!showCat) page.getElementById('cat-companion')?.remove();
         page.querySelectorAll('[src], link[href], video[poster]').forEach(node => {
             for (const attr of ['src', 'href', 'poster']) {
                 if (node.hasAttribute(attr)) node.setAttribute(attr, new URL(node.getAttribute(attr), appBase).href);

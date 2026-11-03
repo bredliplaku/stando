@@ -191,6 +191,16 @@ a name and either a card ID or email. Imports need an internet connection.
    for example `https://example.com/attendance/`.
 3. Ask the administrator to approve the website (below).
 
+On your website, Stando doesn't show the cat companion. To show it, add
+`data-stando-cat` to the `embed.js` script tag in your `index.html`:
+
+```html
+<script defer src="https://bredliplaku.com/stando/embed.js" data-stando-cat
+  onerror="document.getElementById('stando-load-error').hidden = false"></script>
+```
+
+A new download leaves the attribute out, so add it again after re-downloading.
+
 Every visitor signs in with their own account and sees the courses they can
 access. App updates reach the page without another download.
 
@@ -362,9 +372,13 @@ this order:
    // Stando moved. Files downloaded earlier load this script; forward them.
    const script = document.createElement('script');
    script.src = 'https://bredliplaku.com/stando/embed.js';
+   if (document.currentScript?.hasAttribute('data-stando-cat')) script.setAttribute('data-stando-cat', '');
    script.onerror = () => document.getElementById('stando-load-error').hidden = false;
    document.head.appendChild(script);
    ```
+
+   It passes `data-stando-cat` on to the new script tag, so a page that shows the
+   cat companion keeps it.
 
 3. In Supabase, keep `https://bredliplaku.com/attendance/` in Redirect URLs and
    add `https://bredliplaku.com/stando/` (or use `https://bredliplaku.com/**`).
