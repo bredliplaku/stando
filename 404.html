@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>Page not found</title>
+    <meta name="theme-color" content="#f4f4f4" />
+    <!-- GitHub Pages serves this file for any missing path under /stando/, so every URL
+         here is absolute. Moving Stando to a new address means updating them. -->
+    <!-- The saved or system theme, and the colours of the course open last, as in
+         index.html's startup scripts. -->
+    <script>
+        (function () {
+            let theme = 'auto';
+            try { theme = localStorage.getItem('theme') || 'auto'; } catch { }
+            if (!['auto', 'light', 'dark'].includes(theme)) theme = 'auto';
+            document.documentElement.dataset.standoTheme = theme;
+            const dark = theme === 'dark' || (theme === 'auto' && matchMedia('(prefers-color-scheme: dark)').matches);
+            document.documentElement.classList.toggle('dark-mode', dark);
+            document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
+        })();
+        (function () {
+            try {
+                const colours = JSON.parse(localStorage.getItem('stando_colours') || '{}');
+                for (const family of ['primary', 'secondary', 'tertiary', 'accent', 'success']) {
+                    if (!/^#[0-9a-f]{6}$/.test(colours[family])) continue;
+                    document.documentElement.style.setProperty('--' + family + '-main', colours[family]);
+                    document.documentElement.classList.add('theme-' + family);
+                }
+            } catch { }
+        })();
+    </script>
+    <link rel="icon" type="image/png" href="/stando/favicon/favicon-96x96.png" sizes="96x96" />
+    <link rel="icon" type="image/svg+xml" href="/stando/favicon/favicon.svg" />
+    <link rel="shortcut icon" href="/stando/favicon/favicon.ico" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/stando/favicon/apple-touch-icon.png" />
+    <link rel="manifest" href="/stando/favicon/site.webmanifest" />
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Google+Sans+Flex:opsz,slnt,wdth,wght,GRAD,ROND@6..144,-10..0,25..151,1..1000,0..100,0..100&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/stando/css/styles.css">
+    <style>
+        /* The signed-out page: the sign-in card centred above the footer
+           (body.signed-out #main-container and #login-container in styles.css). */
+        .notfound-page {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            min-height: 100dvh;
+        }
+
+        .notfound-screen {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 16px;
+            font-size: 1rem;
+        }
+
+        /* Coloured like the sign-in heading's initials. */
+        .notfound-code {
+            color: var(--primary-text);
+        }
+
+        .dark-mode .notfound-code {
+            color: var(--primary-200);
+        }
+
+        /* The sign-in button as a link, with the Courses icon in its white disc. */
+        .signin-card a.btn-google {
+            text-decoration: none;
+        }
+
+        .signin-card .notfound-icon {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--primary-600);
+        }
+
+        /* Phones are too narrow for the note's first line: drop the break and let it wrap. */
+        @media (max-width: 420px) {
+            .notfound-note br {
+                display: none;
+            }
+
+            .notfound-note > span {
+                text-wrap: pretty;
+            }
+        }
+    </style>
+
+    <script src="https://kit.fontawesome.com/4dd5c549ad.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div class="notfound-page">
+        <main class="notfound-screen">
+            <section class="signin-card" aria-labelledby="notfound-title">
+                <h2 id="notfound-greeting">lost?</h2>
+                <!-- Runs inline so the swap happens before first paint. A new line per
+                     visit, but one picked in the last COOLDOWN is kept, so mashing reload
+                     doesn't flick through them. The personal website's 404 page shares the
+                     key and the lines, so the two never disagree. -->
+                <script>
+                    (function () {
+                        const MESSAGES = [
+                            'lost?', 'oops.', 'uh-oh.', 'whoops!', 'hmm…', 'wrong turn?', 'nope.',
+                            'oh no.', 'huh?', 'not here.', 'well…', 'gone!',
+                            'missing.', 'oh well.', 'uh…', 'nothing.', 'empty.', 'poof!'
+                        ];
+                        const KEY = 'notfound-greeting';
+                        const COOLDOWN = 30 * 1000;
+                        const el = document.getElementById('notfound-greeting');
+                        const now = Date.now();
+
+                        let last = null;
+                        try { last = JSON.parse(localStorage.getItem(KEY)); } catch (e) { }
+                        if (last && MESSAGES.includes(last.text) && now - last.time < COOLDOWN) {
+                            el.textContent = last.text;
+                            return;
+                        }
+
+                        // Never the same one twice in a row.
+                        const pool = MESSAGES.filter(m => !last || m !== last.text);
+                        const text = pool[Math.floor(Math.random() * pool.length)];
+                        el.textContent = text;
+                        try { localStorage.setItem(KEY, JSON.stringify({ text, time: now })); } catch (e) { }
+                    })();
+                </script>
+                <h1 id="notfound-title"><span class="notfound-code">404</span> Page not found</h1>
+                <a href="/stando/" class="btn-google">
+                    <span class="google-icon notfound-icon" aria-hidden="true"><i
+                            class="fa-solid fa-list-check"></i></span>
+                    Open Stando
+                </a>
+                <!-- The fixed break keeps the text block as wide as its longest line, so the icon sits beside it. -->
+                <p class="signin-note notfound-note"><i class="fa-solid fa-circle-info" aria-hidden="true"></i><span>There's nothing
+                        at this address. The page may <br>have moved, or the link may have a typo.</span></p>
+            </section>
+        </main>
+
+        <footer class="footer">
+            <img src="/stando/miscellaneous/logo.png" alt="Logo" class="floating-logo" loading="lazy"
+                style="width: 50px; margin-top: 0; margin-bottom: 20px; display: block; margin-left: auto; margin-right: auto;">
+
+            <div class="social-links">
+                <!-- The root of whichever website hosts this page. -->
+                <a href="/" title="Home" aria-label="Home"><i class="fa-solid fa-house" aria-hidden="true"></i></a>
+                <button type="button" id="theme-toggle-btn" class="theme-toggle" title="Toggle Theme"><i
+                        class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i></button>
+            </div>
+            <p style="font-size:0.7em"><i class="fa-regular fa-copyright"></i> 2023–<span id="currentYear"></span>
+                Bredli Plaku. All Rights Reserved.</p>
+        </footer>
+    </div>
+
+    <!-- The theme button cycles as in Stando: keep in step with applyTheme() and
+         setupThemeToggle() in scripts.js. -->
+    <script>
+        (function () {
+            const button = document.getElementById('theme-toggle-btn');
+            const systemDark = matchMedia('(prefers-color-scheme: dark)');
+            let theme = 'auto';
+            try { theme = localStorage.getItem('theme') || 'auto'; } catch { }
+            if (!['auto', 'light', 'dark'].includes(theme)) theme = 'auto';
+
+            function apply() {
+                const dark = theme === 'dark' || (theme === 'auto' && systemDark.matches);
+                document.documentElement.dataset.standoTheme = theme;
+                document.documentElement.classList.toggle('dark-mode', dark);
+                document.querySelector('meta[name="theme-color"]').content = dark ? '#000000' : '#f4f4f4';
+                // The Font Awesome kit swaps the <i> for an <svg>, so replace whichever is there.
+                const icon = document.createElement('i');
+                icon.setAttribute('aria-hidden', 'true');
+                if (theme === 'light') {
+                    icon.className = 'fa-solid fa-sun';
+                    button.title = 'Switch to Dark Mode';
+                } else if (theme === 'dark') {
+                    icon.className = 'fa-solid fa-moon';
+                    button.title = 'Switch to Auto Mode';
+                } else {
+                    icon.className = 'fa-solid fa-circle-half-stroke';
+                    button.title = 'Switch to Light Mode';
+                }
+                button.querySelector('i, svg')?.replaceWith(icon);
+            }
+
+            button.addEventListener('click', () => {
+                if (theme === 'auto') theme = systemDark.matches ? 'light' : 'dark';
+                else if (theme === 'light') theme = systemDark.matches ? 'auto' : 'dark';
+                else theme = systemDark.matches ? 'light' : 'auto';
+                try { localStorage.setItem('theme', theme); } catch { }
+                apply();
+            });
+            systemDark.addEventListener('change', () => { if (theme === 'auto') apply(); });
+            apply();
+
+            document.getElementById('currentYear').textContent = new Date().getFullYear();
+        })();
+    </script>
+</body>
+
+</html>

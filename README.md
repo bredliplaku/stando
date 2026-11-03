@@ -376,7 +376,8 @@ The domain stays the same, so nothing else changes and nobody is signed out.
 ### Move to a new domain later
 
 1. Publish Stando at the new address, such as `https://stando.al/`, and set
-   `APP_URL` in [js/website.js](js/website.js) to it.
+   `APP_URL` in [js/website.js](js/website.js) to it. Update the absolute
+   `/stando/` paths in [404.html](404.html) to the new folder.
 2. In Supabase, update the Site URL and Redirect URLs, set `STANDO_APP_URL`, and
    keep `https://bredliplaku.com` in `STANDO_ALLOWED_ORIGINS`. Add the new domain
    to the Google Cloud OAuth client.
