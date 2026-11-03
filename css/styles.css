@@ -4003,7 +4003,7 @@
             /* Adjust based on your image size */
         }
 
-        #cat-companion img {
+        #cat-companion .cat-mascot {
             width: 150%;
             height: auto;
             display: block;
