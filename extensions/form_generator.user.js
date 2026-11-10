@@ -106,9 +106,9 @@
 
     GM_addStyle(`
         /* ---------- The window around the sheet ----------
-           Like the importer's notices and EIS itself: white, a straight coloured
-           edge on the left with only the other corners rounded, EIS's own buttons
-           (btn) and fields (form-control), and chevrons on what folds. */
+           Like EIS itself: white with rounded corners and no coloured edge,
+           EIS's own buttons (btn) and fields (form-control), and chevrons on
+           what folds. */
         html.asg-open,
         html.asg-open body {
             overflow: hidden !important;
@@ -134,8 +134,7 @@
             overflow: auto;
             overscroll-behavior: contain;
             box-sizing: border-box;
-            border-left: 4px solid #3949ab;
-            border-radius: 0 6px 6px 0;
+            border-radius: 6px;
             background-color: #ffffff;
             box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
             color: #263238;
@@ -209,7 +208,22 @@
         .asg-icon-btn:hover:not(:disabled) { background: #eceff1; color: #263238; }
         .asg-icon-btn.is-danger:hover:not(:disabled) { background: #ffebee; color: #c62828; }
         .asg-icon-btn:disabled { opacity: 0.3; cursor: default; }
-        .asg-icon-btn:focus-visible { outline: 2px solid #3949ab; outline-offset: 1px; }
+        /* No blue focus rings in the window: nothing after a click, and a quiet
+           grey ring only when moving with the keyboard. */
+        #attendance-sheet-content:focus,
+        #attendance-sheet-content :focus {
+            outline: none !important;
+        }
+
+        #attendance-sheet-content :is(.btn, .asg-icon-btn, summary):focus-visible {
+            outline: 2px solid #b0bec5 !important;
+            outline-offset: 1px;
+        }
+
+        #attendance-sheet-content .form-control:focus {
+            border-color: #90a4ae;
+            box-shadow: none;
+        }
         #close-sheet-btn { width: 32px; height: 32px; font-size: 20px; }
 
         /* ---------- Settings ---------- */
@@ -368,7 +382,6 @@
             background: #fff;
             box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 6px 18px rgba(0, 0, 0, 0.08);
             color: #000;
-            font-family: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", serif;
             font-size: 7.2pt;
             font-weight: 400;
             line-height: 1.15;
@@ -378,20 +391,31 @@
             print-color-adjust: exact;
         }
 
+        /* EIS gives some tags (p, strong…) fonts and sizes of its own; on the
+           sheet, its typeface and sizes win (the handwriting keeps its font). */
+        #attendance-sheet-page,
+        #attendance-sheet-page *:not(.student-signature) {
+            font-family: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", serif !important;
+        }
+
         #attendance-sheet-page * {
-            font-family: inherit;
             letter-spacing: normal;
             text-transform: none;
         }
 
-        .asg-uni {
-            font-size: 11.4pt;
+        #attendance-sheet-page :is(b, i) {
+            font-size: inherit !important;
+            line-height: inherit !important;
+        }
+
+        #attendance-sheet-page .asg-uni {
+            font-size: 11.4pt !important;
             font-weight: 700;
         }
 
-        .asg-title {
+        #attendance-sheet-page .asg-title {
             margin-top: 4.4mm;
-            font-size: 14.4pt;
+            font-size: 14.4pt !important;
             font-weight: 700;
             text-align: center;
         }
@@ -403,19 +427,19 @@
             margin-top: 6.7mm;
         }
 
-        .asg-course {
+        #attendance-sheet-page .asg-course {
             flex: 0 0 46%;
             padding-left: 0.5mm;
-            font-size: 7.8pt;
+            font-size: 7.8pt !important;
             font-weight: 700;
         }
 
-        .asg-printed {
+        #attendance-sheet-page .asg-printed {
             position: relative;
             top: 1mm;
             flex: 1;
             padding-left: 2mm;
-            font-size: 6.6pt;
+            font-size: 6.6pt !important;
         }
 
         .asg-table {
@@ -434,7 +458,7 @@
             border: 0.25mm solid #333;
             background: #fff;
             color: #000;
-            font-size: 7.2pt;
+            font-size: 7.2pt !important;
             font-weight: 400;
             line-height: 1.15;
             text-align: center;
@@ -452,45 +476,54 @@
         /* Marks look written in blue pen, in print too (EIS prints all text black). */
         #attendance-sheet-page .asg-mark {
             color: #00008b !important;
-            font-size: 9pt;
+            font-size: 9pt !important;
             font-weight: 700;
             line-height: 1;
         }
 
         #attendance-sheet-page .student-signature {
             color: #00008b !important;
-            font-size: 10pt;
+            font-size: 10pt !important;
             font-weight: 400;
             line-height: 1;
         }
 
         ${SIGNATURE_FONTS.map(font => `.${font.value} { font-family: '${font.family}', cursive !important; }`).join("\n        ")}
 
+        /* The note and the lecturers: the same Times New Roman at 9.6 pt. */
+        #attendance-sheet-page .asg-note,
+        #attendance-sheet-page .asg-signers {
+            color: #000;
+            font-size: 9.6pt !important;
+            line-height: 1.15 !important;
+        }
+
+        #attendance-sheet-page .asg-note *,
+        #attendance-sheet-page .asg-signers * {
+            font-size: inherit !important;
+            line-height: inherit !important;
+        }
+
         .asg-note {
             margin-top: 4.9mm;
-            font-size: 9.6pt;
             break-inside: avoid;
         }
 
-        #attendance-sheet-page .asg-note p {
-            margin: 0 0 5.7mm;
-            font-size: inherit;
-            line-height: 1.15;
-        }
-
-        #attendance-sheet-page .asg-note p:first-child { margin-bottom: 3.5mm; }
-        #attendance-sheet-page .asg-note p:last-child { margin-bottom: 0; }
+        .asg-note-line { margin: 0 0 5.7mm; }
+        .asg-note-line:first-child { margin-bottom: 3.5mm; }
+        .asg-note-line:last-child { margin-bottom: 0; }
+        .asg-note b { font-weight: 700; }
 
         .asg-signers {
             margin-top: 8.6mm;
             padding-right: 4.3mm;
-            font-size: 9.6pt;
             font-weight: 700;
             text-align: right;
             break-inside: avoid;
         }
 
-        .asg-signer + .asg-signer { margin-top: 6.5mm; }
+        /* Room to sign under each lecturer before the next one. */
+        .asg-signer + .asg-signer { margin-top: 12mm; }
         .asg-signer-sign { margin-top: 1.2mm; font-style: italic; }
 
         /* ---------- Printing ----------
@@ -885,7 +918,7 @@
         const container = document.createElement("div");
         container.id = "attendance-sheet-container";
         container.innerHTML = `
-            <div id="attendance-sheet-content" role="dialog" aria-modal="true" aria-labelledby="asg-title">
+            <div id="attendance-sheet-content" role="dialog" aria-modal="true" aria-labelledby="asg-title" tabindex="-1">
                 <div id="sheet-controls">
                     <div class="asg-heading">
                         <h2 id="asg-title">Attendance sheet</h2>
@@ -957,7 +990,7 @@
                                 <col style="width: 4%">
                             </colgroup>
                             <thead><tr>
-                                <th class="col-nr">Nr.</th><th>R</th><th>Student ID</th><th class="col-name">Name Surname</th>
+                                <th class="col-nr">No.</th><th>R</th><th>Student ID</th><th class="col-name">Name Surname</th>
                                 ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<th class="date-column" data-index="${i}"></th>`).join("")}
                                 <th>Ex</th>
                             </tr></thead>
@@ -974,10 +1007,10 @@
                             </tbody>
                         </table>
                         <div class="asg-note">
-                            <p><strong>NOTE:</strong></p>
-                            <p>Students that are not listed in the attendance list will not be considered as enrolled in the course!</p>
-                            <p>All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS system.</p>
-                            <p><strong>R</strong> - Repeated Course, <strong>Ex</strong> - Exempted from attendances.</p>
+                            <div class="asg-note-line"><b>NOTE:</b></div>
+                            <div class="asg-note-line">Students that are not listed in the attendance list will not be considered as enrolled in the course!</div>
+                            <div class="asg-note-line">All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS system.</div>
+                            <div class="asg-note-line"><b>R</b> - Repeated Course, <b>Ex</b> - Exempted from attendances.</div>
                         </div>
                         <div class="asg-signers" id="signature-area"></div>
                     </div>
@@ -1186,13 +1219,17 @@
             } catch { /* Print with what has loaded. */ }
             button.disabled = false;
             window.print();
+            // Back to the window, so the button does not keep a focus border.
+            $("#attendance-sheet-content").focus({ preventScroll: true });
         });
 
         renderMarks();
         renderDates();
         renderPrintedDate();
         renderSignerList();
-        $("#print-sheet-btn").focus();
+        // The window takes the focus (Tab starts inside it, Esc closes it) with
+        // no button showing a focus border.
+        $("#attendance-sheet-content").focus({ preventScroll: true });
     }
 
     // Format date as DD.MM.YYYY or ISO format
