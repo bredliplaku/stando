@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EIS Attendance Sheet Generator
 // @namespace    https://bredliplaku.com/
-// @version      3.2
+// @version      3.3
 // @description  Generates attendance sheet that perfectly matches the original template with customizable fields
 // @author       Bredli Plaku
 // @match        https://eis.epoka.edu.al/courseattendance/*/editcl
@@ -420,7 +420,9 @@
             text-align: center;
         }
 
-        /* The course on the left; the print date over the first date column. */
+        /* The course on the left; the print date over the first date column, or
+           further right after a longer course name, up to the table's right
+           edge. Only a name too long for that wraps. */
         .asg-course-row {
             display: flex;
             align-items: baseline;
@@ -428,7 +430,8 @@
         }
 
         #attendance-sheet-page .asg-course {
-            flex: 0 0 46%;
+            flex: 0 1 auto;
+            min-width: 46%;
             padding-left: 0.5mm;
             font-size: 7.8pt !important;
             font-weight: 700;
@@ -437,9 +440,10 @@
         #attendance-sheet-page .asg-printed {
             position: relative;
             top: 1mm;
-            flex: 1;
+            flex: none;
             padding-left: 2mm;
             font-size: 6.6pt !important;
+            white-space: nowrap;
         }
 
         .asg-table {
