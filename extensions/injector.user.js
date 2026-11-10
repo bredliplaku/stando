@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EIS Attendance Importer
 // @namespace    https://bredliplaku.com/
-// @version      3.0
+// @version      3.1
 // @description  Fills the EIS attendance form from Stando's "Add to EIS" (clipboard or file).
 // @author       Bredli Plaku
 // @match        https://eis.epoka.edu.al/courseattendance/*/newcl
@@ -21,6 +21,10 @@
  *     known:      [ "Student Name", ... ] }                // everyone this course has seen
  * Version 1 (attendance by card UID plus a nameMap of the whole Student List) is
  * still read. Names are compared without accents, case or extra spaces.
+ *
+ * It arrives by Paste (or by itself on load), by Import file, or by dropping
+ * the saved file on the page. Data that EIS has already saved once is not
+ * filled in again by itself, so an old clipboard cannot become a new record.
  */
 (function () {
     'use strict';
@@ -42,17 +46,25 @@
     // The course in this page's address, to refuse another course's data.
     const pageEisId = (location.pathname.match(/courseattendance\/([^/]+)\/newcl/) || [])[1] || '';
 
+    // A file larger than this is not one Stando saved.
+    const MAX_FILE_BYTES = 2 * 1024 * 1024;
+
     let busy = false;
+    // The fingerprint of the data last filled in, remembered as saved when EIS saves.
+    let filledFingerprint = null;
 
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
     const applyTheme = () => document.documentElement.classList.toggle('eis-dark-mode', prefersDark.matches);
     prefersDark.addEventListener('change', applyTheme);
     applyTheme();
 
+    applyStyles();
+    watchSave();
     waitForElement('#student_list_table', 15000)
         .then(async () => {
-            applyStyles();
+            await waitForElement('.record_actions', 5000).catch(() => null);
             addButtons();
+            enableFileDrop();
             if (DEFAULT_OPTIONS.autoReadClipboard) await autoImport();
         })
         .catch(error => {
@@ -89,6 +101,14 @@
         await delay(200);
     }
 
+    // The student list, once EIS has drawn at least one row of it.
+    async function waitForRows(timeout = 6000) {
+        const count = () => document.querySelectorAll('#student_list_table tbody tr').length;
+        const started = Date.now();
+        while (!count() && Date.now() - started < timeout) await delay(150);
+        return count();
+    }
+
     // --- Reading the payload ----------------------------------------------------
 
     function normalizeName(name) {
@@ -97,23 +117,27 @@
             .replace(/\s+/g, ' ').trim().toLowerCase();
     }
 
-    // Either version of Stando's payload as { parameters, options, hours: Map, known: Set }.
+    // Either version of Stando's payload as
+    // { parameters, options, hours: Map, known: Set, names: Map(key → name as Stando wrote it) }.
     function parsePayload(data) {
+        const notStando = 'This is not attendance from Stando. In Stando, press Add to EIS, then try again.';
         if (typeof data === 'string') {
-            try { data = JSON.parse(data); } catch { throw new Error('This is not data from Stando.'); }
+            try { data = JSON.parse(data); } catch { throw new Error(notStando); }
         }
         const params = data && data.parameters;
         if (!params || typeof params.category !== 'string' || !params.category.trim() ||
             !data.attendance || typeof data.attendance !== 'object' || Array.isArray(data.attendance)) {
-            throw new Error('This is not data from Stando.');
+            throw new Error(notStando);
         }
 
         const hours = new Map();
         const known = new Set();
+        const names = new Map();
         const add = (name, count) => {
             const key = normalizeName(name);
             if (!key) return;
             known.add(key);
+            if (!names.has(key)) names.set(key, String(name).replace(/\s+/g, ' ').trim());
             if (count > 0) hours.set(key, (hours.get(key) || 0) + count);
         };
 
@@ -124,11 +148,57 @@
             Object.entries(data.attendance).forEach(([name, count]) => add(name, Number(count) || 0));
             (Array.isArray(data.known) ? data.known : []).forEach(name => add(name, 0));
         }
-        return { parameters: params, options: { ...DEFAULT_OPTIONS, ...(data.options || {}) }, hours, known };
+        return { parameters: params, options: { ...DEFAULT_OPTIONS, ...(data.options || {}) }, hours, known, names };
     }
 
     function looksLikeStando(text) {
         return /^\s*\{/.test(text || '') && /"parameters"/.test(text) && /"attendance"/.test(text);
+    }
+
+    // A short fingerprint of a payload, the same however its JSON is spaced.
+    function fingerprint(text) {
+        let canonical = String(text || '');
+        try { canonical = JSON.stringify(JSON.parse(canonical)); } catch { /* As it is. */ }
+        let hash = 0x811c9dc5;
+        for (let i = 0; i < canonical.length; i++) {
+            hash ^= canonical.charCodeAt(i);
+            hash = Math.imul(hash, 0x01000193);
+        }
+        return (hash >>> 0).toString(36) + '-' + canonical.length.toString(36);
+    }
+
+    // Fingerprints of the data EIS has saved (the last 50).
+    const savedImports = {
+        key: 'stando_eis_saved_imports',
+        list() {
+            try {
+                const list = JSON.parse(localStorage.getItem(this.key));
+                return Array.isArray(list) ? list : [];
+            } catch {
+                return [];
+            }
+        },
+        has(print) {
+            return this.list().some(item => item && item.fp === print);
+        },
+        add(print) {
+            try {
+                const list = this.list().filter(item => item && item.fp !== print);
+                list.push({ fp: print, at: Date.now() });
+                localStorage.setItem(this.key, JSON.stringify(list.slice(-50)));
+            } catch { /* Not remembered. */ }
+        }
+    };
+
+    // When EIS saves the form, the data filled in from Stando counts as saved.
+    function watchSave() {
+        const onSave = () => {
+            if (filledFingerprint) savedImports.add(filledFingerprint);
+        };
+        document.addEventListener('submit', onSave, true);
+        document.addEventListener('click', event => {
+            if (event.target.closest?.('button[name="submit"], input[type="submit"][name="submit"]')) onSave();
+        }, true);
     }
 
     async function autoImport() {
@@ -138,14 +208,20 @@
         } catch (error) {
             // Chrome asks for permission, or the page was not focused yet.
             log('Clipboard not readable on load:', error.message);
-            notify('info', 'Ready to import', 'Press Paste to fill the form from Stando.');
+            notify('info', 'Ready to import', 'Press Paste from Stando, or drop the file Stando saved onto this page.');
             return;
         }
         if (!looksLikeStando(text)) {
             log('The clipboard holds no Stando data.');
             return;
         }
-        await runImport(text);
+        if (savedImports.has(fingerprint(text))) {
+            log('The clipboard holds attendance EIS has already saved.');
+            notify('info', 'Already saved once',
+                'The attendance on the clipboard was saved before, so it was not filled in again. Press Paste from Stando to use it anyway.');
+            return;
+        }
+        await runImport(text, { auto: true });
     }
 
     async function pasteImport() {
@@ -169,18 +245,65 @@
         input.accept = '.json,application/json';
         input.onchange = () => {
             const file = input.files && input.files[0];
-            if (!file) return;
-            const reader = new FileReader();
-            reader.onload = () => runImport(String(reader.result));
-            reader.onerror = () => notify('error', 'Could not read the file', file.name);
-            reader.readAsText(file);
+            if (file) importFile(file);
         };
         input.click();
     }
 
+    function importFile(file) {
+        if (file.size > MAX_FILE_BYTES) {
+            notify('warning', 'Not a Stando file', `${file.name} is too large to be the file Stando saves.`);
+            return;
+        }
+        const reader = new FileReader();
+        reader.onload = () => runImport(String(reader.result));
+        reader.onerror = () => notify('error', 'Could not read the file', file.name);
+        reader.readAsText(file);
+    }
+
+    // A file dropped anywhere on the page imports like Import file. File fields
+    // of EIS's own keep their drops.
+    function enableFileDrop() {
+        let depth = 0;
+        let hint = null;
+        const carriesFiles = event => Array.from(event.dataTransfer?.types || []).includes('Files');
+        const ownField = event => !!event.target.closest?.('input[type="file"]');
+        const show = () => {
+            if (hint) return;
+            hint = document.createElement('div');
+            hint.className = 'eis-drop';
+            hint.innerHTML = '<span><i class="fa fa-upload" aria-hidden="true"></i> Drop the file Stando saved to fill in the attendance</span>';
+            document.body.appendChild(hint);
+        };
+        const hide = () => {
+            depth = 0;
+            hint?.remove();
+            hint = null;
+        };
+
+        document.addEventListener('dragenter', event => {
+            if (!carriesFiles(event) || ownField(event)) return;
+            depth++;
+            show();
+        });
+        document.addEventListener('dragleave', event => {
+            if (carriesFiles(event) && --depth <= 0) hide();
+        });
+        document.addEventListener('dragover', event => {
+            if (carriesFiles(event) && !ownField(event)) event.preventDefault();
+        });
+        document.addEventListener('drop', event => {
+            if (!carriesFiles(event) || ownField(event)) return;
+            event.preventDefault();
+            hide();
+            const file = event.dataTransfer.files[0];
+            if (file) importFile(file);
+        });
+    }
+
     // --- Filling the form -------------------------------------------------------
 
-    async function runImport(raw) {
+    async function runImport(raw, { auto = false } = {}) {
         if (busy) return;
         busy = true;
         try {
@@ -189,7 +312,13 @@
             log('Importing', p, `${payload.hours.size} present, ${payload.known.size} known`);
 
             if (p.eisId && pageEisId && String(p.eisId) !== pageEisId) {
-                throw new Error(`This data is for ${p.course || 'another course'}, not the course on this page. In Stando, choose this course and press Add to EIS again.`);
+                const course = p.course || 'another course';
+                if (auto) {
+                    notify('info', 'Clipboard is for another course',
+                        `Stando copied the attendance of ${course}. For this course, choose it in Stando and press Add to EIS.`);
+                    return;
+                }
+                throw new Error(`This data is for ${course}, not the course on this page. In Stando, choose this course and press Add to EIS again.`);
             }
 
             showLoading('Filling in the week, date and topic…');
@@ -204,14 +333,18 @@
             }
             await settle(1500);
 
-            if (p.section && p.section !== 'ALL') {
+            const section = p.section && p.section !== 'ALL' ? p.section : '';
+            if (section) {
                 showLoading('Choosing the group…');
-                if (!setField('didcourseattendance_section', p.section)) {
-                    notify('warning', 'Group not found', `EIS has no group "${p.section}"; the list shows the default one.`);
+                if (!setField('didcourseattendance_section', section)) {
+                    notify('warning', 'Group not found', `EIS has no group "${section}"; the list shows the default one.`);
                 }
             }
             showLoading('Loading the student list…');
             await settle(2500);
+            if (!(await waitForRows())) {
+                throw new Error('EIS shows no students for this category and group.');
+            }
 
             let numHours = p.hours;
             if (options.manualHours) {
@@ -226,7 +359,10 @@
             const result = fillRows(payload, Number(numHours), options);
             hideLoading();
             if (!result) return;
-            reportResult(result);
+            filledFingerprint = fingerprint(raw);
+            const filledIn = [p.week ? `Week ${p.week}` : '', p.date || '', [category, section].filter(Boolean).join(' ')]
+                .filter(Boolean).join(' · ');
+            reportResult(result, filledIn);
 
             if (options.autoSave) {
                 await delay(400);
@@ -284,8 +420,10 @@
     }
 
     function hourCheckboxes(row, numHours) {
-        // The first checkbox in a row ticks all of its hours.
-        return Array.from(row.querySelectorAll("input[type='checkbox']")).slice(1, 1 + numHours);
+        // The first checkbox ticks all of a row's hours when there is one more
+        // than hours (as the sheet generator reads it).
+        const boxes = Array.from(row.querySelectorAll("input[type='checkbox']"));
+        return boxes.slice(boxes.length > numHours ? 1 : 0).slice(0, numHours);
     }
 
     function fillRows(payload, numHours, options) {
@@ -331,7 +469,7 @@
 
         // Scanned in Stando, but EIS does not list them in this group.
         payload.hours.forEach((count, key) => {
-            if (!listed.has(key)) result.notOnList.push(key);
+            if (!listed.has(key)) result.notOnList.push(payload.names.get(key) || key);
         });
         log('Result', result);
         return result;
@@ -360,7 +498,7 @@
         updateField.value = '1';
     }
 
-    function reportResult(result) {
+    function reportResult(result, filledIn) {
         const parts = [`${result.present} present`, `${result.absent} absent`];
         if (result.exempt) parts.push(`${result.exempt} exempted`);
         const details = [];
@@ -373,16 +511,14 @@
         if (result.notOnList.length) {
             details.push({
                 title: `Scanned but not on this EIS list (${result.notOnList.length})`,
-                names: result.notOnList.map(titleCase)
+                names: result.notOnList
             });
         }
         const type = result.notOnList.length ? 'warning' : 'success';
-        notify(type, 'Attendance filled in', `${parts.join(' · ')}.`, details, 20000);
+        const lines = [`${parts.join(' · ')}.`];
+        if (filledIn) lines.push(`${filledIn}. Check it, then press Save.`);
+        notify(type, 'Attendance filled in', lines, details, 20000);
         document.querySelector('.eis-row-unknown')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-    }
-
-    function titleCase(name) {
-        return name.replace(/\b\w/g, c => c.toUpperCase());
     }
 
     // --- Page controls ----------------------------------------------------------
@@ -407,7 +543,7 @@
         const paste = make('eis-paste-btn', 'btn-success', 'fa-clipboard', 'Paste from Stando',
             'Fill the form with the attendance Stando copied', pasteImport);
         const file = make('eis-import-btn', 'btn-info', 'fa-upload', 'Import file',
-            'Fill the form from a file saved with Stando', fileImport);
+            'Fill the form from a file saved with Stando (or drop the file on the page)', fileImport);
         // Before the first button, not the first node: whitespace there would show as a gap.
         actionBar.insertBefore(paste, actionBar.firstElementChild);
         actionBar.insertBefore(file, paste.nextSibling);
@@ -440,6 +576,13 @@
             .eis-spinner { width: 22px; height: 22px; flex: none; border: 3px solid #c5cae9;
                 border-top-color: #3949ab; border-radius: 50%; animation: eis-spin 0.8s linear infinite; }
             @keyframes eis-spin { to { transform: rotate(360deg); } }
+
+            /* A file dragged over the page: where it goes. */
+            .eis-drop { position: fixed; inset: 12px; z-index: 10002; display: flex; align-items: center;
+                justify-content: center; border: 2px dashed #3949ab; border-radius: 12px;
+                background: rgba(57, 73, 171, 0.10); pointer-events: none; }
+            .eis-drop span { padding: 12px 18px; border-radius: 8px; background: #fff; color: #283593;
+                font-size: 15px; font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,0.16); }
 
             /* Top left, beside EIS's sidebar and under its header (see placeToasts). */
             .eis-toasts { position: fixed; top: 16px; left: 16px; z-index: 10001; display: flex;
@@ -475,8 +618,9 @@
             .eis-dark-mode .eis-panel textarea { background: #1c1c1e; color: #e0e0e0; border-color: #555; }
             .eis-dark-mode .eis-toast summary { color: #b0bec5; }
             .eis-dark-mode .eis-toast summary:hover { color: #fff; }
+            .eis-dark-mode .eis-drop span { background: #2c2c2e; color: #c5cae9; }
         `;
-        document.head.appendChild(style);
+        (document.head || document.documentElement).appendChild(style);
     }
 
     function showLoading(message) {
@@ -495,7 +639,8 @@
         document.getElementById('eis-loading')?.remove();
     }
 
-    // Without clipboard access: paste by hand. Resolves null when cancelled.
+    // Without clipboard access: paste by hand. Pasting Stando's data imports it
+    // at once; Ctrl+Enter imports what was typed. Resolves null when cancelled.
     function askForText() {
         return new Promise(resolve => {
             const overlay = document.createElement('div');
@@ -513,6 +658,19 @@
             const textarea = overlay.querySelector('textarea');
             const close = value => { overlay.remove(); document.removeEventListener('keydown', onKey, true); resolve(value); };
             const onKey = event => { if (event.key === 'Escape') close(null); };
+            textarea.addEventListener('paste', event => {
+                const text = event.clipboardData?.getData('text') || '';
+                if (looksLikeStando(text)) {
+                    event.preventDefault();
+                    close(text);
+                }
+            });
+            textarea.addEventListener('keydown', event => {
+                if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+                    event.preventDefault();
+                    close(textarea.value);
+                }
+            });
             overlay.querySelector('[data-action="cancel"]').onclick = () => close(null);
             overlay.querySelector('[data-action="ok"]').onclick = () => close(textarea.value);
             overlay.addEventListener('click', event => { if (event.target === overlay) close(null); });
@@ -544,7 +702,8 @@
         container.style.top = `${top}px`;
     }
 
-    // A toast; details are [{ title, names: [] }] shown as collapsible lists.
+    // A toast; message is a line or a list of lines, details are
+    // [{ title, names: [] }] shown as collapsible lists.
     function notify(type, title, message, details = [], timeout = type === 'error' ? 15000 : 8000) {
         let container = document.getElementById('eis-toasts');
         if (!container) {
@@ -568,7 +727,12 @@
         body.className = 'eis-toast-body';
         const heading = document.createElement('strong');
         heading.textContent = title;
-        body.append(heading, message);
+        body.append(heading);
+        [].concat(message).forEach(line => {
+            const text = document.createElement('div');
+            text.textContent = line;
+            body.appendChild(text);
+        });
         details.forEach(group => {
             const block = document.createElement('details');
             const summary = document.createElement('summary');

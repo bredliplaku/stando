@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EIS Attendance Sheet Generator
 // @namespace    https://bredliplaku.com/
-// @version      3.0
+// @version      3.1
 // @description  Generates attendance sheet that perfectly matches the original template with customizable fields
 // @author       Bredli Plaku
 // @match        https://eis.epoka.edu.al/courseattendance/*/editcl
@@ -17,6 +17,10 @@
 
     // Five hour columns, as on the paper template.
     const DATE_COLUMNS = 5;
+
+    // The faculty's own PDF (EIS prints it with wkhtmltopdf on A4) has 10 mm
+    // margins above and below and about 11.8 mm at the sides, on every page.
+    const PAGE_MARGIN = "10mm 11.8mm";
 
     // Titles in the order they are offered. A lecturer's EIS name may begin with
     // one; TITLE_PATTERNS recognise it so it is not printed twice.
@@ -41,6 +45,7 @@
         { value: "crosses", label: "Crosses (✗)", symbol: "✗" },
         { value: "filled_circles", label: "Filled circles (●)", symbol: "●" },
         { value: "names", label: "Student names", symbol: "" },
+        { value: "blank", label: "Nothing (signed by hand)", symbol: "" },
     ];
 
     const SIGNATURE_FONTS = [
@@ -104,6 +109,11 @@
            Like the importer's notices and EIS itself: white, a straight coloured
            edge on the left with only the other corners rounded, EIS's own buttons
            (btn) and fields (form-control), and chevrons on what folds. */
+        html.asg-open,
+        html.asg-open body {
+            overflow: hidden !important;
+        }
+
         #attendance-sheet-container {
             position: fixed;
             inset: 0;
@@ -118,12 +128,12 @@
 
         #attendance-sheet-content {
             position: relative;
-            width: 860px;
+            width: 900px;
             max-width: 100%;
             max-height: calc(100vh - 40px);
             overflow: auto;
+            overscroll-behavior: contain;
             box-sizing: border-box;
-            padding: 0 24px 24px;
             border-left: 4px solid #3949ab;
             border-radius: 0 6px 6px 0;
             background-color: #ffffff;
@@ -131,6 +141,7 @@
             color: #263238;
             font-size: 13px;
             line-height: 1.45;
+            text-align: left;
         }
 
         #attendance-sheet-content *,
@@ -146,20 +157,31 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            margin: 0 -24px 14px;
             padding: 12px 14px 12px 24px;
             border-bottom: 1px solid #e5e9ec;
             background: #fff;
             user-select: none;
         }
 
-        #sheet-controls h2 {
+        #sheet-controls .asg-heading {
             flex: 1;
+            min-width: 0;
+        }
+
+        #sheet-controls h2 {
             margin: 0;
             color: #263238;
             font-size: 15px;
             font-weight: 700;
             line-height: 1.3;
+        }
+
+        #sheet-controls .asg-summary {
+            overflow: hidden;
+            color: #78909c;
+            font-size: 12px;
+            white-space: nowrap;
+            text-overflow: ellipsis;
         }
 
         #sheet-controls .btn {
@@ -192,7 +214,7 @@
 
         /* ---------- Settings ---------- */
         #config-panel {
-            margin: 0 0 22px;
+            padding: 16px 24px 18px;
             user-select: none;
         }
 
@@ -278,6 +300,12 @@
             margin: 0;
         }
 
+        #config-panel .asg-hint {
+            margin: 14px 0 0;
+            color: #78909c;
+            font-size: 12px;
+        }
+
         #signatures-container {
             display: flex;
             flex-direction: column;
@@ -322,209 +350,214 @@
         .record_actions > .stando-eis-btn:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
         .record_actions > .stando-eis-btn + :not(.stando-eis-btn) { margin-left: 0 !important; border-top-left-radius: 0; border-bottom-left-radius: 0; }
 
-        /* ---------- The sheet: the paper template ---------- */
-        #attendance-sheet-page,
-        #attendance-sheet-page *:not(.student-signature) {
-            font-family: Verdana, Geneva, sans-serif !important;
+        /* ---------- The sheet: the faculty's attendance list ----------
+           Sizes are in pt and mm, measured from the PDF EIS itself prints, so the
+           preview is the printed page: A4, Times New Roman, 7 mm rows. */
+        .asg-desk {
+            overflow-x: auto;
+            padding: 20px;
+            border-top: 1px solid #e5e9ec;
+            background: #eceff1;
         }
 
-        .sheet-header {
-            margin-bottom: 8px;
-        }
-
-        .sheet-header h2 {
-            font-size: 16px;
-            margin: 5px 0;
-            font-weight: 700 !important;
+        #attendance-sheet-page {
+            width: 210mm;
+            min-height: 297mm;
+            margin: 0 auto;
+            padding: ${PAGE_MARGIN};
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18), 0 6px 18px rgba(0, 0, 0, 0.08);
             color: #000;
+            font-family: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", serif;
+            font-size: 7.2pt;
+            font-weight: 400;
+            line-height: 1.15;
             text-align: left;
+            user-select: text;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
 
-        .sheet-header h3 {
-            font-size: 18px;
-            margin: 25px 0 15px 0;
-            font-weight: 700 !important;
-            color: #000;
+        #attendance-sheet-page * {
+            font-family: inherit;
+            letter-spacing: normal;
+            text-transform: none;
+        }
+
+        .asg-uni {
+            font-size: 11.4pt;
+            font-weight: 700;
+        }
+
+        .asg-title {
+            margin-top: 4.4mm;
+            font-size: 14.4pt;
+            font-weight: 700;
             text-align: center;
-            text-transform: uppercase;
         }
 
-        .sheet-header h4 {
-            font-size: 12px;
-            margin: 5px 0;
-            font-weight: 700 !important;
-            color: #000;
-            text-align: left;
-        }
-
-        .header-flex {
+        /* The course on the left; the print date over the first date column. */
+        .asg-course-row {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 16px;
+            align-items: baseline;
+            margin-top: 6.7mm;
         }
 
-        .sheet-header p {
-            margin: 0;
-            text-align: right;
-            color: #000;
-            white-space: nowrap;
+        .asg-course {
+            flex: 0 0 46%;
+            padding-left: 0.5mm;
+            font-size: 7.8pt;
+            font-weight: 700;
         }
 
-        #printed-date-display {
-            font-size: 11px !important;
+        .asg-printed {
+            position: relative;
+            top: 1mm;
+            flex: 1;
+            padding-left: 2mm;
+            font-size: 6.6pt;
         }
 
-        .attendance-table {
-            border-collapse: collapse;
+        .asg-table {
             width: 100%;
-            margin-top: 4px;
+            margin: 2.4mm 0 0;
+            border-collapse: collapse;
+            border-spacing: 0;
             table-layout: fixed;
+            background: #fff;
         }
 
-        .attendance-table th, .attendance-table td {
-            border: 1px solid #000;
-            padding: 5px 2px;
+        .asg-table th,
+        .asg-table td {
+            height: 7mm;
+            padding: 0 1.1mm;
+            border: 0.25mm solid #333;
+            background: #fff;
+            color: #000;
+            font-size: 7.2pt;
+            font-weight: 400;
+            line-height: 1.15;
             text-align: center;
             vertical-align: middle;
-            height: 22px;
-            font-size: 11px;
-            overflow: hidden;
-            color: #000;
-            background-color: #fff;
-        }
-
-        .attendance-table th { font-weight: bold; }
-        .attendance-table th.date-column { font-weight: normal; }
-        .attendance-table th:nth-child(1) { width: 30px; }
-        .attendance-table th:nth-child(2) { width: 25px; }
-        .attendance-table th:nth-child(3) { width: 75px; }
-        .attendance-table th:nth-child(4) { width: 140px; }
-        .attendance-table th:nth-child(n+5):nth-child(-n+9) { width: 70px; }
-        .attendance-table th:nth-child(10) { width: 25px; }
-
-        .attendance-table td:nth-child(1) {
-            text-align: right;
-            padding-right: 5px;
-        }
-
-        .attendance-table :is(.name-cell, .id-cell) {
-            text-align: left;
-            padding-left: 10px;
-            font-weight: normal;
-        }
-
-        .student-signature {
-            font-size: 14px;
-            color: #00008b;
-            font-weight: 400;
             white-space: nowrap;
             overflow: hidden;
+            text-overflow: ellipsis;
         }
 
-        .student-checkmark {
-            font-size: 12px;
-            color: #00008b;
-            font-weight: bold;
+        .asg-table th { font-weight: 700; }
+        .asg-table th.date-column { font-weight: 400; }
+        .asg-table .col-nr { text-align: right; }
+        .asg-table .col-name { text-align: left; }
+
+        /* Marks look written in blue pen, in print too (EIS prints all text black). */
+        #attendance-sheet-page .asg-mark {
+            color: #00008b !important;
+            font-size: 9pt;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        #attendance-sheet-page .student-signature {
+            color: #00008b !important;
+            font-size: 10pt;
+            font-weight: 400;
+            line-height: 1;
         }
 
         ${SIGNATURE_FONTS.map(font => `.${font.value} { font-family: '${font.family}', cursive !important; }`).join("\n        ")}
 
-        .footer-note {
-            margin-top: 12px;
-            font-size: 10px;
-            color: #000;
-            text-align: left;
+        .asg-note {
+            margin-top: 4.9mm;
+            font-size: 9.6pt;
+            break-inside: avoid;
         }
 
-        .footer-note p {
-            margin: 0 0 10px;
+        #attendance-sheet-page .asg-note p {
+            margin: 0 0 5.7mm;
+            font-size: inherit;
+            line-height: 1.15;
         }
 
-        .signature-line {
-            margin-top: 15px;
+        #attendance-sheet-page .asg-note p:first-child { margin-bottom: 3.5mm; }
+        #attendance-sheet-page .asg-note p:last-child { margin-bottom: 0; }
+
+        .asg-signers {
+            margin-top: 8.6mm;
+            padding-right: 4.3mm;
+            font-size: 9.6pt;
+            font-weight: 700;
             text-align: right;
-            color: #000;
+            break-inside: avoid;
         }
 
-        .signature-line .signer {
-            margin-bottom: 40px;
-        }
+        .asg-signer + .asg-signer { margin-top: 6.5mm; }
+        .asg-signer-sign { margin-top: 1.2mm; font-style: italic; }
 
-        .signature-line .signer p {
-            margin: 0 0 2px;
-            font-size: 14px;
-            font-weight: bold;
-        }
-
-        .signature-line .signer small {
-            font-size: 11px;
-            font-style: italic;
-        }
-
+        /* ---------- Printing ----------
+           Only while the sheet is open, so EIS pages still print as themselves.
+           The sheet stays in the page's flow: positioned, it would lose the page
+           margins after the first page. */
         @media print {
-            @page {
-                size: A4 portrait;
-                margin: 12mm 8mm 8mm 8mm;
-            }
-
-            *, *::before, *::after {
-                box-sizing: border-box !important;
-            }
-
-            html, body {
-                width: 794px !important;
-                min-width: 794px !important;
-                max-width: 794px !important;
+            html.asg-open,
+            html.asg-open body {
+                width: auto !important;
+                min-width: 0 !important;
+                max-width: none !important;
                 height: auto !important;
+                min-height: 0 !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                background-color: white !important;
-            }
-
-            body > * {
-                display: none !important;
-            }
-
-            body > #attendance-sheet-container {
-                display: block !important;
-                position: absolute !important;
-                inset: 0 auto auto 0 !important;
-                width: 794px !important;
-                height: auto !important;
-                margin: 0 !important;
-                padding: 0 !important;
-                background: transparent !important;
-                backdrop-filter: none !important;
-            }
-
-            #attendance-sheet-content {
-                display: block !important;
-                width: 750px !important;
-                min-width: 750px !important;
-                max-width: 750px !important;
-                height: auto !important;
-                max-height: none !important;
-                margin: 0 auto !important;
-                padding: 15px 0 !important;
-                border: none !important;
-                border-radius: 0 !important;
-                background-color: white !important;
-                box-shadow: none !important;
                 overflow: visible !important;
+                background: #fff !important;
             }
 
-            #sheet-controls, #config-panel {
+            html.asg-open body > :not(#attendance-sheet-container) {
                 display: none !important;
             }
 
-            .attendance-table tr {
-                page-break-inside: avoid !important;
+            html.asg-open #attendance-sheet-container {
+                position: static !important;
+                display: block !important;
+                padding: 0 !important;
+                background: none !important;
             }
 
-            .attendance-table thead {
-                display: table-header-group !important;
+            html.asg-open #attendance-sheet-content {
+                display: block !important;
+                width: auto !important;
+                max-width: none !important;
+                max-height: none !important;
+                overflow: visible !important;
+                border: 0 !important;
+                border-radius: 0 !important;
+                box-shadow: none !important;
             }
+
+            html.asg-open #sheet-controls,
+            html.asg-open #config-panel {
+                display: none !important;
+            }
+
+            html.asg-open .asg-desk {
+                overflow: visible !important;
+                padding: 0 !important;
+                border: 0 !important;
+                background: none !important;
+            }
+
+            html.asg-open #attendance-sheet-page {
+                width: auto !important;
+                min-height: 0 !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                box-shadow: none !important;
+            }
+
+            /* The column headings (and their dates) repeat at the top of every
+               page, unlike the faculty's sheet, so each page shows which column is
+               which day. */
+            #attendance-sheet-page thead { display: table-header-group !important; }
+            #attendance-sheet-page tr { break-inside: avoid; page-break-inside: avoid; }
         }
     `);
 
@@ -591,6 +624,18 @@
         return "";
     }
 
+    // A form field's value, or the text of a select's chosen option. A new
+    // attendance (newcl) keeps its date, category, group and hours in the form.
+    function fieldText(id) {
+        const field = document.getElementById(id);
+        if (!field) return "";
+        if (field.tagName === "SELECT") {
+            const option = field.options[field.selectedIndex];
+            return option && option.value ? option.text.trim() : "";
+        }
+        return String(field.value || "").trim();
+    }
+
     function hasRLabel(studentNameCell, row) {
         if (studentNameCell.querySelector(".label-warning") !== null) return true;
         if (row.querySelector('td[data-repeated="R"]') !== null) return true;
@@ -605,13 +650,20 @@
         return text.includes(" EX ") || text.endsWith(" EX") || text.includes("(EX)");
     }
 
-    // "2026-10-15" or "15.10.2026" → "2026-10-15"; anything else → "".
+    // "2026-10-15", "15.10.2026" or "15/10/2026" → "2026-10-15"; anything else → "".
     function toIsoDate(text) {
-        let match = String(text).match(/(\d{4})-(\d{2})-(\d{2})/);
-        if (match) return `${match[1]}-${match[2]}-${match[3]}`;
-        match = String(text).match(/(\d{2})\.(\d{2})\.(\d{4})/);
-        if (match) return `${match[3]}-${match[2]}-${match[1]}`;
+        const pad = value => value.padStart(2, "0");
+        let match = String(text).match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
+        if (match) return `${match[1]}-${pad(match[2])}-${pad(match[3])}`;
+        match = String(text).match(/(\d{1,2})[./](\d{1,2})[./](\d{4})/);
+        if (match) return `${match[3]}-${pad(match[2])}-${pad(match[1])}`;
         return "";
+    }
+
+    // "2026-10-15" → "15.10.2026"
+    function isoToDotted(iso) {
+        const [y, m, d] = String(iso || "").split("-");
+        return d ? `${d}.${m}.${y}` : "";
     }
 
     // The lecturer's EIS name as a title and a name, e.g.
@@ -641,8 +693,8 @@
         // "CEN / MTH 102 - MTH 102 CALCULUS II 2025".
         const courseCode = getCourseText(document.querySelector(".course .caption"));
 
-        const category = detailText("Category");
-        const group = detailText("Group");
+        const category = detailText("Category") || fieldText("didcourseattendance_categoryen");
+        const group = detailText("Group") || fieldText("didcourseattendance_section");
         let formattedCategory = "";
         if (category && category.toUpperCase() !== "ALL") {
             formattedCategory = " - " + category.charAt(0).toUpperCase() + category.slice(1).toLowerCase();
@@ -652,15 +704,23 @@
         data.courseTitle = (courseCode ? courseCode + " - " : "") + courseName + formattedCategory;
         data.storageKey = (courseCode ? courseCode + "_" + courseName : courseName).replace(/[^a-z0-9]/gi, "_");
 
-        data.isoDate = toIsoDate(detailText("Date")) || formatDate(new Date(), "iso");
+        data.isoDate = toIsoDate(detailText("Date")) || toIsoDate(fieldText("didcourseattendance_date")) ||
+            formatDate(new Date(), "iso");
+
+        const rows = document.querySelectorAll("#student_list_table tbody tr");
 
         const hoursText = detailText("Nr. of Hours", "Num. of Hours") ||
-            document.querySelector(".attendance-details li:nth-child(5) .text-cont")?.textContent || "";
-        const hours = parseInt(hoursText, 10);
-        if (!isNaN(hours) && hours > 0) data.totalHours = hours;
+            document.querySelector(".attendance-details li:nth-child(5) .text-cont")?.textContent ||
+            fieldText("didcourseattendance_nrhours");
+        let hours = parseInt(hoursText, 10);
+        if (!(hours > 0)) {
+            // Last resort: one checkbox per hour, after the one that ticks them all.
+            const boxes = rows[0]?.querySelectorAll('.checkboxes_row_td input[type="checkbox"]').length || 0;
+            if (boxes > 1) hours = boxes - 1;
+        }
+        if (hours > 0) data.totalHours = hours;
 
         // Students and their hours, in editable and locked (view) pages alike.
-        const rows = document.querySelectorAll("#student_list_table tbody tr");
         rows.forEach((row, index) => {
             const studentId = row.querySelector("td:nth-child(2)")?.textContent?.trim();
             const studentNameCell = row.querySelector("td:nth-child(3)");
@@ -730,7 +790,7 @@
     }
 
     // ---------------------------------------------------------------------------
-    // The sheet window
+    // The button in EIS's bar
     // ---------------------------------------------------------------------------
 
     function addAttendanceButton() {
@@ -748,9 +808,31 @@
             generateAttendanceSheet();
         });
 
-        // Before the first button, not the first node: whitespace there would show as a gap.
-        actionBar.insertBefore(button, actionBar.firstElementChild);
+        // After the importer's buttons, whichever script runs first, and before
+        // EIS's own (before the first button, not the first node: whitespace
+        // there would show as a gap).
+        const ours = actionBar.querySelectorAll(":scope > .stando-eis-btn");
+        const before = ours.length ? ours[ours.length - 1].nextElementSibling : actionBar.firstElementChild;
+        actionBar.insertBefore(button, before);
     }
+
+    // EIS may draw its bar late or again; the button follows it.
+    function keepAttendanceButton() {
+        addAttendanceButton();
+        let queued = false;
+        new MutationObserver(() => {
+            if (queued) return;
+            queued = true;
+            requestAnimationFrame(() => {
+                queued = false;
+                addAttendanceButton();
+            });
+        }).observe(document.body, { childList: true, subtree: true });
+    }
+
+    // ---------------------------------------------------------------------------
+    // The sheet window
+    // ---------------------------------------------------------------------------
 
     function loadSigners(data) {
         const saved = store.getJson(STORE.signers(data.storageKey));
@@ -769,6 +851,9 @@
         return [splitTitle(data.username)];
     }
 
+    // Closes the open sheet, if any.
+    let closeOpenSheet = null;
+
     function generateAttendanceSheet() {
         const data = extractAttendanceData();
         if (data.students.length === 0) {
@@ -779,7 +864,7 @@
         loadSignatureFonts();
 
         // Opening again replaces the open sheet.
-        document.getElementById("attendance-sheet-container")?.remove();
+        closeOpenSheet?.();
 
         const savedDisplay = store.get(STORE.display, "checkmarks");
         const savedFont = store.get(STORE.font, "random");
@@ -791,13 +876,22 @@
             signers: loadSigners(data).map(s => ({ title: TITLES.includes(s.title) ? s.title : "Lecturer", name: String(s.name || "") })),
         };
 
+        const summary = [
+            data.courseTitle,
+            `${data.students.length} student${data.students.length === 1 ? "" : "s"}`,
+            `${data.totalHours} hour${data.totalHours === 1 ? "" : "s"}`,
+        ].join(" · ");
+
         const container = document.createElement("div");
         container.id = "attendance-sheet-container";
         container.innerHTML = `
             <div id="attendance-sheet-content" role="dialog" aria-modal="true" aria-labelledby="asg-title">
                 <div id="sheet-controls">
-                    <h2 id="asg-title">Attendance sheet</h2>
-                    <button type="button" id="print-sheet-btn" class="btn btn-success btn-sm"><i class="fa fa-print" aria-hidden="true"></i> Print PDF</button>
+                    <div class="asg-heading">
+                        <h2 id="asg-title">Attendance sheet</h2>
+                        <div class="asg-summary" title="${escapeHtml(summary)}">${escapeHtml(summary)}</div>
+                    </div>
+                    <button type="button" id="print-sheet-btn" class="btn btn-success btn-sm" title="Print, or choose Save as PDF as the printer (Ctrl+P)"><i class="fa fa-print" aria-hidden="true"></i> Print / PDF</button>
                     <button type="button" id="close-sheet-btn" class="asg-icon-btn" title="Close (Esc)" aria-label="Close">&times;</button>
                 </div>
 
@@ -842,49 +936,57 @@
                         <button type="button" id="add-signature-btn" class="btn btn-default btn-sm"><i class="fa fa-plus" aria-hidden="true"></i> Add lecturer</button>
                     </div>
                     </details>
+
+                    <p class="asg-hint"><i class="fa fa-info-circle" aria-hidden="true"></i>
+                        In the print window, keep Margins on Default and untick Headers and footers.</p>
                 </div>
 
-                <div id="attendance-sheet-page">
-                    <div class="sheet-header">
-                        <h2>Epoka University</h2>
-                        <h2>Faculty of Architecture and Engineering</h2>
-                        <h3>ATTENDANCE LIST</h3>
-                        <div class="header-flex">
-                            <h4>${escapeHtml(data.courseTitle)}</h4>
-                            <p id="printed-date-display"></p>
+                <div class="asg-desk">
+                    <div id="attendance-sheet-page">
+                        <div class="asg-uni">EPOKA University</div>
+                        <div class="asg-uni">Faculty of Architecture and Engineering</div>
+                        <div class="asg-title">ATTENDANCE LIST</div>
+                        <div class="asg-course-row">
+                            <div class="asg-course">${escapeHtml(data.courseTitle)}</div>
+                            <div class="asg-printed" id="printed-date-display"></div>
                         </div>
+                        <table class="asg-table">
+                            <colgroup>
+                                <col style="width: 5%"><col style="width: 4%"><col style="width: 11%"><col style="width: 26%">
+                                ${`<col style="width: 10%">`.repeat(DATE_COLUMNS)}
+                                <col style="width: 4%">
+                            </colgroup>
+                            <thead><tr>
+                                <th class="col-nr">Nr.</th><th>R</th><th>Student ID</th><th class="col-name">Name Surname</th>
+                                ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<th class="date-column" data-index="${i}"></th>`).join("")}
+                                <th>Ex</th>
+                            </tr></thead>
+                            <tbody>
+                                ${data.students.map(student => `
+                                <tr>
+                                    <td class="col-nr">${student.index}</td>
+                                    <td>${student.repeated ? "R" : ""}</td>
+                                    <td>${escapeHtml(student.id)}</td>
+                                    <td class="col-name">${escapeHtml(student.name)}</td>
+                                    ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<td class="mark-cell" data-present="${student.attendance[i] ? 1 : 0}"></td>`).join("")}
+                                    <td>${student.exempt ? "Ex" : ""}</td>
+                                </tr>`).join("")}
+                            </tbody>
+                        </table>
+                        <div class="asg-note">
+                            <p><strong>NOTE:</strong></p>
+                            <p>Students that are not listed in the attendance list will not be considered as enrolled in the course!</p>
+                            <p>All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS system.</p>
+                            <p><strong>R</strong> - Repeated Course, <strong>Ex</strong> - Exempted from attendances.</p>
+                        </div>
+                        <div class="asg-signers" id="signature-area"></div>
                     </div>
-                    <table class="attendance-table">
-                        <thead><tr>
-                            <th>No.</th><th>R</th><th>Student ID</th><th>Name Surname</th>
-                            ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<th class="date-column" data-index="${i}"></th>`).join("")}
-                            <th>EX</th>
-                        </tr></thead>
-                        <tbody>
-                            ${data.students.map(student => `
-                            <tr>
-                                <td>${student.index}</td>
-                                <td>${student.repeated ? "R" : ""}</td>
-                                <td class="id-cell">${escapeHtml(student.id)}</td>
-                                <td class="name-cell">${escapeHtml(student.name)}</td>
-                                ${Array.from({ length: DATE_COLUMNS }, (_, i) => `<td class="mark-cell" data-present="${student.attendance[i] ? 1 : 0}"></td>`).join("")}
-                                <td>${student.exempt ? "EX" : ""}</td>
-                            </tr>`).join("")}
-                        </tbody>
-                    </table>
-                    <div class="footer-note">
-                        <p><strong>NOTE:</strong></p>
-                        <p>Students that are not listed in the attendance list will not be considered as enrolled in the course!</p>
-                        <p>All attendance sheets should be delivered to department coordinators by the end of the week after recording the entries electronically through EIS.</p>
-                        <p><strong>R</strong> - Repeated Course, <strong>EX</strong> - Exempted from attendances.</p>
-                    </div>
-                    <div class="signature-line" id="signature-area"></div>
                 </div>
             </div>`;
         document.body.appendChild(container);
 
         const $ = selector => container.querySelector(selector);
-        const markRows = Array.from(container.querySelectorAll(".attendance-table tbody tr"));
+        const markRows = Array.from(container.querySelectorAll(".asg-table tbody tr"));
 
         // --- Rendering from state ---
         function renderMarks() {
@@ -894,10 +996,13 @@
                 const fontClass = state.font === "random" ? student.fontClass : state.font;
                 const firstName = student.name.split(" ")[0];
                 row.querySelectorAll(".mark-cell").forEach(cell => {
-                    if (cell.dataset.present !== "1") return;
-                    cell.innerHTML = mark.value === "names"
-                        ? `<span class="student-signature ${fontClass}">${escapeHtml(firstName)}</span>`
-                        : `<span class="student-checkmark">${mark.symbol}</span>`;
+                    if (cell.dataset.present !== "1" || mark.value === "blank") {
+                        cell.textContent = "";
+                    } else if (mark.value === "names") {
+                        cell.innerHTML = `<span class="student-signature ${fontClass}">${escapeHtml(firstName)}</span>`;
+                    } else {
+                        cell.innerHTML = `<span class="asg-mark">${mark.symbol}</span>`;
+                    }
                 });
             });
             $("#signature-font-row").hidden = state.display !== "names";
@@ -921,17 +1026,16 @@
         }
 
         function renderPrintedDate() {
-            const [y, m, d] = state.printedDate.split("-");
-            $("#printed-date-display").innerHTML = `<i>Printed on:</i> ${d ? `${d}.${m}.${y}` : ""}`;
+            $("#printed-date-display").innerHTML = `<i>Printed on</i>: ${isoToDotted(state.printedDate)}`;
         }
 
         function renderSignatureArea() {
             $("#signature-area").innerHTML = state.signers
                 .filter(s => s.name.trim())
                 .map(s => `
-                    <div class="signer">
-                        <p>${escapeHtml(`${s.title} ${s.name}`.trim())}</p>
-                        <small>(Signature)</small>
+                    <div class="asg-signer">
+                        <div>${escapeHtml(`${s.title} ${s.name}`.trim())}</div>
+                        <div class="asg-signer-sign">(Signature)</div>
                     </div>`).join("");
             store.set(STORE.signers(data.storageKey), state.signers);
         }
@@ -1016,10 +1120,48 @@
             renderSignerList(state.signers.length - 1);
         });
 
+        // --- The page around the sheet ---
+        // While open: the page behind stays still and out of reach of Tab, and
+        // printing (the button or Ctrl+P) prints only the sheet, with the
+        // faculty's margins on every page and the course as the PDF's name.
+        const opener = document.activeElement;
+        const root = document.documentElement;
+        root.classList.add("asg-open");
+
+        const pageStyle = document.createElement("style");
+        pageStyle.id = "asg-page-style";
+        pageStyle.textContent = `@page { size: A4 portrait; margin: ${PAGE_MARGIN}; }`;
+        document.head.appendChild(pageStyle);
+
+        const madeInert = Array.from(document.body.children).filter(el => el !== container && !el.inert);
+        madeInert.forEach(el => { el.inert = true; });
+
+        let titleBeforePrint = null;
+        const onBeforePrint = () => {
+            titleBeforePrint = document.title;
+            const date = isoToDotted(state.dates[0]);
+            document.title = `Attendance list - ${data.courseTitle}${date ? ` - ${date}` : ""}`;
+        };
+        const onAfterPrint = () => {
+            if (titleBeforePrint !== null) document.title = titleBeforePrint;
+            titleBeforePrint = null;
+        };
+        window.addEventListener("beforeprint", onBeforePrint);
+        window.addEventListener("afterprint", onAfterPrint);
+
         const close = () => {
             container.remove();
+            pageStyle.remove();
+            root.classList.remove("asg-open");
+            madeInert.forEach(el => { el.inert = false; });
             document.removeEventListener("keydown", onKey, true);
+            window.removeEventListener("beforeprint", onBeforePrint);
+            window.removeEventListener("afterprint", onAfterPrint);
+            closeOpenSheet = null;
+            if (opener?.isConnected) opener.focus?.();
         };
+        closeOpenSheet = close;
+
         const onKey = event => {
             if (event.key === "Escape" && !event.target.closest?.("select")) close();
         };
@@ -1033,7 +1175,18 @@
             if (pressedOutside && event.target === container) close();
             pressedOutside = false;
         });
-        $("#print-sheet-btn").addEventListener("click", () => window.print());
+
+        // The handwriting fonts load on first use; print once they have (or after
+        // a few seconds without them).
+        $("#print-sheet-btn").addEventListener("click", async () => {
+            const button = $("#print-sheet-btn");
+            button.disabled = true;
+            try {
+                await Promise.race([document.fonts?.ready, new Promise(resolve => setTimeout(resolve, 3000))]);
+            } catch { /* Print with what has loaded. */ }
+            button.disabled = false;
+            window.print();
+        });
 
         renderMarks();
         renderDates();
@@ -1050,5 +1203,5 @@
         return format === "iso" ? `${y}-${m}-${d}` : `${d}.${m}.${y}`;
     }
 
-    addAttendanceButton();
+    keepAttendanceButton();
 })();
