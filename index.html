@@ -460,6 +460,8 @@
                                             class="fa-solid fa-file-import" aria-hidden="true"></i>Import</button>
                                     <button type="button" role="menuitem" id="export-btn" disabled><i
                                             class="fa-solid fa-file-export" aria-hidden="true"></i>Export</button>
+                                    <button type="button" role="menuitem" id="export-logs-excel-btn" disabled><i
+                                            class="fa-solid fa-file-excel" aria-hidden="true"></i>Export to Excel</button>
                                     <button type="button" role="menuitem" id="clear-btn" class="is-danger" disabled><i
                                             class="fa-solid fa-trash" aria-hidden="true"></i>Delete all records</button>
                                 </div>
@@ -492,12 +494,11 @@
                         </table>
                     </div>
 
+                    <!-- What the list says when it has nothing to show (emptyStateHtml in scripts.js). -->
                     <div id="empty-logs" class="empty-logs">
-                        <i class="fa-solid fa-ghost" style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
-                        <p style="font-size: 1.1em; margin-bottom: 5px;">No attendance records found.</p>
-                        <p style="font-size: 0.9em; color: #999;">Start scanning or select a different course to see
-                            the
-                            history.</p>
+                        <i class="fa-solid fa-ghost empty-icon" aria-hidden="true"></i>
+                        <p class="empty-title">No attendance records found.</p>
+                        <p class="empty-hint">Start scanning or select a different course to see the history.</p>
                     </div>
 
                     <div id="logs-pagination" class="pagination-controls" style="display: none;">
@@ -597,13 +598,13 @@
                             <tbody id="database-tbody">
                             </tbody>
                         </table>
-                        <div id="empty-database" class="empty-logs" style="display: none;">
-                            <i class="fa-solid fa-user-graduate"
-                                style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
-                            <p style="font-size: 1.1em; margin-bottom: 5px;">No students yet.</p>
-                            <p style="font-size: 0.9em; color: #999;">Import an Excel or CSV student list, or add a
-                                student to get started.</p>
-                        </div>
+                    </div>
+
+                    <!-- After the table, not inside it: an empty table's container is hidden. -->
+                    <div id="empty-database" class="empty-logs" style="display: none;">
+                        <i class="fa-solid fa-user-graduate empty-icon" aria-hidden="true"></i>
+                        <p class="empty-title">No students yet.</p>
+                        <p class="empty-hint">Import an Excel or CSV student list, or add a student to get started.</p>
                     </div>
 
                     <div id="db-pagination" class="pagination-controls" style="display: none;">
@@ -623,7 +624,8 @@
             <div class="social-links">
                 <!-- The root of whichever website hosts this page. -->
                 <a href="/" title="Home" aria-label="Home"><i class="fa-solid fa-house" aria-hidden="true"></i></a>
-                <button type="button" id="theme-toggle-btn" class="theme-toggle" title="Toggle Theme"><i
+                <button type="button" id="theme-toggle-btn" class="theme-toggle" title="Change theme"
+                    aria-label="Change theme"><i
                         class="fa-solid fa-circle-half-stroke" aria-hidden="true"></i></button>
                 <button type="button" id="sound-toggle-btn" class="theme-toggle" title="Mute scan sounds"
                     aria-label="Scan sounds" aria-pressed="true"><i class="fa-solid fa-volume-high"

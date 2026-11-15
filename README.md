@@ -28,7 +28,8 @@ while scanning or while attendance on the device waits to sync.
 
 Every dialog closes with the **×** in its title bar, a tap outside it or Escape.
 If something in it was changed, Stando asks first: **Save**, **Discard** or
-**Keep editing**.
+**Keep editing**. In the short forms (a student, a staff member, a programme),
+Enter saves, as Ctrl+S does in any dialog.
 
 The banner at the top shows the course on screen: its code above its name, such
 as **CE 121 / Civil Engineering Drawing**, and the browser tab reads
@@ -45,7 +46,10 @@ attendance. A card that is not in the student list still records attendance,
 but plays the failure sound and turns the scan result orange. The same card
 tapped again within a minute is not recorded twice: Stando says **Already
 scanned**, with the failure sound. You can search
-records by name, card, date or group to find an entry or make a correction.
+records by name, card, date or group to find an entry or make a correction:
+**/** goes to the search box of the list on screen, Escape empties it, and a
+search that finds nothing offers **Clear search**. Resting the pointer on a
+day's date shows its weekday and how many students have a record that day.
 In a record's **Edit**, **Select** ticks several of its times to change their
 group or delete them together.
 
@@ -159,7 +163,13 @@ saved with a UID open with it on; turning it off and saving removes the UID and
 keeps the Card ID. The same applies to staff cards. A scanned card request also
 opens with it on, and turning it off just leaves the UID out.
 
-Lecturers can export attendance for backup or later import. For courses using
+Lecturers export a course's attendance from **⋯** above its records.
+**Export to Excel** saves a spreadsheet for marking: a **Summary** sheet with a
+row for each student and a column for each day (the times recorded that day,
+then the student's days and times in total), and a **Records** sheet listing
+every time with its group. **Export** saves the backup file that **Import**
+reads back. Exported files are named after the course and the day, such as
+`CE 121_attendance_2026-11-15.xlsx`. For courses using
 EIS, **Add to EIS** copies a day's attendance; the
 [EIS userscripts](extensions/) (installed with a userscript manager such as
 Tampermonkey) fill it in on the EIS page.

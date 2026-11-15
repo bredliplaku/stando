@@ -222,7 +222,7 @@ async function handleOneTapResponse(response) {
     if (loginBtn) {
         loginBtn.dataset.originalText = loginBtn.innerHTML;
         loginBtn.disabled = true;
-        loginBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Verifying...';
+        loginBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Verifying…';
         loginBtn.style.cursor = "wait";
     }
 
@@ -281,6 +281,7 @@ function showStaffEditorDialog(staffData = null) {
     const title = isEdit ? 'Edit Staff Member' : 'Add Staff Member';
     const icon = isEdit ? 'fa-user-pen' : 'fa-user-plus';
     const btnText = isEdit ? 'Save Changes' : 'Add Staff';
+    const btnIcon = isEdit ? 'fa-floppy-disk' : 'fa-plus';
 
     const dialogBackdrop = document.createElement('div');
     dialogBackdrop.setAttribute('class', 'dialog-backdrop');
@@ -334,7 +335,7 @@ function showStaffEditorDialog(staffData = null) {
                     <option value="Assistant" ${roleVal === 'Assistant' ? 'selected' : ''}>Teaching Assistant</option>
                 </select>
             </div>
-            <p class="form-hint"><strong>Lecturer:</strong> can log in on trusted devices only and manages their courses. <strong>Teaching Assistant:</strong> a student who scans and adds records in the courses assigned to them in a course's settings; everywhere else they are a student. Their card signs them in only on a device they trusted in their profile.</p>
+            <p class="form-hint"><strong>Lecturer:</strong> signs in with their card on trusted devices only and manages their courses. <strong>Teaching Assistant:</strong> a student who scans and adds records in the courses assigned to them in a course's settings; everywhere else they are a student. Their card signs them in only on a device they trusted in their profile.</p>
 
             ${cardFieldsHtml('staff-card', splitCardValue(uidVal))}
 
@@ -342,7 +343,7 @@ function showStaffEditorDialog(staffData = null) {
         </div>
         <div class="dialog-actions">
             <button type="button" id="cancel-staff-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
-            <button type="button" id="save-staff-btn" class="btn-green"><i class="fa-solid fa-check"></i> ${btnText}</button>
+            <button type="button" id="save-staff-btn" class="btn-green"><i class="fa-solid ${btnIcon}"></i> ${btnText}</button>
         </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -385,6 +386,7 @@ function showStaffEditorDialog(staffData = null) {
         document.body.removeChild(dialogBackdrop);
     };
     dialog.querySelector('#cancel-staff-btn').onclick = close;
+    submitOnEnter(dialog, '#save-staff-btn');
 
     dialog.querySelector('#save-staff-btn').onclick = async (e) => {
         const name = document.getElementById('staff-name').value.trim();
@@ -408,7 +410,7 @@ function showStaffEditorDialog(staffData = null) {
 
         const save = async () => {
             btn.disabled = true;
-            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+            btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
             try {
                 const payload = {
                     actionType: isEdit ? 'edit' : 'add',
@@ -419,14 +421,14 @@ function showStaffEditorDialog(staffData = null) {
 
                 await callWebApp('manageStaff_Admin', payload, 'POST');
 
-                showNotification('success', 'Success', `Staff member ${isEdit ? 'updated' : 'added'}.`);
+                showNotification('success', isEdit ? 'Saved' : 'Added', `${name || email} ${isEdit ? 'saved' : 'added to the staff'}.`);
 
                 dialogBackdrop.remove();
                 refreshOpenSettings();
             } catch (err) {
-                showNotification('error', 'Error', err.message);
+                showNotification('error', 'Save Failed', err.message);
                 btn.disabled = false;
-                btn.innerHTML = `<i class="fa-solid fa-check"></i> ${btnText}`;
+                btn.innerHTML = `<i class="fa-solid ${btnIcon}"></i> ${btnText}`;
             }
         };
         confirmUidRemoval([card], save);
@@ -1131,7 +1133,7 @@ function confirmClearAllAppData() {
         title: '<i class="fa-solid fa-bomb" style="color:var(--danger-color);"></i> Clear local data?',
         message: unsynced
             ? '<strong>This device has attendance changes that are not synced yet.</strong> Clearing now deletes them permanently. Cancel and sync first unless you are sure.<br><br>You will also be signed out.'
-            : 'This removes cached logs and preferences from this device and signs you out. Your data on the server is not affected.',
+            : 'This removes cached records and preferences from this device and signs you out. Your data on the server is not affected.',
         confirmText: unsynced ? 'Delete unsynced changes' : 'Clear',
         isDestructive: true,
         onConfirm: clearAllAppData
@@ -1672,9 +1674,41 @@ function setupEventListeners() {
         updateDatabaseList();
     });
     if (dbSortSelect) dbSortSelect.addEventListener('change', handleDbSortChange);
+
+    // An empty list's button clears the search (or the programme filter) that emptied it.
+    [emptyLogs, emptyDatabase].forEach(box => box?.addEventListener('click', (event) => {
+        const what = event.target.closest('[data-clear]')?.dataset.clear;
+        if (what) clearListFilter(what);
+    }));
+
+    // Escape in a list's search box empties it (and stays in the box); selecting
+    // records goes on.
+    [[filterInput, 'logs-search'], [dbFilterInput, 'db-search']].forEach(([input, what]) => {
+        input?.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || !input.value) return;
+            event.preventDefault();
+            event.stopPropagation();
+            clearListFilter(what);
+        });
+    });
+
+    // "/" goes to the search box of the list on screen, as on many websites.
+    document.addEventListener('keydown', (event) => {
+        if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.defaultPrevented) return;
+        const target = event.target;
+        if (target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))) return;
+        if (!isSignedIn || document.querySelector('.dialog-backdrop') || isScanLockScreenShown()) return;
+        const input = document.querySelector('.tab-content.active .filter-input');
+        if (!input || input.disabled || input.offsetParent === null) return;
+        event.preventDefault();
+        input.focus();
+        input.select();
+    });
+
     if (importBtn) importBtn.addEventListener('click', () => importInput.click());
     if (importInput) importInput.addEventListener('change', handleImportFile);
     if (exportBtn) exportBtn.addEventListener('click', exportLogs);
+    document.getElementById('export-logs-excel-btn')?.addEventListener('click', exportLogsToExcel);
     if (clearBtn) clearBtn.addEventListener('click', clearLogs);
     if (addLogBtn) addLogBtn.addEventListener('click', showAddLogEntryDialog);
     if (addEntryBtn) addEntryBtn.addEventListener('click', showAddEntryDialog);
@@ -2018,6 +2052,23 @@ const DIALOG_SAVE = ['#save-edit-c', '#save-staff-btn', '#save-edit-log-btn', '#
 function dialogSaveButton(dialog) {
     const button = dialog?.querySelector(`.dialog-actions :is(${DIALOG_SAVE})`);
     return button && !button.disabled && button.offsetParent !== null ? button : null;
+}
+
+// Enter in a one-line field presses the dialog's main button, as a form would (on
+// a phone, the keyboard's Go key). Searchable lists keep their own Enter, and a
+// button that is busy or disabled is not pressed.
+function submitOnEnter(dialog, buttonSelector) {
+    dialog.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.isComposing || event.defaultPrevented ||
+            event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        const field = event.target;
+        if (!(field instanceof HTMLInputElement) || !['text', 'email', 'url', 'tel', 'number'].includes(field.type)) return;
+        if (field.readOnly || field.closest('.combo')) return;
+        const button = dialog.querySelector(buttonSelector);
+        if (!button || button.disabled) return;
+        event.preventDefault();
+        button.click();
+    });
 }
 
 // One way to close a dialog: the × in its title bar, as in Syllabase (Settings
@@ -2841,7 +2892,7 @@ function showDeviceNameDialog({ title, icon, intro, name = '', confirmText, onSa
         const btn = dialog.querySelector('.device-name-save');
         if (btn.disabled) return;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Saving...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Saving…';
         try {
             await onSave(value);
             close();
@@ -3101,7 +3152,7 @@ window.deleteTrustedDevice = (rowIndex, name) => {
 window.deleteStaffKey = (rowIndex, name) => {
     showConfirmationDialog({
         title: '<i class="fa-solid fa-user-xmark" style="color:var(--danger-color);"></i> Revoke Access?',
-        message: `Are you sure you want to revoke key for <strong>${escapeHtml(name)}</strong>? They will no longer be able to log in via NFC.`,
+        message: `Are you sure you want to revoke access for <strong>${escapeHtml(name)}</strong>? They will no longer be able to sign in with their staff card.`,
         confirmText: '<i class="fa-solid fa-trash"></i> Revoke', // Added Icon
         cancelText: '<i class="fa-solid fa-xmark"></i> Cancel',   // Added Icon
         isDestructive: true,
@@ -3512,7 +3563,7 @@ function showCourseEditorDialog(courseName, info = null) {
         if (isGlobalAdmin && appearance && !appearance.validate()) return;
 
         btn.disabled = true;
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+        btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
 
         const payload = {
             originalName: courseName,
@@ -3555,14 +3606,14 @@ function showCourseEditorDialog(courseName, info = null) {
             const logCount = courseData[courseName]?.logs?.length;
             showConfirmationDialog({
                 title: `<i class="fa-solid fa-trash" style="color:var(--danger-color);"></i> Delete ${escapeHtml(cleanCourseName)}?`,
-                message: `This deletes the course <strong>and all of its attendance logs</strong>${logCount ? ` (${logCount} loaded)` : ''}. Export the logs first if you may need them. To hide a course but keep its records, archive it instead.<br><br>This cannot be undone.`,
+                message: `This deletes the course <strong>and all of its attendance records</strong>${logCount ? ` (${logCount} loaded)` : ''}. Export the records first if you may need them. To hide a course but keep its records, archive it instead.<br><br>This cannot be undone.`,
                 confirmText: '<i class="fa-solid fa-trash"></i> Delete Course',
                 cancelText: '<i class="fa-solid fa-xmark"></i> Cancel',
                 isDestructive: true,
                 onConfirm: async () => {
                     await callWebApp('saveCourseSettings_Admin', { originalName: courseName, isDelete: true }, 'POST');
                     await refreshCoursePicker('Course deleted.');
-                    showNotification('delete', 'Deleted', 'Course and its logs removed.');
+                    showNotification('delete', 'Deleted', 'The course and its records were deleted.');
                     close();
                     refreshOpenSettings();
                 }
@@ -3690,6 +3741,7 @@ function showProgrammeEditorDialog(programme) {
     const codeInput = dialog.querySelector('#programme-code');
     const close = () => backdrop.remove();
     dialog.querySelector('#cancel-programme-btn').onclick = close;
+    submitOnEnter(dialog, '#save-programme-btn');
     if (!isTouchDevice()) codeInput.focus();
 
     const refresh = async (message) => {
@@ -3714,7 +3766,7 @@ function showProgrammeEditorDialog(programme) {
             return;
         }
         button.disabled = true;
-        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
         try {
             await callWebApp('saveProgramme_Admin', {
                 id: programme?.id, code,
@@ -3834,7 +3886,7 @@ async function showStudentProfileDialog() {
                     <span class="sp-counts"></span>
                 </div>
                 <div class="sp-requests" aria-live="polite">
-                    <div class="sp-empty"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Loading requests...</div>
+                    <div class="sp-empty"><i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i> Loading requests…</div>
                 </div>
             </section>
         </div>
@@ -4058,12 +4110,19 @@ function handleDbSortChange() {
 /**
 * Export logs to JSON file.
 */
+// "CE 121_attendance_2026-11-15": what an exported file is called, so files from
+// different courses and days never share a name.
+function exportFileName(subject, course = '') {
+    const safeCourse = String(course || '').replace(/[\\/:*?"<>|]+/g, '-').trim();
+    return `${safeCourse ? safeCourse + '_' : ''}${subject}_${localDateString()}`;
+}
+
 function exportLogs() {
     // Use getLogsForCurrentUser() to ensure we get the correct data subset
     const logsForCurrentCourse = getLogsForCurrentUser();
 
     if (logsForCurrentCourse.length === 0) {
-        showNotification('warning', 'Export Failed', 'No logs to export');
+        showNotification('warning', 'Nothing to Export', 'This course has no records yet.');
         return;
     }
 
@@ -4077,11 +4136,79 @@ function exportLogs() {
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(exportData, null, 2));
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `${currentCourse || 'attendance'}_logs.json`);
+    downloadAnchor.setAttribute("download", `${exportFileName('attendance', currentCourse)}.json`);
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     document.body.removeChild(downloadAnchor);
-    showNotification('success', 'Export Complete', 'Logs exported to JSON file');
+    showNotification('success', 'Export Complete', `${listCountText(exportData.length, 'record')} exported. This file can be imported again.`);
+}
+
+// The course's attendance as a spreadsheet, for marking: "Summary" has a row for
+// each student and a column for each day, holding how many times were recorded
+// that day; "Records" lists every time. (Export keeps the JSON file, which Import
+// reads back.) A student with several cards is one row; an unknown card is a row
+// of its own, after the students.
+function exportLogsToExcel() {
+    const logs = getLogsForCurrentUser()
+        .filter(log => !isNaN(new Date(log.timestamp).getTime()))
+        .sort((a, b) => a.timestamp - b.timestamp);
+    if (logs.length === 0) {
+        showNotification('warning', 'Nothing to Export', 'This course has no records yet.');
+        return;
+    }
+    if (typeof XLSX === 'undefined') {
+        showNotification('error', 'Export Failed', 'The spreadsheet library could not load. Check your connection and reload this page.');
+        return;
+    }
+
+    const pad = n => String(n).padStart(2, '0');
+    const people = new Map(); // student key or card → { name, cardId, email, known, days: Map(day → times) }
+    const days = new Map(); // "2026-11-15" (sorts by date) → "15-11-2026" (as the list shows it)
+    const records = [['Date', 'Time', 'Name', 'Card ID', 'Group', 'Added by hand']];
+    logs.forEach(log => {
+        const date = new Date(log.timestamp);
+        const dbKey = lookupPrimaryUid(log.uid);
+        const student = dbKey ? databaseMap[dbKey] : null;
+        const day = localDateString(date);
+        const dayLabel = `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
+        days.set(day, dayLabel);
+        const key = student ? `student:${dbKey}` : `card:${log.uid}`;
+        if (!people.has(key)) {
+            people.set(key, {
+                name: student ? student.name : 'Unknown card',
+                cardId: String((student?.uids && student.uids[0]) || log.uid || ''),
+                email: student?.email || '',
+                known: !!student,
+                days: new Map()
+            });
+        }
+        const person = people.get(key);
+        person.days.set(day, (person.days.get(day) || 0) + 1);
+        records.push([dayLabel, `${pad(date.getHours())}:${pad(date.getMinutes())}`, person.name, person.cardId,
+            log.session && log.session !== 'Default' ? log.session : '', log.manual === true || log.manual === 'true' ? 'Yes' : '']);
+    });
+
+    const dayKeys = [...days.keys()].sort();
+    const summary = [['Name', 'Card ID', 'Email', ...dayKeys.map(day => days.get(day)), 'Days', 'Times']];
+    [...people.values()]
+        .sort((a, b) => (b.known - a.known) || a.name.localeCompare(b.name) || a.cardId.localeCompare(b.cardId))
+        .forEach(person => {
+            const counts = dayKeys.map(day => person.days.get(day) || '');
+            summary.push([person.name, person.cardId, person.email, ...counts,
+                person.days.size, [...person.days.values()].reduce((sum, n) => sum + n, 0)]);
+        });
+
+    const workbook = XLSX.utils.book_new();
+    const summarySheet = XLSX.utils.aoa_to_sheet(summary);
+    summarySheet['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 34 }, ...dayKeys.map(() => ({ wch: 11 })), { wch: 7 }, { wch: 7 }];
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    const recordsSheet = XLSX.utils.aoa_to_sheet(records);
+    recordsSheet['!cols'] = [{ wch: 12 }, { wch: 8 }, { wch: 30 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    recordsSheet['!autofilter'] = { ref: recordsSheet['!ref'] };
+    XLSX.utils.book_append_sheet(workbook, recordsSheet, 'Records');
+    XLSX.writeFile(workbook, `${exportFileName('attendance', currentCourse)}.xlsx`);
+    showNotification('success', 'Export Complete',
+        `${listCountText(people.size, 'student')} on ${listCountText(dayKeys.length, 'day')} exported to Excel.`);
 }
 
 /**
@@ -4089,9 +4216,9 @@ function exportLogs() {
  */
 function exportDatabaseToExcel() {
     const rows = StandoData.studentExportRows(databaseMap, programmeCode);
-    if (rows.length === 1) return showNotification('warning', 'Export Failed', 'There are no students to export.');
-    writeStudentWorkbook(rows, 'students.xlsx');
-    showNotification('success', 'Export Complete', `${rows.length - 1} students exported. This file can be imported again.`);
+    if (rows.length === 1) return showNotification('warning', 'Nothing to Export', 'There are no students to export.');
+    writeStudentWorkbook(rows, `${exportFileName('students')}.xlsx`);
+    showNotification('success', 'Export Complete', `${listCountText(rows.length - 1, 'student')} exported. This file can be imported again.`);
 }
 
 function writeStudentWorkbook(rows, filename) {
@@ -4342,71 +4469,61 @@ function applyTheme(theme) {
         themeColorMeta.setAttribute('content', isDarkMode ? '#000000' : '#f4f4f4');
     }
 
+    // The icon shows the theme in use; the tooltip says what a click changes it to.
     const toggleBtn = document.querySelector('#theme-toggle-btn');
     if (toggleBtn) {
+        const label = { light: 'Switch to light mode', dark: 'Switch to dark mode', auto: 'Switch to automatic mode' }[nextTheme(theme)];
+        toggleBtn.title = label;
+        toggleBtn.setAttribute('aria-label', label);
         const oldIcon = toggleBtn.querySelector('i, svg');
         if (oldIcon) {
             const i = document.createElement('i');
-            if (theme === 'light') {
-                i.className = 'fa-solid fa-sun';
-                toggleBtn.title = 'Switch to Dark Mode';
-            } else if (theme === 'dark') {
-                i.className = 'fa-solid fa-moon';
-                toggleBtn.title = 'Switch to Auto Mode';
-            } else {
-                i.className = 'fa-solid fa-circle-half-stroke';
-                toggleBtn.title = 'Switch to Light Mode';
-            }
+            i.className = 'fa-solid ' + ({ light: 'fa-sun', dark: 'fa-moon' }[theme] || 'fa-circle-half-stroke');
+            i.setAttribute('aria-hidden', 'true');
             oldIcon.replaceWith(i);
         }
     }
 }
 
+// The theme a click on the theme button changes to. Automatic already shows the
+// device's own look, so the step that would look the same is left out.
+function nextTheme(theme) {
+    const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (theme === 'light') return isSystemDark ? 'auto' : 'dark';
+    if (theme === 'dark') return isSystemDark ? 'light' : 'auto';
+    return isSystemDark ? 'light' : 'dark';
+}
+
 /**
-         * Sets up the theme toggle button and applies the stored/system theme on load.
-         */
+ * Sets up the theme toggle button and applies the stored/system theme on load.
+ */
 function setupThemeToggle() {
     const themeToggleBtn = document.getElementById('theme-toggle-btn');
     if (!themeToggleBtn) return;
 
     let currentTheme = localStorage.getItem('theme') || 'auto';
+    if (!['auto', 'light', 'dark'].includes(currentTheme)) currentTheme = 'auto';
     applyTheme(currentTheme); // Apply theme on initial load
 
     themeToggleBtn.addEventListener('click', () => {
-        const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-        // Determine the next theme in the cycle
-        switch (currentTheme) {
-            case 'auto':
-                currentTheme = isSystemDark ? 'light' : 'dark';
-                break;
-            case 'light':
-                currentTheme = isSystemDark ? 'auto' : 'dark';
-                break;
-            case 'dark':
-                currentTheme = isSystemDark ? 'light' : 'auto';
-                break;
-        }
-
+        currentTheme = nextTheme(currentTheme);
         localStorage.setItem('theme', currentTheme);
         applyTheme(currentTheme);
     });
 
-    // Listen for changes in the system's preferred color scheme
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', event => {
-        if (localStorage.getItem('theme') === 'auto' || !localStorage.getItem('theme')) {
-            applyTheme('auto');
-        }
-    });
+    // The device changing its own look: Automatic follows it, and the button's
+    // next step changes with it in any theme.
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => applyTheme(currentTheme));
 }
 
 function setupSoundToggle() {
     const button = document.getElementById('sound-toggle-btn');
     if (!button) return;
     const render = () => {
+        const label = soundEnabled ? 'Mute scan sounds' : 'Turn on scan sounds';
         button.setAttribute('aria-pressed', String(soundEnabled));
-        button.title = soundEnabled ? 'Mute scan sounds' : 'Enable scan sounds';
-        button.innerHTML = '<i class="fa-solid ' + (soundEnabled ? 'fa-volume-high' : 'fa-volume-xmark') + '"></i>';
+        button.title = label;
+        button.innerHTML = '<i class="fa-solid ' + (soundEnabled ? 'fa-volume-high' : 'fa-volume-xmark') + '" aria-hidden="true"></i>';
     };
     button.addEventListener('click', () => {
         soundEnabled = !soundEnabled;
@@ -4491,12 +4608,12 @@ async function autoSyncData() {
         syncAttempts++;
 
         // Update UI to show sync failed
-        updateSyncStatus("Sync failed!", "error");
+        updateSyncStatus('Sync failed', 'error');
 
         if (syncAttempts < MAX_SYNC_ATTEMPTS) {
             // Schedule retry with exponential backoff
             const retryDelay = SYNC_RETRY_INTERVAL * Math.pow(2, syncAttempts - 1);
-            updateSyncStatus(`Retry in ${Math.round(retryDelay / 1000)} s...`, "waiting");
+            updateSyncStatus(`Retry in ${Math.round(retryDelay / 1000)} s…`, "waiting");
 
             setTimeout(() => {
                 if (isOnline && isSignedIn) {
@@ -5430,7 +5547,7 @@ function saveCourseToLocalStorage(courseName) {
     } catch (error) {
         console.error('Could not save attendance on this device:', error);
         if (!storageSaveFailed) {
-            showNotification('error', 'Local Save Failed', 'Keep this page open and sync or export your logs. Device storage is full or unavailable.', 0);
+            showNotification('error', 'Local Save Failed', 'Keep this page open and sync or export your records. Device storage is full or unavailable.', 0);
         }
         storageSaveFailed = true;
         return false;
@@ -5670,7 +5787,7 @@ function showRegisterUIDDialog() {
         }
 
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending…';
         const restore = () => {
             submitBtn.disabled = false;
             submitBtn.textContent = forFriend ? 'Send' : 'Submit';
@@ -5685,7 +5802,7 @@ function showRegisterUIDDialog() {
         }, 'POST')
             .then(data => {
                 if (data && data.result === 'success') {
-                    showNotification('success', 'Submission Sent!', forFriend
+                    showNotification('success', 'Submission Sent', forFriend
                         ? `${name}'s card has been sent for approval.`
                         : 'Your card application has been sent for approval.');
                     closeDialog();
@@ -5897,7 +6014,7 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
         if (!isValid) return;
 
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Processing...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Processing…';
 
         try {
             const submissionData = {
@@ -5915,7 +6032,7 @@ function showRegisterUIDDialogWithPrefill(prefillUid) {
             if (isGlobalAdmin) {
                 const result = await callWebApp('addEntryToDatabase_Admin', submissionData, 'POST');
                 if (result && result.result === 'success') {
-                    showNotification('success', 'Added', `${name} added to database.`);
+                    showNotification('success', 'Added', `${name} was added to the student list.`);
                     invalidateDatabaseCache();
                     await fetchDatabaseFromSheet();
                     window.buildUIDToPrimaryUidMap();
@@ -6180,7 +6297,7 @@ function showDuplicateWarningForNewEntry(newData, duplicates, onCompleteCallback
         const idleLabel = button.innerHTML;
         addAnywayBtn.disabled = true;
         applyBtn.disabled = true;
-        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving...';
+        button.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Saving…';
         try {
             await action();
             invalidateDatabaseCache();
@@ -6353,7 +6470,7 @@ function showFinalApprovalDialog(registration) {
 
         const approve = () => {
             const idleLabel = confirmBtn.innerHTML;
-            confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Approving...';
+            confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Approving…';
             const finalData = {
                 action: 'approveRegistration',
                 approvalMode: 'final_approve',
@@ -6366,7 +6483,7 @@ function showFinalApprovalDialog(registration) {
             };
             callWebApp('approveRegistration', finalData, 'POST').then(result => {
                 if (result && result.result === 'success') {
-                    showNotification('success', 'Approved!', `${finalData.name} has been added to the database.`);
+                    showNotification('success', 'Approved', `${finalData.name} was added to the student list.`);
                     notifyIfEmailFailed(result, finalData.email);
                     refreshDatabaseAfterApproval(); refreshAdminViews(); closeDialog();
                 } else { throw new Error(result ? result.message : 'Approval failed.'); }
@@ -6512,7 +6629,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
         const button = e.currentTarget;
         const idleLabel = button.innerHTML;
         button.disabled = true;
-        button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Processing...`;
+        button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Processing…`;
         const studentId = newCard.cardId;
         const hwUid = newCard.uid;
         const payload = { ...newData, approvalMode: 'add_new_separate', uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid,
@@ -6542,7 +6659,7 @@ function showDuplicateWarningDialog(newData, duplicates) {
         const hwUid = newCard.uid;
         const payload = { ...newData, action: 'approveRegistration', approvalMode: 'custom_replace', duplicateRowIndex: existing.rowIndex, updates: updates, uid: studentId, hardwareUid: hwUid, hardware_uid: hwUid, programmeId: programme.id };
         const idleLabel = button.innerHTML;
-        button.disabled = true; button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Approving...`;
+        button.disabled = true; button.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> Approving…`;
         callWebApp('approveRegistration', payload, 'POST').then(result => {
             if (result && result.result === 'success') {
                 showNotification('success', 'Action Complete', 'The entry has been updated.');
@@ -7383,7 +7500,7 @@ function showRequestPermissionDialog() {
 
             case 'Confidential': // Personal Matter: an explanation is required
                 askExplanation(true, 50);
-                explInput.placeholder = 'Please explain the situation in detail...';
+                explInput.placeholder = 'Please explain the situation in detail…';
                 showHelp('fa-lock', "If you cannot write it here, please visit the lecturer's office to discuss it in person.", 'is-warning');
                 break;
         }
@@ -7452,7 +7569,7 @@ function showRequestPermissionDialog() {
 
         // Submit
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fa-solid fa-spin fa-circle-notch"></i> Sending...';
+        submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending…';
 
         const payload = {
             name: currentUser.name,
@@ -7528,7 +7645,7 @@ function showApproveAbsenceDialog(data) {
 
     <div class="form-group" style="align-items: flex-start;">
         <label for="approve-message-area">Email Message</label>
-        <textarea id="approve-message-area" class="form-control" rows="6" placeholder="Add a custom message...">${defaultMessage}</textarea>
+        <textarea id="approve-message-area" class="form-control" rows="6" placeholder="Add a custom message…">${defaultMessage}</textarea>
     </div>
     <div style="text-align: right; font-size: 0.8em; opacity: 0.7;">
         An approval email will be sent.
@@ -7586,7 +7703,7 @@ function showApproveAbsenceDialog(data) {
         const idleLabel = confirmBtn.innerHTML;
         confirmBtn.disabled = true;
         cancelBtn.disabled = true;
-        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Approving...';
+        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Approving…';
 
         // --- 6. Call Backend ---
         callWebApp('approveAbsenceRequest', {
@@ -7647,7 +7764,7 @@ function showRejectAbsenceDialog(data) {
     <p>This will reject the request for <strong>${escapeHtml(data.studentName)}</strong>. The student will be notified by email.</p>
     <div class="form-group" style="margin-top: 15px;">
         <label for="reject-message-area">Reason</label>
-        <textarea id="reject-message-area" class="form-control" rows="6" placeholder="Add a reason for rejection...">${defaultMessage}</textarea>
+        <textarea id="reject-message-area" class="form-control" rows="6" placeholder="Add a reason for rejection…">${defaultMessage}</textarea>
     </div>
 </div>
 <div class="dialog-actions">
@@ -7677,7 +7794,7 @@ function showRejectAbsenceDialog(data) {
         const idleLabel = confirmBtn.innerHTML;
         confirmBtn.disabled = true;
         cancelBtn.disabled = true;
-        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending...';
+        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Sending…';
 
         callWebApp('rejectAbsenceRequest', {
             requestID: data.requestId,
@@ -7777,7 +7894,7 @@ function showRejectDialog(registration) {
         if (!message) { showInputError(messageTextarea, 'Rejection message cannot be empty.'); return; }
 
         const idleLabel = confirmBtn.innerHTML;
-        confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Rejecting...';
+        confirmBtn.disabled = true; confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Rejecting…';
         const data = { message: message, email: registration.email, rowNumber: registration.rowNumber, name: registration.name };
         callWebApp('rejectRegistration', data, 'POST').then(result => {
             if (result && result.result === 'success') {
@@ -8783,11 +8900,11 @@ async function handleManualRefresh(buttonId) {
         } else {
             // --- STUDENT REFRESH (Course List + Current Logs) ---
             if (!isSignedIn) {
-                showNotification('info', 'Please Sign In', 'Sign in to refresh your courses and logs.');
+                showNotification('info', 'Please Sign In', 'Sign in to refresh your courses and records.');
                 return; // Nothing to refresh if not signed in
             }
 
-            updateSyncStatus("Refreshing...", "syncing"); // Show temporary status
+            updateSyncStatus('Refreshing…', 'syncing'); // Show temporary status
 
             // 1. Re-fetch Available Courses (using the efficient boot function)
             const bootData = await callWebApp('getBootData', {}, 'POST');
@@ -8844,7 +8961,7 @@ async function handleManualRefresh(buttonId) {
 
     } catch (error) {
         console.error('Manual refresh failed:', error);
-        const errorMsg = isAdmin ? 'Could not sync data.' : 'Could not refresh courses/logs.';
+        const errorMsg = isAdmin ? 'Could not sync data.' : 'Could not refresh your courses and records.';
         showNotification('error', 'Refresh Failed', `${errorMsg} ${error.message}`);
         updateSyncStatus("Error", "error"); // Show error status
     } finally {
@@ -9353,26 +9470,9 @@ function updateAuthUI() {
     rememberStartupView();
 
 
+    // Signed in, updateLogsList() writes what the empty list says.
     const emptyLogs = document.getElementById('empty-logs');
-    if (emptyLogs) {
-        // Show empty logs if Signed In
-        if (isSignedIn) {
-            const logsForCurrentCourse = courseData[currentCourse]?.logs || [];
-            if (!currentCourse) {
-                emptyLogs.innerHTML = '<i class="fa-solid fa-circle-info"></i> Please select a course to view attendance logs.';
-                emptyLogs.style.display = 'block';
-            } else if (logsForCurrentCourse.length === 0 && courseData[currentCourse]) {
-                emptyLogs.innerHTML = '<i class="fa-solid fa-ghost"></i> No attendance records found for this course.';
-                emptyLogs.style.display = 'block';
-            } else if (!courseData[currentCourse]) {
-                // Loading...
-            } else {
-                emptyLogs.style.display = 'none';
-            }
-        } else {
-            emptyLogs.style.display = 'none';
-        }
-    }
+    if (emptyLogs && !isSignedIn) emptyLogs.style.display = 'none';
 }
 
 /**
@@ -9458,7 +9558,7 @@ async function loadCourseFromLocalStorage(courseName) {
             catch { protectedCacheKeys.add(storageKey); }
         }
         console.warn('Could not restore course cache:', error);
-        showNotification('warning', 'Local Data Unavailable', 'Saved logs could not be read. The original cache has been kept; reconnect to reload server data.');
+        showNotification('warning', 'Local Data Unavailable', 'Saved records could not be read. The original cache has been kept; reconnect to reload server data.');
         return empty();
     }
 }
@@ -9848,7 +9948,7 @@ async function syncDatabaseToSheet() {
 
     } catch (error) {
         console.error('Error syncing database via script:', error);
-        showNotification('error', 'Database Sync Error', `Failed to sync database: ${error.message}`);
+        showNotification('error', 'Student List Not Saved', `Could not save the student list: ${error.message}`);
         // Rethrow the error to be caught by the caller (e.g., completeAction)
         throw error;
     }
@@ -10125,6 +10225,9 @@ function showAddEntryDialog() {
     const card = bindCardFields(dialog.querySelector('[data-card-fields]'), { statusContainer: dialog.querySelector('#nfc-status-container') });
 
     document.getElementById('cancel-add-btn').addEventListener('click', close);
+    submitOnEnter(dialog, '#confirm-add-btn');
+    // Ready to type, as in Register Student; a phone's keyboard waits for a tap.
+    if (!isTouchDevice()) dialog.querySelector('#add-name').focus({ preventScroll: true });
 
     // --- Event Listener ---
     document.getElementById('confirm-add-btn').addEventListener('click', async () => {
@@ -10174,13 +10277,13 @@ function showAddEntryDialog() {
         // NO DUPLICATE: Use the fast backend call `addEntryToDatabase_Admin`
         const confirmBtn = document.getElementById('confirm-add-btn');
         confirmBtn.disabled = true;
-        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Adding...';
+        confirmBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Adding…';
 
         try {
             const result = await callWebApp('addEntryToDatabase_Admin', submissionData, 'POST');
 
             if (result && result.result === 'success') {
-                showNotification('success', 'Added to Database', `${name} has been added.`);
+                showNotification('success', 'Student Added', `${name} was added to the student list.`);
 
                 // The entry was added on the backend. Invalidate our local cache
                 // and re-fetch the *entire* database to get the new entry with its proper key.
@@ -10239,7 +10342,7 @@ function editDatabaseEntry(dbKey) {
     </div>
     <div class="dialog-actions">
         <button id="cancel-request-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
-        <button id="submit-request-btn" class="btn-green"><i class="fa-solid fa-check"></i> Submit</button>
+        <button id="submit-request-btn" class="btn-green"><i class="fa-solid fa-floppy-disk"></i> Save Changes</button>
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -10302,6 +10405,7 @@ function editDatabaseEntry(dbKey) {
     };
 
     document.getElementById('cancel-request-btn').addEventListener('click', closeDialog);
+    submitOnEnter(dialog, '#submit-request-btn');
 
     document.getElementById('submit-request-btn').addEventListener('click', async () => {
         const nameInput = document.getElementById('edit-name');
@@ -10337,7 +10441,7 @@ function editDatabaseEntry(dbKey) {
             updateUI();
 
             // 3. SHOW SUCCESS AND CLOSE DIALOG IMMEDIATELY
-            showNotification('success', 'Entry Updated', `Updated details for ${newName}.`);
+            showNotification('success', 'Student Updated', `The details of ${newName} were saved.`);
             closeDialog();
 
             // 4. SYNC IN THE BACKGROUND
@@ -10375,8 +10479,8 @@ function deleteDatabaseEntry(dbKey) {
     if (!name) return;
 
     showConfirmationDialog({
-        title: `Delete "${escapeHtml(name)}" ?`,
-        message: `Are you sure you want to delete "${escapeHtml(name)}" (Key: ${escapeHtml(dbKey)}) from the database?`,
+        title: `Delete ${escapeHtml(name)}?`,
+        message: `This removes <strong>${escapeHtml(name)}</strong> and their Card IDs from the student list. Their attendance records are kept, but they will show as an unknown card.`,
         confirmText: 'Delete',
         isDestructive: true,
         onConfirm: async () => {
@@ -10384,7 +10488,7 @@ function deleteDatabaseEntry(dbKey) {
             delete databaseMap[dbKey];
             window.buildUIDToPrimaryUidMap();
             updateUI();
-            showNotification('delete', 'Entry Deleted', `Removed ${name} from the database.`);
+            showNotification('delete', 'Student Deleted', `${name} was removed from the student list.`);
 
             // 2. Sync deletion to backend
             if (isOnline && isSignedIn) {
@@ -10393,7 +10497,7 @@ function deleteDatabaseEntry(dbKey) {
                     invalidateDatabaseCache(); // Invalidate cache after successful delete
                 } catch (err) {
                     console.error('Error deleting entry from backend:', err);
-                    showNotification('error', 'Sync Error', 'Entry deleted locally but failed to sync.');
+                    showNotification('error', 'Delete Failed', `${name} could not be deleted and is back in the list.`);
                     // Since it failed, force a re-fetch to get back the deleted item
                     // to keep UI consistent with the server.
                     await fetchDatabaseFromSheet();
@@ -10501,7 +10605,7 @@ function clearDatabase() {
 
     showConfirmationDialog({
         title: 'Delete every student?',
-        message: 'This removes every student and their card IDs from the Student List. Attendance logs are kept, but they will show as unknown cards. Staff are not affected. This cannot be undone.',
+        message: 'This removes every student and their Card IDs from the student list. Attendance records are kept, but they will show as unknown cards. Staff are not affected. This cannot be undone.',
         confirmText: 'Delete all',
         isDestructive: true,
         onConfirm: async () => {
@@ -10580,7 +10684,7 @@ function showAddLogEntryDialog() {
     studentList.sort((a, b) => a.name.localeCompare(b.name));
 
     dialog.innerHTML = `
-    <h3 class="dialog-title"><i class="fa-solid fa-clock"></i> Add Manual Log</h3>
+    <h3 class="dialog-title"><i class="fa-solid fa-clock"></i> Add Record</h3>
     <div class="dialog-content">
         
         <div class="form-group" style="margin-bottom:0;">
@@ -10611,7 +10715,7 @@ function showAddLogEntryDialog() {
     </div>
     <div class="dialog-actions">
         <button id="cancel-manual-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>
-        <button id="save-manual-log-btn" class="btn-green" disabled><i class="fa-solid fa-plus"></i> Add Entry</button>
+        <button id="save-manual-log-btn" class="btn-green" disabled><i class="fa-solid fa-plus"></i> Add Record</button>
     </div>`;
 
     dialogBackdrop.appendChild(dialog);
@@ -10642,7 +10746,7 @@ function showAddLogEntryDialog() {
         listContainer.innerHTML = '';
         const lowerFilter = filterText.toLowerCase().trim();
         if (!lowerFilter) {
-            listContainer.innerHTML = `<div style="padding:15px; text-align:center; opacity:0.5; font-size:0.85em;"><i class="fa-solid fa-magnifying-glass" style="margin-right:5px;"></i>Type to search students...</div>`;
+            listContainer.innerHTML = `<div style="padding:15px; text-align:center; opacity:0.5; font-size:0.85em;"><i class="fa-solid fa-magnifying-glass" style="margin-right:5px;"></i>Type to search students…</div>`;
             return;
         }
 
@@ -10681,7 +10785,17 @@ function showAddLogEntryDialog() {
     };
 
     searchInput.addEventListener('input', (e) => renderList(e.target.value));
+    // Enter chooses the student when the search has narrowed the list to one.
+    searchInput.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.isComposing) return;
+        const items = listContainer.querySelectorAll('.student-item');
+        if (items.length !== 1) return;
+        event.preventDefault();
+        items[0].click();
+    });
     renderList();
+    // Ready to type, as in Register Student; a phone's keyboard waits for a tap.
+    if (!isTouchDevice()) searchInput.focus({ preventScroll: true });
 
     const closeDialog = () => { document.body.removeChild(dialogBackdrop); closeDialogMode(); };
     dialog.querySelector('#cancel-manual-btn').addEventListener('click', closeDialog);
@@ -10693,7 +10807,7 @@ function showAddLogEntryDialog() {
         const manualTime = document.getElementById('manual-time').value;
         const timestamp = new Date(`${manualDate}T${manualTime}:00`).getTime();
         if (!manualDate || !manualTime || !Number.isFinite(timestamp)) {
-            showNotification('warning', 'Missing Date or Time', 'Choose the date and time of the entry.');
+            showNotification('warning', 'Missing Date or Time', 'Choose the date and time of the record.');
             return;
         }
 
@@ -10721,7 +10835,7 @@ function showAddLogEntryDialog() {
 
         if (isOnline && isSignedIn) syncLogsWithSheet();
 
-        showNotification('success', 'Entry Added', 'Manual log recorded.');
+        showNotification('success', 'Record Added', 'The record was added.');
         closeDialog();
     });
 }
@@ -10742,7 +10856,7 @@ function isValidEmail(email) {
 * @param {Object} group - The log group to edit.
 */
 // Deletes every time of one student on one date, after asking. From the row's ⋯ menu
-// and from Edit Log Entry (which passes onDeleted to close itself).
+// and from Edit Record (which passes onDeleted to close itself).
 function confirmDeleteAllLogs(group, onDeleted = null) {
     const count = group.originalLogs.length;
     showConfirmationDialog({
@@ -10770,7 +10884,7 @@ function confirmDeleteAllLogs(group, onDeleted = null) {
                 Promise.all(idsToRemove.map(id => deleteLogViaBackend(id)))
                     .then(() => { removeLocally(); done(); })
                     .catch(err => {
-                        showNotification('error', 'Error', 'Failed to delete some logs.');
+                        showNotification('error', 'Delete Failed', 'Some times could not be deleted.');
                         console.error(err);
                     });
             }
@@ -10833,7 +10947,7 @@ function showEditLogDialog(group) {
     });
 
     dialog.innerHTML = `
-    <h3 class="dialog-title"><i class="fa-solid fa-pen-to-square"></i> Edit Log Entry</h3>
+    <h3 class="dialog-title"><i class="fa-solid fa-pen-to-square"></i> Edit Record</h3>
     <div class="dialog-content">
         <div class="form-group">
             <label class="dialog-label-fixed"><i class="fa-solid fa-quote-right"></i> Name</label>
@@ -11012,7 +11126,7 @@ function showEditLogDialog(group) {
         const emptyTime = [...dialog.querySelectorAll('.timestamp-edit-group:not(.deleted) .timestamp-time')]
             .find(input => !/^\d{2}:\d{2}/.test(input.value));
         if (emptyTime) {
-            showNotification('warning', 'Missing Time', 'Enter a time for every timestamp, or delete the ones you do not need.');
+            showNotification('warning', 'Missing Time', 'Fill in every time, or delete the ones you do not need.');
             emptyTime.focus();
             return;
         }
@@ -11098,12 +11212,12 @@ function confirmDeleteLog(group) {
         deleteLogViaBackend(latestLog.id)
             .then(() => {
                 // Success! Show notification.
-                showNotification('delete', 'Timestamp Deleted', 'Log removed.');
+                showNotification('delete', 'Time Deleted', 'The latest time was deleted.');
             })
             .catch(err => {
                 // 3. Handle Failure: Revert the change.
                 console.error('Delete failed, reverting UI:', err);
-                showNotification('error', 'Delete Failed', 'Could not delete log, restoring.');
+                showNotification('error', 'Delete Failed', 'The time could not be deleted and is back in the list.');
                 // Add the log back and refresh
                 courseData[currentCourse].logs.unshift(latestLog);
                 updateUI(); // Refresh UI again to show the restored log
@@ -11112,10 +11226,10 @@ function confirmDeleteLog(group) {
     } else if (group.originalLogs.length === 1) {
         // Case 2: Deleting the last timestamp (show confirmation)
         showConfirmationDialog({
-            title: ownOnly ? 'Delete your time?' : 'Delete all logs for this date?',
+            title: ownOnly ? 'Delete your time?' : 'Delete this record?',
             message: ownOnly
                 ? `This removes the time you recorded for ${escapeHtml(group.name)} on this date.`
-                : `This will remove all logs for ${escapeHtml(group.name)} on this date. This is the last timestamp.`,
+                : `This is the only time of ${escapeHtml(group.name)} on this date, so the record is deleted with it.`,
             confirmText: 'Delete',
             isDestructive: true,
             onConfirm: () => {
@@ -11125,7 +11239,7 @@ function confirmDeleteLog(group) {
                 // 1. Optimistic UI Update
                 courseData[currentCourse].logs = logsForCurrentCourse.filter(log => !idsToRemove.includes(log.id));
                 updateUI();
-                showNotification('delete', 'Entry Deleted', `All timestamps for ${group.name} were deleted.`);
+                showNotification('delete', 'Record Deleted', `The record of ${group.name} was deleted.`);
 
                 // 2. Call backend in the background
                 Promise.all(idsToRemove.map(id => deleteLogViaBackend(id)))
@@ -11135,7 +11249,7 @@ function confirmDeleteLog(group) {
                     .catch(err => {
                         // 3. Handle Failure: Revert
                         console.error('Bulk delete failed, reverting UI:', err);
-                        showNotification('error', 'Delete Failed', 'Could not delete entry, restoring.');
+                        showNotification('error', 'Delete Failed', 'The record could not be deleted and is back in the list.');
                         courseData[currentCourse].logs.unshift(...removedLogs); // Add them back
                         updateUI();
                     });
@@ -11447,20 +11561,20 @@ async function performBulkAction(action) {
         confirmMsg = 'The times stay the same; only the day changes.';
         extraHtml = `<div class="form-group" style="margin-top:15px; text-align:left;"><label class="dialog-label-fixed" for="bulk-move-date"><i class="fa-solid fa-calendar-day"></i> Day</label><input type="date" id="bulk-move-date" class="form-control" value="${first ? localDateString(new Date(first.timestamp)) : ''}" required></div>`;
     } else if (action === 'add1h') {
-        confirmTitle = `Add +1 Hour?`;
-        confirmMsg = `Create a new log 1 hour later for every selected student.`;
+        confirmTitle = `Add an hour to ${rowsText}?`;
+        confirmMsg = 'Each selected row gets a new time, an hour after its latest.';
         if (sessionHtml) extraHtml = `<div style="margin-top:15px; text-align:left;"><label class="inline-field-label">Group</label>${sessionHtml}</div>`;
     } else if (action === 'sub1h') {
-        confirmTitle = `Delete Latest Hour?`;
+        confirmTitle = `Remove the latest hour of ${rowsText}?`;
         // Shorter message as requested
-        confirmMsg = `Remove the latest log entry for the selected rows?`;
+        confirmMsg = 'The latest time of each selected row is deleted.';
         if (sessionHtml) {
             extraHtml = `
             <div style="margin-top:15px; text-align:left;">
                 <label class="inline-field-label">Target</label>
                 ${sessionHtml}
                 <div style="font-size:0.8em; color:#666; margin-top:5px; font-style:italic;">
-                    "Latest" deletes the most recent log regardless of group.
+                    "Latest" deletes the most recent time, whatever its group.
                 </div>
             </div>`;
         }
@@ -11469,7 +11583,7 @@ async function performBulkAction(action) {
     showConfirmationDialog({
         title: confirmTitle,
         message: confirmMsg + extraHtml,
-        confirmText: { delete: 'Delete', session: 'Change Group', date: 'Move' }[action] || "Confirm",
+        confirmText: { delete: 'Delete', session: 'Change Group', date: 'Move', add1h: 'Add Hour', sub1h: 'Remove Hour' }[action] || 'Confirm',
         isDestructive: action === 'delete' || action === 'sub1h',
         onConfirm: async () => {
             let targetSession = 'INHERIT';
@@ -11510,7 +11624,7 @@ async function performBulkAction(action) {
                 allSelectedIds.forEach(id => addToTombstones(id));
                 courseData[currentCourse].logs = allLogs.filter(l => !selectedLogIds.has(l.id));
                 logsModified = true;
-                showNotification('delete', 'Deleted', `Deleted selected logs.`);
+                showNotification('delete', 'Deleted', `${rowsText} deleted.`);
             }
 
             // --- ADD +1 HOUR ---
@@ -11541,7 +11655,7 @@ async function performBulkAction(action) {
                 });
                 courseData[currentCourse].logs.unshift(...newLogs);
                 logsModified = true;
-                showNotification('success', 'Added', `${newLogs.length} new logs.`);
+                showNotification('success', 'Added', `${newLogs.length} ${newLogs.length === 1 ? 'time' : 'times'} added.`);
             }
 
             // --- REMOVE -1 HOUR (Updated Logic) ---
@@ -11585,9 +11699,9 @@ async function performBulkAction(action) {
                     idsToDelete.forEach(id => addToTombstones(id));
                     courseData[currentCourse].logs = allLogs.filter(l => !idsToDelete.includes(l.id));
                     logsModified = true;
-                    showNotification('success', 'Updated', `Removed ${idsToDelete.length} logs.${ignoredCount > 0 ? ` (Ignored ${ignoredCount})` : ''}`);
+                    showNotification('delete', 'Deleted', `${idsToDelete.length} ${idsToDelete.length === 1 ? 'time' : 'times'} deleted.${ignoredCount > 0 ? ` ${ignoredCount} ${ignoredCount === 1 ? 'row has' : 'rows have'} none in ${targetSession}.` : ''}`);
                 } else if (ignoredCount > 0) {
-                    showNotification('info', 'No Action', `No logs found matching "${targetSession}".`);
+                    showNotification('info', 'No Change', `No selected row has a time in ${targetSession}.`);
                 }
             }
 
@@ -11692,14 +11806,14 @@ function clearLogs() {
 
         if (isOnline && isSignedIn) {
             syncLogsWithSheet()
-                .then(() => showNotification('delete', 'Logs Cleared', `All logs for ${currentCourse} have been removed.`))
+                .then(() => showNotification('delete', 'Records Deleted', `All records of ${getCourseLabel(currentCourse)} were deleted.`))
                 .catch(err => console.error('Error clearing logs:', err));
         }
     };
 
     showConfirmationDialog({
-        title: `Delete logs for ${escapeHtml(getCourseLabel(currentCourse))}?`,
-        message: 'This will remove all logs for the current course. This action cannot be undone.',
+        title: `Delete all records of ${escapeHtml(getCourseLabel(currentCourse))}?`,
+        message: 'This deletes every attendance record of this course. This cannot be undone.',
         confirmText: 'Delete',
         isDestructive: true,
         onConfirm: onConfirmAction
@@ -12051,9 +12165,9 @@ function showImportDialog(importedLogs, courseName = currentCourse) {
     const backdrop = document.createElement('div');
     backdrop.className = 'dialog-backdrop';
     backdrop.innerHTML = '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="logs-import-title">' +
-        '<h3 class="dialog-title" id="logs-import-title"><i class="fa-solid fa-file-import"></i> Import Logs</h3><div class="dialog-content">' +
-        '<p><strong>' + importedLogs.length + ' logs</strong> for ' + escapeHtml(getCourseLabel(courseName)) + '</p>' +
-        '<p>Merge adds new logs and keeps existing entries. Replace All replaces this course\'s logs.</p></div>' +
+        '<h3 class="dialog-title" id="logs-import-title"><i class="fa-solid fa-file-import"></i> Import Records</h3><div class="dialog-content">' +
+        '<p><strong>' + listCountText(importedLogs.length, 'record') + '</strong> for ' + escapeHtml(getCourseLabel(courseName)) + '</p>' +
+        '<p>Merge adds the new records and keeps the ones already here. Replace All replaces this course\'s records.</p></div>' +
         '<div class="dialog-actions"><button type="button" id="cancel-import-btn" class="btn-secondary"><i class="fa-solid fa-xmark"></i> Cancel</button>' +
         '<button type="button" id="replace-logs-btn" class="btn-orange"><i class="fa-solid fa-arrows-rotate"></i> Replace All</button>' +
         '<button type="button" id="merge-logs-btn" class="btn-green"><i class="fa-solid fa-code-merge"></i> Merge</button></div></div>';
@@ -12071,12 +12185,12 @@ function showImportDialog(importedLogs, courseName = currentCourse) {
         saveAndMarkChanges(courseName);
         updateUI();
         backdrop.remove();
-        showNotification('success', 'Import Complete', additions.length + ' entries imported.');
-        if (isOnline) syncLogsWithSheet().catch(() => showNotification('warning', 'Upload Pending', 'Imported logs are saved on this device. Retry sync when connected.'));
+        showNotification('success', 'Import Complete', listCountText(additions.length, 'record') + ' imported.');
+        if (isOnline) syncLogsWithSheet().catch(() => showNotification('warning', 'Upload Pending', 'The imported records are saved on this device and upload when you are connected.'));
     };
     backdrop.querySelector('#merge-logs-btn').onclick = () => apply(false);
     backdrop.querySelector('#replace-logs-btn').onclick = () => showConfirmationDialog({
-        title: '<i class="fa-solid fa-arrows-rotate"></i> Replace Attendance Logs?', message: 'Existing entries not in this file will be deleted from this course.',
+        title: '<i class="fa-solid fa-arrows-rotate"></i> Replace Attendance Records?', message: 'Records that are not in this file will be deleted from this course.',
         cancelText: '<i class="fa-solid fa-xmark"></i> Cancel',
         confirmText: '<i class="fa-solid fa-arrows-rotate"></i> Replace All', isDestructive: true, onConfirm: () => apply(true)
     });
@@ -12117,9 +12231,7 @@ function updateLogsList() {
         endLogsSwap();
         logsTbody.innerHTML = '';
         filteredCount.textContent = listCountText(0, 'record');
-        emptyLogs.innerHTML = `<i class="fa-solid fa-hand-pointer" style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
-                       <p style="font-size: 1.1em; margin-bottom: 5px;">Please select a course.</p>
-                       <p style="font-size: 0.9em; color: #999;">Choose a course above to view its attendance history.</p>`;
+        emptyLogs.innerHTML = emptyStateHtml('fa-hand-pointer', 'Please select a course.', 'Choose a course above to view its attendance history.');
         emptyLogs.style.display = 'block';
         tableContainer.classList.remove('reloading');
         hideStickyDateBar();
@@ -12134,7 +12246,7 @@ function updateLogsList() {
         if (logsSwap) return;
         logsTbody.innerHTML = '';
         filteredCount.textContent = 'Loading…';
-        emptyLogs.innerHTML = `<div class="loading-spinner" style="margin: 20px auto;"></div><p style="text-align: center;">Loading logs...</p>`;
+        emptyLogs.innerHTML = `<div class="loading-spinner" style="margin: 20px auto;"></div><p style="text-align: center;">Loading records…</p>`;
         emptyLogs.style.display = 'block';
         tableContainer.classList.remove('reloading');
         hideStickyDateBar();
@@ -12194,6 +12306,10 @@ function updateLogsList() {
 
     let result = Object.values(grouped);
 
+    // How many students each day has, for its heading's tooltip (dayHeadingTitle).
+    const countByDay = groups => groups.reduce((counts, group) => counts.set(group.date, (counts.get(group.date) || 0) + 1), new Map());
+    const dayTotals = countByDay(result);
+
     if (filter) {
         result = result.filter(group => {
             const name = group.name || '';
@@ -12233,6 +12349,7 @@ function updateLogsList() {
     });
 
     lastLogGroups = result;
+    const dayShown = filter ? countByDay(result) : dayTotals;
 
     // --- PAGINATION LOGIC ---
     // Sorted by date, pages break only between days, so a day is never cut in two.
@@ -12248,14 +12365,14 @@ function updateLogsList() {
     logsTbody.innerHTML = '';
 
     if (result.length === 0) {
-        let emptyMessageHTML = `<i class="fa-solid fa-ghost" style="font-size: 3em; color: #ccc; margin-bottom: 10px;"></i>
-                               <p style="font-size: 1.1em; margin-bottom: 5px;">No attendance records found.</p>`;
-        if (canRecordInCourse(currentCourse)) {
-            emptyMessageHTML += `<p style="font-size: 0.9em; color: #999;">Start scanning or try changing the filter.</p>`;
-        } else {
-            emptyMessageHTML += `<p style="font-size: 0.9em; color: #999;">There are no attendance records for you in this course.</p>`;
-        }
-        emptyLogs.innerHTML = emptyMessageHTML;
+        // An empty course and a search without matches need different messages,
+        // as in the Student List.
+        emptyLogs.innerHTML = filter && currentCourseLogs.length
+            ? emptyStateHtml('fa-magnifying-glass', `No records match "${escapeHtml(filterInput.value.trim())}".`,
+                'Search by name, card, date, time or group.', { what: 'logs-search', label: 'Clear search' })
+            : emptyStateHtml('fa-ghost', 'No attendance records found.', canRecordInCourse(currentCourse)
+                ? 'Start scanning or add a record to see it here.'
+                : 'There are no attendance records for you in this course.');
         emptyLogs.style.display = 'block';
     } else {
         emptyLogs.style.display = 'none';
@@ -12286,7 +12403,8 @@ function updateLogsList() {
                     const dateCheckbox = document.createElement('input');
                     dateCheckbox.type = 'checkbox';
                     dateCheckbox.setAttribute('class', 'day-separator-checkbox'); // Different class than row checkboxes
-                    dateCheckbox.title = `Select all logs for ${thisDay}`;
+                    dateCheckbox.title = `Select all records of ${thisDay}`;
+                    dateCheckbox.setAttribute('aria-label', dateCheckbox.title);
                     // Pass the specific date string to the toggle function
                     dateCheckbox.onclick = (e) => toggleDateGroup(thisDay, e.target.checked);
                     flexWrapper.appendChild(dateCheckbox);
@@ -12295,6 +12413,7 @@ function updateLogsList() {
                 const dateText = document.createElement('span');
                 dateText.setAttribute('class', 'day-separator-date');
                 dateText.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(group.date)}`;
+                dateText.title = dayHeadingTitle(group.dateObj, dayShown.get(thisDay), dayTotals.get(thisDay));
                 flexWrapper.appendChild(dateText);
                 // Add to EIS is the course administrators', not an assistant's.
                 if (isAdminForCourse(currentCourse)) {
@@ -12468,6 +12587,15 @@ function updateLogsList() {
     setupStickyDateBar();
 }
 
+// A day heading's tooltip: the weekday and full date, then how many students have
+// a record that day ("3 of 23 students" while a search hides some), for example
+// "Sunday 15 November 2026, 23 students".
+function dayHeadingTitle(date, shown, total) {
+    const weekday = date.toLocaleDateString('en-GB', { weekday: 'long' });
+    const day = date.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+    return `${weekday} ${day}, ${listCountText(shown || 0, 'student', total)}`;
+}
+
 // --- Course switches: keep the frame, swap only the content ---
 // The previous table stays on screen, dimmed and inert, until the new one
 // renders. A skeleton replaces it only if loading takes longer than 400ms.
@@ -12561,7 +12689,11 @@ function updateStickyDateBar(fresh = false) {
         }
     }
     const badge = bar.querySelector('#floating-date-badge');
-    const setDate = date => { badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`; };
+    // The floating date carries its heading's tooltip (the weekday and the day's count).
+    const setDate = date => {
+        badge.innerHTML = `<i class="fa-solid fa-calendar-day"></i> ${escapeHtml(date)}`;
+        badge.title = document.querySelector(`#scanner-tab tr.day-separator[data-date="${CSS.escape(date)}"] .day-separator-date`)?.title || '';
+    };
     const play = (name, ms, easing) => {
         bar.style.animation = 'none';
         void bar.offsetHeight;
@@ -12893,9 +13025,10 @@ function updateDatabaseList() {
         emptyDatabase.innerHTML = emptyDatabase.dataset.emptyHtml;
     } else if (entries.length === 0) {
         const programme = dbProgrammeFilter === 'none' ? 'without a programme' : dbProgrammeFilter ? `in ${programmeCode(dbProgrammeFilter)}` : '';
-        emptyDatabase.innerHTML = `<i class="fa-solid fa-magnifying-glass" style="font-size: 3em; color: #ccc; margin-bottom: 10px;" aria-hidden="true"></i>
-            <p style="font-size: 1.1em; margin-bottom: 5px;">${dbFilter ? `No students ${escapeHtml(programme)}${programme ? ' ' : ''}match "${escapeHtml(dbFilterInput.value.trim())}".` : `No students ${escapeHtml(programme)}.`}</p>
-            <p style="font-size: 0.9em; color: #999;">Search by name, card ID, UID, email or programme.</p>`;
+        emptyDatabase.innerHTML = emptyStateHtml('fa-magnifying-glass',
+            dbFilter ? `No students ${escapeHtml(programme)}${programme ? ' ' : ''}match "${escapeHtml(dbFilterInput.value.trim())}".` : `No students ${escapeHtml(programme)}.`,
+            'Search by name, Card ID, UID, email or programme.',
+            dbFilter ? { what: 'db-search', label: 'Clear search' } : { what: 'db-programme', label: 'Show all programmes' });
     }
     emptyDatabase.style.display = entries.length > 0 ? 'none' : 'block';
     closeRowMenus();
@@ -13461,6 +13594,8 @@ async function updateUI() {
     // Enable/disable buttons
     exportBtn.disabled = logsForCurrentCourse.length === 0;
     clearBtn.disabled = logsForCurrentCourse.length === 0;
+    const exportExcelLogsBtn = document.getElementById('export-logs-excel-btn');
+    if (exportExcelLogsBtn) exportExcelLogsBtn.disabled = logsForCurrentCourse.length === 0;
 
     if (isAdminForCourse(currentCourse)) {
         // Admin-specific UI updates
@@ -14988,6 +15123,35 @@ function makeNotificationSwipeable(element, onSettle) {
     };
     element.addEventListener('pointerup', end);
     element.addEventListener('pointercancel', end);
+}
+
+// What a list shows in place of its rows: an icon, a line and a quieter line under
+// it (both HTML). A search or filter without matches adds a button that clears it:
+// clear is { what, label }, and clearListFilter(what) does the clearing.
+function emptyStateHtml(icon, title, hint = '', clear = null) {
+    return `<i class="fa-solid ${icon} empty-icon" aria-hidden="true"></i>
+        <p class="empty-title">${title}</p>
+        ${hint ? `<p class="empty-hint">${hint}</p>` : ''}
+        ${clear ? `<button type="button" class="quiet-btn empty-clear-btn" data-clear="${clear.what}"><i class="fa-solid fa-xmark" aria-hidden="true"></i><span>${clear.label}</span></button>` : ''}`;
+}
+
+// Empties a list's search box, or sets the Student List back to every programme,
+// and redraws the list.
+function clearListFilter(what) {
+    if (what === 'db-programme') {
+        const select = document.getElementById('db-programme-filter');
+        if (!select) return;
+        select.value = '';
+        select.dispatchEvent(new Event('change'));
+        return;
+    }
+    const input = what === 'db-search' ? dbFilterInput : filterInput;
+    if (!input) return;
+    input.value = '';
+    // The Student List listens for typing directly; attendance waits for a pause.
+    if (what === 'db-search') handleDbFilterChange();
+    else handleFilterChange();
+    if (!isTouchDevice()) input.focus({ preventScroll: true });
 }
 
 // The count under a list's title: "12 records", or "5 of 78 records" while a

@@ -2395,6 +2395,29 @@
             font-style: italic;
         }
 
+        /* An empty list: an icon, a line and a quieter line (emptyStateHtml), then,
+           after a search without matches, the button that clears it. */
+        .empty-logs .empty-icon {
+            font-size: 3em;
+            color: #ccc;
+            margin-bottom: 10px;
+        }
+
+        .empty-logs .empty-title {
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+
+        .empty-logs .empty-hint {
+            font-size: 0.9em;
+            color: #999;
+        }
+
+        .empty-logs .empty-clear-btn {
+            margin-top: 14px;
+            font-style: normal;
+        }
+
         .filter-input:disabled,
         .sort-dropdown:disabled {
             opacity: 0.5;
