@@ -766,6 +766,165 @@ function setSegmentOptions(track, html) {
     track.insertAdjacentHTML('beforeend', html);
 }
 
+// --- Dragging a slider's thumb ---
+// Every thumb can be dragged as well as tapped: the group tracks' and the header tabs'
+// (.segment-thumb), My courses / All courses (.scope-switch) and the on/off switches
+// (.switch-input). Press the thumb, slide it, and let go over the option wanted: that
+// option is then tapped, so choosing it works exactly as a tap would. A press that
+// barely moves stays an ordinary tap.
+const THUMB_DRAG_START = 6; // px of travel before a press becomes a drag
+
+function setupThumbDrag() {
+    // The tap the browser makes when a dragged pointer is let go is not one.
+    let swallowClickUntil = 0;
+    window.addEventListener('click', (event) => {
+        if (!event.isTrusted || performance.now() > swallowClickUntil) return;
+        swallowClickUntil = 0;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+    }, true);
+
+    document.addEventListener('pointerdown', (down) => {
+        swallowClickUntil = 0;
+        if (!down.isPrimary || down.button !== 0) return;
+        const slider = thumbSliderAt(down.target);
+        if (!slider) return;
+        let dragging = false;
+        const move = (event) => {
+            if (event.pointerId !== down.pointerId) return;
+            const dx = event.clientX - down.clientX;
+            if (!dragging) {
+                if (Math.hypot(dx, event.clientY - down.clientY) < THUMB_DRAG_START) return;
+                dragging = true;
+                try { slider.handle.setPointerCapture(down.pointerId); } catch { /* Released already. */ }
+                window.getSelection()?.removeAllRanges();
+                document.documentElement.classList.add('is-thumb-dragging');
+                slider.begin();
+            }
+            slider.move(event, dx);
+        };
+        const finish = (event) => {
+            if (event.pointerId !== down.pointerId) return;
+            window.removeEventListener('pointermove', move);
+            window.removeEventListener('pointerup', finish);
+            window.removeEventListener('pointercancel', finish);
+            if (!dragging) return;
+            document.documentElement.classList.remove('is-thumb-dragging');
+            const chosen = event.type === 'pointerup';
+            if (chosen) swallowClickUntil = performance.now() + 500;
+            slider.end(chosen);
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
+    });
+}
+
+// The thumb pressed, if any: a track's chosen option, the pressed side of a scope
+// switch, or an on/off switch.
+function thumbSliderAt(target) {
+    if (!(target instanceof Element)) return null;
+    const option = target.closest(':is(.course-button, .tab, .scan-lock-exit-option).active');
+    if (option?.parentElement.querySelector(':scope > .segment-thumb')) return segmentThumbSlider(option);
+    const side = target.closest('.scope-switch > button[aria-pressed="true"]');
+    if (side) return scopeSwitchSlider(side);
+    const toggle = target.closest('.switch-input');
+    if (toggle && !toggle.disabled) return switchKnobSlider(toggle);
+    return null;
+}
+
+// A track's thumb: its middle follows the pointer along the row it is over, never
+// past that row's ends, taking the size of the option under it.
+function segmentThumbSlider(active) {
+    const track = active.parentElement;
+    const thumb = track.querySelector(':scope > .segment-thumb');
+    if (thumb.style.opacity !== '1') return null;
+    const middle = active.offsetLeft + active.offsetWidth / 2;
+    let options = [];
+    let target = active;
+    // How far a point is outside an option, rows first: 0 inside it.
+    const outside = (el, x, y) => {
+        const gap = (v, from, to) => Math.max(from - v, v - to, 0);
+        return gap(y, el.offsetTop, el.offsetTop + el.offsetHeight) * 10000 + gap(x, el.offsetLeft, el.offsetLeft + el.offsetWidth);
+    };
+    return {
+        handle: active,
+        begin() {
+            options = [...track.children].filter(el => el.matches(':is(.course-button, .tab, .scan-lock-exit-option):not([hidden], .disabled, [aria-disabled="true"])')
+                && el.offsetParent !== null);
+            thumb.classList.remove('no-slide');
+            thumb.classList.add('is-dragging');
+        },
+        move(event, dx) {
+            const box = track.getBoundingClientRect();
+            const x = middle + dx;
+            const y = event.clientY - box.top - track.clientTop;
+            target = options.reduce((best, el) => outside(el, x, y) < outside(best, x, y) ? el : best, options[0] || active);
+            const row = options.filter(el => el.offsetTop === target.offsetTop);
+            const start = Math.min(...row.map(el => el.offsetLeft));
+            const end = Math.max(...row.map(el => el.offsetLeft + el.offsetWidth));
+            const left = Math.min(Math.max(x - target.offsetWidth / 2, start), end - target.offsetWidth);
+            thumb.style.width = `${target.offsetWidth}px`;
+            thumb.style.height = `${target.offsetHeight}px`;
+            thumb.style.transform = `translate(${left}px, ${target.offsetTop}px)`;
+        },
+        end(chosen) {
+            thumb.classList.remove('is-dragging');
+            if (chosen && target !== active && target.isConnected) target.click();
+            // Slides to the chosen option, or home when nothing changed (the same option,
+            // one that cannot be chosen now).
+            updateSegmentThumb(track, true);
+        }
+    };
+}
+
+// My courses / All courses: the thumb (its ::before) moves by --drag-x.
+function scopeSwitchSlider(pressed) {
+    const track = pressed.parentElement;
+    const sides = [...track.querySelectorAll(':scope > button[data-scope]')];
+    let width = 0, start = 0, x = 0;
+    return {
+        handle: pressed,
+        begin() {
+            width = parseFloat(getComputedStyle(track, '::before').width) || track.clientWidth / sides.length;
+            start = x = sides.indexOf(pressed) * width;
+            track.classList.add('is-dragging');
+        },
+        move(event, dx) {
+            x = Math.min(Math.max(start + dx, 0), width * (sides.length - 1));
+            track.style.setProperty('--drag-x', `${x}px`);
+        },
+        end(chosen) {
+            track.classList.remove('is-dragging');
+            const side = sides[Math.round(x / width)];
+            if (chosen && side && side !== pressed) side.click();
+        }
+    };
+}
+
+// An on/off switch: its knob (::before) moves by --knob-x, and lets go on the side
+// it is nearer.
+function switchKnobSlider(input) {
+    let travel = 0, start = 0, x = 0;
+    return {
+        handle: input,
+        begin() {
+            const knob = getComputedStyle(input, '::before');
+            travel = input.clientWidth - parseFloat(knob.width) - 2 * parseFloat(knob.left);
+            start = x = input.checked ? travel : 0;
+            input.classList.add('is-dragging');
+        },
+        move(event, dx) {
+            x = Math.min(Math.max(start + dx, 0), travel);
+            input.style.setProperty('--knob-x', `${x}px`);
+        },
+        end(chosen) {
+            input.classList.remove('is-dragging');
+            if (chosen && (x > travel / 2) !== input.checked) input.click();
+        }
+    };
+}
+
 function selectSessionGroup(group) {
     activeSessionGroup = group;
     preferredSessionGroup = group;
@@ -5155,6 +5314,7 @@ function init() {
 
     // Set up event listeners
     setupEventListeners();
+    setupThumbDrag();
     setupScanLock();
     setupIdleSignOut();
 

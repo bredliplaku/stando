@@ -14904,3 +14904,50 @@ body.is-assistant .sync-auth-container {
     background: rgba(0, 0, 0, 0.34);
     box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.1);
 }
+
+/* =========================================================================
+   Dragging a thumb (setupThumbDrag): the group tracks', the header tabs', My
+   courses / All courses and the on/off switches. A sideways drag on a thumb
+   moves it, not the page. While dragged, a thumb keeps up with the pointer
+   (only its size eases), and lets go into its usual slide.
+   ========================================================================= */
+:has(> .segment-thumb) > .active,
+.scope-switch > button[aria-pressed="true"],
+.switch-input {
+    touch-action: pan-y;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    :has(> .segment-thumb) > :is(.course-button, .tab).active,
+    .scan-lock .scan-lock-exit > .scan-lock-exit-option.active,
+    .scope-switch > button[aria-pressed="true"] {
+        cursor: grab;
+    }
+}
+
+html.is-thumb-dragging,
+html.is-thumb-dragging * {
+    cursor: grabbing !important;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+html.is-thumb-dragging .segment-thumb.is-dragging {
+    transition: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    html.is-thumb-dragging .segment-thumb.is-dragging {
+        transition: width 0.2s ease, height 0.2s ease, opacity 0.15s ease;
+    }
+}
+
+html.is-thumb-dragging .scope-switch.is-dragging::before {
+    transform: translateX(var(--drag-x, 0));
+    transition: none;
+}
+
+html.is-thumb-dragging .switch-input.is-dragging::before {
+    transform: translateX(var(--knob-x, 0));
+    transition: none;
+}
